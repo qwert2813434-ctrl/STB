@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PPM 製作工具 — 使用說明</title>
+<style>
+:root{
+  --w:#efeee8; --c:#fff; --k:#1f1e1d; --k2:#5f5e5a; --m:#8f8d87; --f:#b4b2aa;
+  --ln:rgba(0,0,0,.13); --ln2:rgba(0,0,0,.07); --vo:#185fa5; --sup:#3b6d11;
+  --ph:#e7e5dd; --mo:ui-monospace,"SF Mono",Menlo,monospace;
+  --font:-apple-system,"PingFang TC","Noto Sans TC","Helvetica Neue",system-ui,sans-serif;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:#f4f3ec;color:var(--k);font-family:var(--font);font-weight:400;-webkit-font-smoothing:antialiased;line-height:1.7;}
+.wrap{max-width:980px;margin:0 auto;padding:56px 24px 72px;}
+h1{font-size:32px;font-weight:500;letter-spacing:.01em;margin:6px 0 0;color:var(--k);}
+h3{font-size:20px;font-weight:500;margin:0;color:var(--k);}
+section{margin:0 0 3rem;}
+.eyebrow{font-family:var(--mo);font-size:11px;letter-spacing:.18em;color:var(--m);text-transform:uppercase;margin:0 0 8px;}
+.lede{color:var(--k2);line-height:1.75;margin:8px 0 18px;max-width:70ch;}
+.panel{background:var(--w);border:1px solid var(--ln);border-radius:14px;padding:18px;}
+.win{background:var(--c);border:1px solid var(--ln);border-radius:12px;overflow:hidden;}
+.bar{display:flex;align-items:center;gap:8px;padding:9px 14px;border-bottom:1px solid var(--ln);}
+.dot{width:10px;height:10px;border-radius:50%;background:rgba(0,0,0,.16);}
+.wname{font-size:12px;color:var(--k2);margin-left:4px;}
+.ppmtag{font-family:var(--mo);font-size:10px;letter-spacing:.1em;color:var(--m);border:1px solid var(--ln);border-radius:20px;padding:1px 8px;}
+.grid2{display:grid;grid-template-columns:180px 1fr;}
+.agenda{border-right:1px solid var(--ln);padding:12px 8px;}
+.ch{padding:6px 10px;border-radius:8px;}
+.ch.on{background:var(--w);}
+.ch .en{font-family:var(--mo);font-size:10px;letter-spacing:.05em;color:var(--m);display:block;}
+.ch .zh{font-size:13px;color:var(--k2);}
+.ch.on .en,.ch.on .zh{color:var(--k);}
+.cuts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;padding:16px;}
+.cut{border:1px solid var(--ln);border-radius:9px;padding:8px;}
+.cut.hl{border-color:var(--k);box-shadow:-3px 0 0 var(--k);}
+.cno{font-family:var(--mo);font-size:11px;color:var(--m);display:flex;align-items:center;gap:6px;}
+.grip{color:var(--f);}
+.thumb{aspect-ratio:16/9;background:var(--ph);border-radius:6px;margin:6px 0;display:flex;align-items:center;justify-content:center;color:var(--f);font-size:11px;}
+.thumb.p{aspect-ratio:9/16;}
+.cd{font-size:12px;color:var(--k);line-height:1.5;}
+.cvo{font-size:12px;color:var(--vo);line-height:1.5;}
+.csp{font-size:12px;color:var(--sup);line-height:1.5;}
+.tag{font-family:var(--mo);font-size:9px;letter-spacing:.08em;opacity:.75;}
+.gantt{padding:16px;}
+.gt{display:flex;align-items:center;gap:12px;padding:7px 0;border-bottom:1px solid var(--ln2);}
+.gt:last-child{border:none;}
+.gl{width:78px;font-size:13px;color:var(--k);}
+.gtrack{flex:1;height:20px;background:var(--w);border-radius:4px;position:relative;}
+.gbar{position:absolute;top:3px;bottom:3px;background:var(--k);border-radius:3px;}
+.rd{display:flex;gap:12px;padding:9px 0;border-bottom:1px solid var(--ln2);align-items:center;}
+.rt{font-family:var(--mo);font-size:11px;color:var(--k);min-width:92px;}
+.rty{font-size:10px;color:var(--m);border:1px solid var(--ln);border-radius:20px;padding:0 8px;}
+.rti{font-size:13px;color:var(--k);}
+.refcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;padding:16px;}
+.rc{border:1px solid var(--ln);border-radius:9px;padding:8px;}
+.play{width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center;position:absolute;right:6px;bottom:6px;}
+.rct{font-size:13px;color:var(--k);margin-top:6px;}
+.rcn{font-size:12px;color:var(--k2);line-height:1.5;margin-top:2px;}
+.rccut{font-family:var(--mo);font-size:9px;color:var(--m);border:1px solid var(--ln);border-radius:4px;padding:1px 6px;display:inline-block;margin-top:7px;}
+.slide{background:var(--w);border:1px solid var(--ln);border-radius:12px;min-height:200px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;}
+.sidx{font-family:var(--mo);font-size:12px;letter-spacing:.2em;color:var(--m);}
+.sbig{font-size:32px;color:var(--k);font-weight:500;margin:8px 0 2px;letter-spacing:.02em;}
+.ssub{font-size:13px;color:var(--m);}
+.steps{display:flex;gap:8px;align-items:center;justify-content:center;padding:12px;color:var(--f);font-family:var(--mo);font-size:11px;}
+.feat{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;}
+.fcard{background:var(--w);border:1px solid var(--ln);border-radius:12px;padding:16px;}
+.fk{font-size:14px;font-weight:500;color:var(--k);margin-bottom:4px;}
+.fv{font-size:13px;color:var(--k2);line-height:1.6;}
+.kbd{font-family:var(--mo);font-size:11px;border:1px solid var(--ln);border-radius:5px;padding:1px 7px;background:var(--w);color:var(--k2);}
+.quote{font-family:Georgia,"Songti TC",serif;font-size:21px;color:var(--k);line-height:1.6;margin:0;}
+.sub2col{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;}
+.doc{padding:16px 22px;}
+.doctitle{font-size:17px;color:var(--k);font-weight:500;}
+.docsub{font-size:11px;color:var(--m);margin:3px 0 16px;letter-spacing:.02em;}
+.agrow{display:flex;gap:14px;padding:8px 2px;border-bottom:1px solid var(--ln2);align-items:baseline;}
+.agrow:last-child{border:none;}
+.agn{font-family:var(--mo);font-size:10px;color:var(--f);}
+.agen{font-family:var(--mo);font-size:13px;color:var(--k);min-width:170px;letter-spacing:.03em;}
+.agzh{font-size:13px;color:var(--m);}
+.refwin{display:grid;grid-template-columns:1.5fr 1fr;}
+.refmain{padding:16px;border-right:1px solid var(--ln);}
+.vthumb{aspect-ratio:16/9;background:var(--ph);border-radius:6px;position:relative;display:flex;align-items:center;justify-content:center;color:var(--f);font-size:11px;}
+.vplay{width:34px;height:34px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);}
+.refside{padding:16px;}
+.ccol{display:flex;flex-direction:column;gap:10px;}
+.cc{display:flex;gap:10px;align-items:center;}
+.ccthumb{width:64px;aspect-ratio:16/9;background:var(--ph);border-radius:4px;flex:none;}
+.ccno{font-family:var(--mo);font-size:11px;color:var(--k2);}
+@media (max-width:620px){ .grid2{grid-template-columns:1fr;} .agenda{border-right:none;border-bottom:1px solid var(--ln);} .refwin{grid-template-columns:1fr;} .refmain{border-right:none;border-bottom:1px solid var(--ln);} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <section>
+    <p class="eyebrow">桌面 App · 前製會議製作工具</p>
+    <h1>把整個前製，收進一份文件</h1>
+    <p class="lede">調性、參考、選角、服裝、場景、分鏡、製作時程——一份 PPM Deck 對齊客戶與所有部門。做廣告就是在溝通，資訊透明，是最好的溝通。</p>
+    <div class="win">
+      <div class="bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="wname">日光氣泡飲_品牌形象片</span><span class="ppmtag">PPM</span></div>
+      <div class="grid2">
+        <div class="agenda">
+          <div class="ch on"><span class="en">AGENDA</span><span class="zh">目錄</span></div>
+          <div class="ch"><span class="en">TONE &amp; MANNER</span><span class="zh">調性</span></div>
+          <div class="ch"><span class="en">REFERENCE RHYTHM</span><span class="zh">參考節奏</span></div>
+          <div class="ch"><span class="en">STORYBOARD</span><span class="zh">分鏡</span></div>
+          <div class="ch"><span class="en">ACTOR</span><span class="zh">演員</span></div>
+          <div class="ch"><span class="en">WARDROBE</span><span class="zh">服裝</span></div>
+          <div class="ch"><span class="en">LOCATION</span><span class="zh">場景</span></div>
+          <div class="ch"><span class="en">SCHEDULE</span><span class="zh">製作時程</span></div>
+        </div>
+        <div class="doc">
+          <div class="doctitle">日光氣泡飲_品牌形象片</div>
+          <div class="docsub">PPM ・ 前製會議 ・ 30 秒形象片</div>
+          <div class="agrow"><span class="agn">01</span><span class="agen">TONE &amp; MANNER</span><span class="agzh">調性</span></div>
+          <div class="agrow"><span class="agn">02</span><span class="agen">REFERENCE RHYTHM</span><span class="agzh">參考節奏</span></div>
+          <div class="agrow"><span class="agn">03</span><span class="agen">STORYBOARD</span><span class="agzh">分鏡</span></div>
+          <div class="agrow"><span class="agn">04</span><span class="agen">REFERENCES</span><span class="agzh">參考資料</span></div>
+          <div class="agrow"><span class="agn">05</span><span class="agen">ACTOR</span><span class="agzh">演員</span></div>
+          <div class="agrow"><span class="agn">06</span><span class="agen">WARDROBE</span><span class="agzh">服裝</span></div>
+          <div class="agrow"><span class="agn">07</span><span class="agen">SETTING</span><span class="agzh">美術道具</span></div>
+          <div class="agrow"><span class="agn">08</span><span class="agen">LOCATION</span><span class="agzh">場景</span></div>
+          <div class="agrow"><span class="agn">09</span><span class="agen">SCHEDULE</span><span class="agzh">製作時程</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Storyboard · 分鏡</p>
+    <h3>分鏡改哪裡，編號自己重排</h3>
+    <p class="lede">插入、刪除、拖曳一顆 cut，後面的編號、時間碼、指派全部自動跟上——你只改內容，結構同步交給它。相連的鏡頭綁成 05-1 / 05-2，怎麼搬都整組同行。</p>
+    <div class="win">
+      <div class="cuts">
+        <div class="cut hl"><div class="cno"><span class="grip">⠿</span>CUT 05-1</div><div class="thumb">16:9</div><div class="cd">手握玻璃瓶，逆光</div><div class="cvo"><span class="tag">VO</span> 一口，就到夏天</div></div>
+        <div class="cut hl"><div class="cno"><span class="grip">⠿</span>CUT 05-2</div><div class="thumb">16:9</div><div class="cd">同場：仰頭暢飲</div><div class="csp"><span class="tag">SUPER</span> 零負擔</div></div>
+        <div class="cut"><div class="cno"><span class="grip">⠿</span>CUT 06</div><div class="thumb">16:9</div><div class="cd">氣泡特寫，慢動作</div><div class="cvo"><span class="tag">VO</span> 純淨，看得見</div></div>
+        <div class="cut"><div class="cno"><span class="grip">⠿</span>CUT 07</div><div class="thumb">16:9</div><div class="cd">陽台，朋友碰杯</div><div class="cvo"><span class="tag">VO</span> 好日子，剛剛好</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Schedule · 製作時程</p>
+    <h3>從拍攝到 Final，時程一目了然</h3>
+    <p class="lede">上半是製作時程甘特——拍攝、A copy、客戶回饋、B copy、Final 一條線排開；下半接每個拍攝日的通告單與 Rundown，改一段時間，後面全部順延、收工自動重算。</p>
+    <div class="panel sub2col">
+      <div class="win"><div class="bar"><span class="wname">製作時程</span></div>
+        <div class="gantt">
+          <div class="gt"><span class="gl">拍攝</span><span class="gtrack"><span class="gbar" style="left:0;width:14%"></span></span></div>
+          <div class="gt"><span class="gl">A copy</span><span class="gtrack"><span class="gbar" style="left:20%;width:22%"></span></span></div>
+          <div class="gt"><span class="gl">客戶回饋</span><span class="gtrack"><span class="gbar" style="left:44%;width:16%"></span></span></div>
+          <div class="gt"><span class="gl">B copy</span><span class="gtrack"><span class="gbar" style="left:62%;width:20%"></span></span></div>
+          <div class="gt"><span class="gl">Final</span><span class="gtrack"><span class="gbar" style="left:86%;width:14%"></span></span></div>
+        </div>
+      </div>
+      <div class="win"><div class="bar"><span class="wname">拍攝日程 · Rundown</span></div>
+        <div style="padding:6px 16px 16px">
+          <div class="rd"><span class="rt">08:00–08:30</span><span class="rty">集合</span><span class="rti">器材上車</span></div>
+          <div class="rd"><span class="rt">09:00–10:30</span><span class="rty">拍攝</span><span class="rti">廚房場</span></div>
+          <div class="rd"><span class="rt">12:00–13:00</span><span class="rty">用餐</span><span class="rti">劇組便當</span></div>
+          <div class="rd" style="border:none"><span class="rt">13:30–15:00</span><span class="rty">拍攝</span><span class="rti">陽台場</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">References · 參考</p>
+    <h3>一支參考影片，標清楚對應哪幾顆 cut</h3>
+    <p class="lede">參考節奏、參考資料這些章，放一支影片就好——旁邊標上它對應分鏡的哪幾顆 cut，招式和動態一看就懂，客戶不用猜。</p>
+    <div class="win refwin">
+      <div class="refmain">
+        <div class="vthumb">參考影片<span class="vplay">▶</span></div>
+        <div class="rct">氣泡上升・節奏參考</div>
+        <div class="rcn">慢動作、逆光、通透感——這支的節奏對應右邊幾顆 cut</div>
+      </div>
+      <div class="refside">
+        <span class="tag" style="color:var(--m);display:block;margin-bottom:10px">對照分鏡</span>
+        <div class="ccol">
+          <div class="cc"><span class="ccthumb"></span><span class="ccno">CUT 06</span></div>
+          <div class="cc"><span class="ccthumb"></span><span class="ccno">CUT 07</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Present · 簡報</p>
+    <h3>一鍵，對客戶播放</h3>
+    <p class="lede">預覽就是簡報——先亮目錄、再看章節標題、才進內容，照著提案的節奏走。同一份版面就是印刷版，能存成 A5 PDF 寄給客戶。</p>
+    <div class="panel">
+      <div class="slide">
+        <div class="sidx">01</div>
+        <div class="sbig">TONE &amp; MANNER</div>
+        <div class="ssub">調性</div>
+      </div>
+      <div class="steps"><span class="kbd">目錄</span> → <span class="kbd">章節標題</span> → <span class="kbd">內容</span> → … &nbsp; ←/→ 換頁</div>
+    </div>
+  </section>
+
+  <section>
+    <p class="eyebrow">Save &amp; export · 存檔</p>
+    <h3>存成真檔案，隨時回來</h3>
+    <div class="feat">
+      <div class="fcard"><div class="fk">一案一資料夾</div><div class="fv">案子存成電腦裡的真檔案，自動存檔，重開就在。</div></div>
+      <div class="fcard"><div class="fk">A5 橫印刷 / PDF</div><div class="fv">整份 Deck 一鍵印成 A5、存 PDF，直接寄客戶。</div></div>
+      <div class="fcard"><div class="fk">全程米白、對齊工整</div><div class="fv">編輯、簡報、印刷同一份版面，質感一致。</div></div>
+    </div>
+  </section>
+
+  <section style="margin-bottom:0">
+    <p class="quote">「能被理解，是一件很幸福的事。」</p>
+    <p class="lede" style="margin-top:8px">資訊透明，讓客戶前期就被理解，後期驗收自然順。</p>
+  </section>
+
+</div>
+</body>
+</html>
