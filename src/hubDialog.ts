@@ -34,7 +34,7 @@ export function openHub(actions: HubActions) {
         <div class="hub-head">
           <span class="hub-title">專案</span>
           <button class="hub-act" data-hubnew="ppm">＋ 新增案子</button>
-          <button class="hub-act" data-hubnew="schedule" title="製片版：只有甘特／通告單／Rundown 的輕量排表案；隨時可展開成完整 PPM">＋ 通告排表</button>
+          <button class="hub-act" data-hubnew="schedule" title="製片版：分鏡整理＋甘特／通告單／Rundown 的輕量排表案；隨時可展開成完整 PPM">＋ 通告排表</button>
           <button class="hub-act" data-hubopen>開啟其他案子…</button>
           <button class="hub-act" data-hubsample title="內建示範案，看版面與玩法用；不會動到你的案子">示範案</button>
           <span class="spacer"></span>

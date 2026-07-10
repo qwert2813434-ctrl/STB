@@ -73,8 +73,9 @@ export function openCutPicker(store: Store, selected: string[]): Promise<string[
 }
 
 // 批次選外部分鏡圖：依檔名排序（分鏡通常命名 01、02…），
-// 自動置中裁 16:9（1280×720；之後點縮圖可用既有圖片編輯器微調）
-function pickBoardImages(): Promise<string[]> {
+// 自動置中裁 16:9（1280×720；之後點縮圖可用既有圖片編輯器微調）。
+// 分鏡章 inspector 的「＋ 匯入分鏡圖」也用這條。
+export function pickBoardImages(): Promise<string[]> {
   return new Promise((resolve) => {
     const input = document.createElement("input");
     input.type = "file";

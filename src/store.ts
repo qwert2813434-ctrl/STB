@@ -293,6 +293,20 @@ export class Store {
     return ids;
   }
 
+  // 指派 cut 到 Rundown 時段（＝設定場次；分鏡章多選後反向指派）：
+  // 併入既有名單去重，依分鏡順序排列
+  assignCutsToBlock(blockId: string, cutIds: string[]) {
+    this.commit((p) => {
+      for (const d of p.days) {
+        const b = d.rundown.find((x) => x.id === blockId);
+        if (!b) continue;
+        const set = new Set([...b.cutIds, ...cutIds]);
+        b.cutIds = p.cuts.filter((c) => set.has(c.id)).map((c) => c.id);
+        return;
+      }
+    });
+  }
+
   // 章節顯示切換（簡報「章節」勾選）：藏起來的章簡報/匯出都跳過，編輯器照常
   toggleChapterHidden(id: string) {
     this.snapshot();

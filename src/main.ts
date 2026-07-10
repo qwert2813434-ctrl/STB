@@ -15,6 +15,8 @@ import { isTauri, currentDir, dirName, chooseFolderAndLoad, createProjectFolder,
 import { projectLogo } from "./logoAsset";
 import { openHelp } from "./helpDialog";
 import { openHub } from "./hubDialog";
+import { pickBoardImages } from "./cutPicker";
+import { openBlockPicker } from "./assignDialog";
 
 const store = new Store(sampleProject());
 const expanded = new Set<string>(); // 暫時展開的 VO/Super 行
@@ -126,8 +128,9 @@ function renderSidebar() {
   const mode = store.get().mode ?? "ppm";
   let html = "";
   for (const ch of CHAPTERS) {
-    // 通告排表模式（製片版）：側欄只剩 SCHEDULE——甘特/通告單/Rundown
-    if (mode === "schedule" && ch.kind !== "schedule") continue;
+    // 通告排表模式（製片版）：側欄＝分鏡（卡片整理：匯入/排序/群組/標註）
+    // ＋ SCHEDULE（甘特/通告單/Rundown）——其餘 PPM 章收起
+    if (mode === "schedule" && ch.kind !== "schedule" && ch.kind !== "storyboard") continue;
     const on = ch.id === store.currentChapter ? " on" : "";
     html += `<button class="chap${on}" data-chap="${ch.id}"><span class="chap-en">${ch.en}</span><span class="chap-zh">${ch.label}</span></button>`;
   }
@@ -164,13 +167,16 @@ function renderInspector() {
     inspector.innerHTML = `
       <span class="cur">已選 ${store.selectedIds.length} 顆</span>
       <button data-a="group">組成連續鏡</button>
+      <button data-a="assign">⇒ 指派到時段</button>
       <button data-a="delmulti">刪除選取</button>
       <span class="hint">⌘ 點擊加選 · Shift 點擊連選</span>`;
     return;
   }
   const id = store.selectedId;
   if (!id) {
-    inspector.innerHTML = `<span class="hint">點一格選取 cut（⌘/Shift 多選可組連續鏡）。快捷：⌘D 複製 · ⌦ 刪除 · ⌘Z 復原</span>`;
+    inspector.innerHTML = `
+      <button data-a="importboards">＋ 匯入分鏡圖</button>
+      <span class="hint">外部軟體做的分鏡：多選圖檔一次帶入，拖曳排序、⌘/Shift 多選組連續鏡或指派到時段</span>`;
     return;
   }
   const numbers = computeCutNumbers(p.cuts);
@@ -187,6 +193,7 @@ function renderInspector() {
     ${grouped ? `<button data-a="detach">拆除群組</button>` : ""}
     ${canVo ? `<button data-a="addvo">+ VO</button>` : ""}
     ${canSup ? `<button data-a="addsup">+ Super</button>` : ""}
+    <button data-a="assign">⇒ 指派到時段</button>
     <button data-a="dup">複製</button>
     <button data-a="del">刪除</button>
     ${grouped ? `<span class="hint">連續鏡：拖任一子鏡整組同行 · 拆除＝整組拆散</span>` : ""}
@@ -319,9 +326,23 @@ dayTabs.addEventListener("click", (e) => {
 
 inspector.addEventListener("click", (e) => {
   const btn = (e.target as HTMLElement).closest("[data-a]") as HTMLElement | null;
-  if (!btn || !store.selectedId) return;
+  if (!btn) return;
+  // 匯入分鏡圖：不需要選取（空案子也能按）
+  if (btn.dataset.a === "importboards") {
+    void pickBoardImages().then((imgs) => { if (imgs.length) store.addCutsFromImages(imgs); });
+    return;
+  }
+  if (!store.selectedId) return;
   const id = store.selectedId;
   const a = btn.dataset.a;
+  // 指派到時段（＝設定場次）：單選或多選都吃
+  if (a === "assign") {
+    const ids = store.selectedIds.length > 1 ? [...store.selectedIds] : [id];
+    void openBlockPicker(store).then((blockId) => {
+      if (blockId) store.assignCutsToBlock(blockId, ids);
+    });
+    return;
+  }
   if (a === "add") addCut();
   else if (a === "dup") store.duplicateCut(id);
   else if (a === "del") store.deleteCut(id);
