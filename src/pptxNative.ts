@@ -1,8 +1,9 @@
 import PptxGenJS from "pptxgenjs";
 import type { Store } from "./store";
 import type { Project, RefItem, ShootDay } from "./model";
-import { CHAPTERS, PORTRAIT_CHAPTERS, computeCutNumbers, chainRundown, hhmmToMin, minToHHMM, PER_PAGE, GANTT_COLORS } from "./model";
+import { PORTRAIT_CHAPTERS, computeCutNumbers, chainRundown, hhmmToMin, minToHHMM, PER_PAGE, GANTT_COLORS } from "./model";
 import { cutRefLabel } from "./cutPicker";
+import { chapterPlan } from "./pages";
 import { isTauri, currentDir } from "./persistence";
 import { projectLogo, rasterLogo } from "./logoAsset";
 import { invoke } from "@tauri-apps/api/core";
@@ -35,10 +36,7 @@ export async function buildEditablePptx(store: Store, opts: PptxOptions): Promis
   pptx.author = "STB";
   pptx.title = p.meta.title || "PPM";
 
-  const plan = CHAPTERS.filter((ch) => ch.id !== "agenda").filter((ch) =>
-    ch.kind === "storyboard" ? p.cuts.length > 0
-    : ch.kind === "schedule" ? (p.milestones.length > 0 || p.days.length > 0)
-    : (p.refPages[ch.id]?.length ?? 0) > 0);
+  const plan = chapterPlan(p); // 與簡報/PDF 同一份出場名單（空章/隱藏章跳過）
 
   if (opts.withTitles) {
     await logoSlide(pptx, p);
@@ -89,7 +87,7 @@ function coverSlide(pptx: PptxGenJS, p: Project) {
   const sl = pptx.addSlide();
   sl.addText(p.meta.title || "未命名案子", { x: MX, y: 0.85, w: W - MX * 2, h: 0.75, fontFace: FONT, fontSize: 30, bold: true, color: INK });
   sl.addText(`PPM ・ 前製會議 ・ ${p.meta.client}`, { x: MX, y: 1.62, w: W - MX * 2, h: 0.35, fontFace: FONT, fontSize: 12.5, color: MUTED });
-  const rows = CHAPTERS.filter((c) => c.id !== "agenda");
+  const rows = chapterPlan(p); // 目錄只列會出場的章
   rows.forEach((c, i) => {
     sl.addText([
       { text: `${String(i + 1).padStart(2, "0")}   `, options: { fontSize: 10, color: MUTED, fontFace: "Courier New" } },

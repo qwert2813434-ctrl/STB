@@ -268,6 +268,16 @@ export class Store {
     this.touched();
   }
 
+  // 章節顯示切換（簡報「章節」勾選）：藏起來的章簡報/匯出都跳過，編輯器照常
+  toggleChapterHidden(id: string) {
+    this.snapshot();
+    const set = new Set(this.project.hiddenChapters ?? []);
+    if (set.has(id)) set.delete(id); else set.add(id);
+    this.project.hiddenChapters = [...set];
+    this.emit();
+    this.touched();
+  }
+
   // 首頁 LOGO（data URL；null＝回到內建預設）
   setLogo(dataUrl: string | null) {
     if (this.project.meta.logo === dataUrl) return;

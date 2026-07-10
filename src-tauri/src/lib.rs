@@ -154,6 +154,21 @@ fn video_for_embed(
   Ok(tauri::ipc::Response::new(bytes))
 }
 
+// project.json 的最後修改時間（毫秒）——前端輪詢它偵測「外部編輯」
+// （AI／文字編輯器改了檔案 → App 自動重載，讓 GPT/Claude 能直接駕駛案子）
+#[tauri::command]
+fn project_mtime(dir: String) -> Result<u64, String> {
+  let path = Path::new(&dir).join("project.json");
+  let meta = fs::metadata(&path).map_err(|e| e.to_string())?;
+  let mtime = meta
+    .modified()
+    .map_err(|e| e.to_string())?
+    .duration_since(std::time::UNIX_EPOCH)
+    .map(|d| d.as_millis() as u64)
+    .unwrap_or(0);
+  Ok(mtime)
+}
+
 // 開啟已匯出的檔案：直接走 macOS `open`。
 // （不用 opener plugin 的 openPath——它有路徑 scope 限制，曾讓匯出在最後一步失敗。）
 #[tauri::command]
@@ -170,7 +185,7 @@ pub fn run() {
   tauri::Builder::default()
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_opener::init())
-    .invoke_handler(tauri::generate_handler![save_project, load_project, import_asset, read_asset, read_file, save_file, open_path, video_for_embed, save_as])
+    .invoke_handler(tauri::generate_handler![save_project, load_project, import_asset, read_asset, read_file, save_file, open_path, video_for_embed, save_as, project_mtime])
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(

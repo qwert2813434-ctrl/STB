@@ -1,4 +1,5 @@
 import "./style.css";
+import { invoke } from "@tauri-apps/api/core";
 import { Store } from "./store";
 import { sampleProject, emptyProject } from "./sampleData";
 import { renderStb, bindStb } from "./stbView";
@@ -358,6 +359,7 @@ async function doSave() {
     }
     dirty = false;
     updateSaveState();
+    void syncMtime(); // 自己寫的檔＝新基準，別誤判成外部改動
   } catch (err) {
     updateSaveState(`存檔失敗：${err}`);
   }
@@ -378,6 +380,7 @@ async function doOpen(): Promise<boolean> {
     dirty = false;
     updateSaveState();
     void healPosters();
+    void syncMtime();
     return true;
   } catch (err) {
     alert(`開不了這個檔案——請選案子資料夾裡的 project.json。\n（${err}）`);
@@ -408,6 +411,7 @@ async function hubCreate(): Promise<boolean> {
   await saveToCurrent(serialize()); // 把定案名寫回 project.json
   upsertRecent(dir, proj.meta.title);
   updateSaveState();
+  void syncMtime();
   return true;
 }
 
@@ -420,6 +424,7 @@ async function hubOpenDir(dir: string): Promise<boolean> {
     dirty = false;
     updateSaveState();
     void healPosters();
+    void syncMtime();
     return true;
   } catch { return false; }
 }
@@ -438,6 +443,7 @@ async function doSaveAs() {
     upsertRecent(dir, store.get().meta.title);
     dirty = false;
     updateSaveState();
+    void syncMtime();
   } catch (err) {
     alert(`另存失敗：${err}`);
   }
@@ -457,10 +463,39 @@ async function healPosters() {
 }
 
 const btnSaveAs = document.getElementById("btn-saveas") as HTMLButtonElement;
+// —— AI／外部編輯即時同步 ——
+// project.json 是唯一真相：外部（Claude Code／任何 AI／文字編輯器）改了檔案，
+// App 每 2 秒偵測 mtime 自動重載——這就是「自然語言駕駛 STB」的地基。
+// 防呆：本地有未存變更或正在打字時不搶；檔案寫到一半（JSON 解析失敗）下輪再試。
+let knownMtime = 0;
+async function syncMtime() {
+  knownMtime = currentDir()
+    ? await invoke<number>("project_mtime", { dir: currentDir() }).catch(() => 0)
+    : 0;
+}
+
 if (isTauri()) {
   btnHub.addEventListener("click", () => openHub({ onCreate: hubCreate, onOpenDir: hubOpenDir, onOpenOther: doOpen, onOpenSample: hubOpenSample }));
   btnSave.addEventListener("click", doSave);
   btnSaveAs.addEventListener("click", () => void doSaveAs());
+  setInterval(async () => {
+    if (!currentDir() || dirty) return;
+    if ((document.activeElement as HTMLElement | null)?.isContentEditable) return;
+    const m = await invoke<number>("project_mtime", { dir: currentDir()! }).catch(() => 0);
+    if (!m) return;
+    if (knownMtime === 0) { knownMtime = m; return; } // 第一次＝定基準
+    if (m <= knownMtime) return;
+    try {
+      const raw = await loadFromDir(currentDir()!);
+      if (raw) {
+        store.replaceProject(normalizeProject(raw));
+        dirty = false;
+        updateSaveState(`${dirName()}・已從外部更新`);
+        void healPosters();
+      }
+      knownMtime = m;
+    } catch { /* 檔案可能寫到一半：下一輪再試 */ }
+  }, 2000);
   // 自動存檔：真相變更（含 inline 打字）後 800ms 寫回；純選取/切章不觸發
   store.onMutate(() => {
     dirty = true;

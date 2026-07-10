@@ -686,6 +686,17 @@ body.dragging-any { user-select: none; cursor: grabbing; }
   padding: 12px; background: var(--card); border-top: 1px solid var(--line);
 }
 .pv-nav button { background: transparent; border-color: var(--border-strong); color: var(--ink2); }
+/* 簡報「章節」勾選浮窗（貼在導覽列上方） */
+.pv-chpop {
+  position: absolute; bottom: 58px; left: 50%; transform: translateX(-50%);
+  z-index: 10; background: var(--card); border: 1px solid var(--line);
+  border-radius: 12px; padding: 10px 14px; min-width: 260px;
+  box-shadow: 0 10px 34px rgba(0,0,0,.22);
+}
+.pv-chpop-h { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; color: var(--muted); margin: 2px 0 8px; }
+.pv-chrow { display: flex; align-items: center; gap: 8px; padding: 5px 2px; font-size: 13px; cursor: pointer; }
+.pv-chen { color: var(--ink); }
+.pv-chzh { color: var(--muted); font-size: 12px; }
 .pv-nav button:hover { border-color: var(--ink); color: var(--ink); background: var(--hover); }
 .pv-count { font-family: var(--mono); font-size: 12px; color: var(--muted); min-width: 64px; text-align: center; }
 

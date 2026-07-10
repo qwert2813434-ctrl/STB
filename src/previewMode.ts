@@ -1,7 +1,7 @@
 import type { Store } from "./store";
 import { mountInlineVideo, openExternal } from "./persistence";
 import type { RefItem } from "./model";
-import { collectChapters, coverSlideHtml, titleSlideHtml, logoSlideHtml } from "./pages";
+import { collectChapters, coverSlideHtml, titleSlideHtml, logoSlideHtml, chapterPlan } from "./pages";
 import { openExportDialog } from "./exportDialog";
 
 // 預覽（簡報模式）：照 PPM 簡報節奏播放——
@@ -17,22 +17,28 @@ type Slide =
   | { kind: "page"; el: HTMLElement };
 
 export function openPreview(store: Store) {
-  const slides: Slide[] = [{ kind: "logo" }, { kind: "cover" }];
-
-  collectChapters(store).forEach((ch, i) => {
-    slides.push({ kind: "title", en: ch.en, zh: ch.zh, index: i + 1 });
-    for (const el of ch.pages) slides.push({ kind: "page", el });
-  });
+  // 頁序可重建：勾章節後重收頁面（空章/隱藏章跳過＝chapterPlan 統一判斷）
+  function buildSlides(): Slide[] {
+    const out: Slide[] = [{ kind: "logo" }, { kind: "cover" }];
+    collectChapters(store).forEach((ch, idx) => {
+      out.push({ kind: "title", en: ch.en, zh: ch.zh, index: idx + 1 });
+      for (const el of ch.pages) out.push({ kind: "page", el });
+    });
+    return out;
+  }
+  let slides = buildSlides();
 
   // ---- overlay ----
   const overlay = document.createElement("div");
   overlay.className = "pv-overlay";
   overlay.innerHTML = `
     <div class="pv-stage"><div class="pv-fit"></div></div>
+    <div class="pv-chpop" hidden></div>
     <div class="pv-nav">
       <button class="pv-prev" aria-label="上一頁">←</button>
       <span class="pv-count"></span>
       <button class="pv-next" aria-label="下一頁">→</button>
+      <button class="pv-chap">章節</button>
       <button class="pv-print">匯出…</button>
       <button class="pv-close" aria-label="離開預覽">Esc 離開</button>
     </div>`;
@@ -123,6 +129,31 @@ export function openPreview(store: Store) {
   (overlay.querySelector(".pv-next") as HTMLElement).addEventListener("click", () => step(1));
   (overlay.querySelector(".pv-close") as HTMLElement).addEventListener("click", close);
   (overlay.querySelector(".pv-print") as HTMLElement).addEventListener("click", (e) => { e.stopPropagation(); void openExportDialog(store); });
+
+  // 章節勾選：這次不給客戶看的章（存進案子，匯出也遵守；編輯器不受影響）
+  const chpop = overlay.querySelector(".pv-chpop") as HTMLElement;
+  function renderChpop() {
+    const hidden = new Set(store.get().hiddenChapters ?? []);
+    const rows = chapterPlan(store.get(), true).map((ch) => `
+      <label class="pv-chrow">
+        <input type="checkbox" data-chtoggle="${ch.id}" ${hidden.has(ch.id) ? "" : "checked"}>
+        <span class="pv-chen">${ch.en}</span><span class="pv-chzh">${ch.label}</span>
+      </label>`).join("");
+    chpop.innerHTML = `<div class="pv-chpop-h">給客戶看的章節（空章自動跳過）</div>${rows || `<div class="pv-chpop-h">各章都還沒有內容</div>`}`;
+  }
+  (overlay.querySelector(".pv-chap") as HTMLElement).addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (chpop.hidden) renderChpop();
+    chpop.hidden = !chpop.hidden;
+  });
+  chpop.addEventListener("change", (e) => {
+    const t = e.target as HTMLInputElement;
+    if (!t.dataset.chtoggle) return;
+    store.toggleChapterHidden(t.dataset.chtoggle);
+    slides = buildSlides();
+    if (i >= slides.length) i = slides.length - 1;
+    show();
+  });
   stage.addEventListener("click", (e) => {
     const t = e.target as HTMLElement;
     // 播放中的影片：點擊交給原生控制列（播放/暫停/音量），不換頁

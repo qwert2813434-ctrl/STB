@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "1.0.0"
+version = "1.1.0"
 description = "STB — 為腳本與前製會議而生的 Mac App"
 authors = ["Armin Kao"]
 license = ""

@@ -1,11 +1,20 @@
 // 版本與更新紀錄——每次發版在最上面加一段（慣例同 ALIGNED 設定頁：
 // 版本號、日期、使用者看得懂的變更點；工程細節留在 進度與下一步.md）。
 
-export const APP_VERSION = "1.0.0";
+export const APP_VERSION = "1.1.0";
 
 export interface ReleaseNote { version: string; date: string; items: string[]; }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.1.0",
+    date: "2026-07-10",
+    items: [
+      "簡報「章節」勾選：這次不給客戶看的章一鍵藏起（存進案子，匯出也遵守；編輯器不受影響）",
+      "空章更聰明：只按過＋新增但沒填內容的章，簡報/匯出自動跳過；封面目錄只列會出場的章",
+      "AI 編輯：project.json 被外部修改（ChatGPT/Claude/文字編輯器）2 秒內自動重載——搭配 repo 的《AI編輯指南_SCHEMA.md》即可自然語言寫腳本",
+    ],
+  },
   {
     version: "1.0.0",
     date: "2026-07-08",

@@ -29,6 +29,7 @@ export interface Project {
   days: ShootDay[];    // SCHEDULE 子項「拍攝日程」：各拍攝日（通告＋該日 Rundown）
   milestones: Milestone[]; // SCHEDULE 大項「製作時程」甘特圖
   refPages: Record<string, RefItem[]>; // 通用圖文章節，key = 章節 id
+  hiddenChapters?: string[]; // 這次不給客戶看的章（簡報/匯出跳過；編輯器照常）
 }
 
 export interface Contact { role: string; name: string; phone: string; }
@@ -263,5 +264,8 @@ export function normalizeProject(raw: unknown): Project {
       color: m?.color,
     })),
     refPages: (typeof r.refPages === "object" && r.refPages) ? (r.refPages as Project["refPages"]) : {},
+    hiddenChapters: Array.isArray(r.hiddenChapters)
+      ? (r.hiddenChapters as unknown[]).filter((x): x is string => typeof x === "string")
+      : [],
   };
 }
