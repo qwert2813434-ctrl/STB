@@ -279,6 +279,20 @@ export class Store {
     this.touched();
   }
 
+  // 批次匯入外部分鏡圖（製片排程用：腳本是別的軟體做的，把導演給的圖檔
+  // 一次帶進來）：每張圖＝一顆新 cut，接在最後、自動編號。回傳新 cut id。
+  addCutsFromImages(images: string[]): string[] {
+    const ids: string[] = [];
+    this.commit((p) => {
+      for (const img of images) {
+        const id = newId();
+        ids.push(id);
+        p.cuts.push({ id, groupId: newId("g"), shot: "", desc: "", vo: "", sup: "", imageRef: img, prompt: "", props: "", note: "" });
+      }
+    });
+    return ids;
+  }
+
   // 章節顯示切換（簡報「章節」勾選）：藏起來的章簡報/匯出都跳過，編輯器照常
   toggleChapterHidden(id: string) {
     this.snapshot();

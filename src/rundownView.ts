@@ -35,7 +35,7 @@ export function renderRundown(store: Store, root: HTMLElement, dayOverride?: imp
             <div class="rd-col-media">
               ${cutsHtml ? `<div class="rd-cuts">${cutsHtml}</div>` : ""}
               <div class="rd-tools">
-                ${p.cuts.length ? `<button class="ref-mini" data-assigncuts="${b.id}"><i>⌗</i> 對照分鏡</button>` : ""}
+                <button class="ref-mini" data-assigncuts="${b.id}"><i>⌗</i> 對照分鏡</button>
                 <button class="ref-mini" data-parkimg="${b.id}">＋ 停車圖</button>
               </div>
             </div>

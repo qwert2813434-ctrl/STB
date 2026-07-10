@@ -733,6 +733,9 @@ body.dragging-any { user-select: none; cursor: grabbing; }
 .ex-thumbs { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
 .ex-thumbs img { width: 238px; height: auto; border: 1px solid var(--line); border-radius: 6px; background: #fff; display: block; }
 
+/* cut 選擇器：空狀態引導（製片匯入外部分鏡圖的入口） */
+.cp-empty { padding: 34px 20px; color: var(--muted); font-size: 13px; line-height: 1.8; text-align: center; }
+
 /* 側欄模式切換（完整 PPM ⇄ 通告排表） */
 .mode-switch {
   margin-top: 14px; width: 100%; text-align: left;
