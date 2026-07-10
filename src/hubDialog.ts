@@ -5,7 +5,8 @@ import { recentProjects, removeRecent } from "./persistence";
 // 動作本體由 main.ts 傳入（載入/建立牽動 store 與存檔狀態）。
 
 export interface HubActions {
-  onCreate: () => Promise<boolean>;   // 新增案子（含存檔對話框）；true＝已建立
+  // 新增案子（含存檔對話框）；mode: ppm＝完整十章、schedule＝通告排表（製片版）
+  onCreate: (mode: "ppm" | "schedule") => Promise<boolean>;
   onOpenDir: (dir: string) => Promise<boolean>; // 開最近案子；false＝資料夾不見了
   onOpenOther: () => Promise<boolean>; // 選 project.json 開其他案子
   onOpenSample: () => boolean;        // 看內建示範案（不落地、不影響真案子）
@@ -32,7 +33,8 @@ export function openHub(actions: HubActions) {
       <div class="hub-panel">
         <div class="hub-head">
           <span class="hub-title">專案</span>
-          <button class="hub-act" data-hubnew>＋ 新增案子</button>
+          <button class="hub-act" data-hubnew="ppm">＋ 新增案子</button>
+          <button class="hub-act" data-hubnew="schedule" title="製片版：只有甘特／通告單／Rundown 的輕量排表案；隨時可展開成完整 PPM">＋ 通告排表</button>
           <button class="hub-act" data-hubopen>開啟其他案子…</button>
           <button class="hub-act" data-hubsample title="內建示範案，看版面與玩法用；不會動到你的案子">示範案</button>
           <span class="spacer"></span>
@@ -59,7 +61,8 @@ export function openHub(actions: HubActions) {
   overlay.addEventListener("click", (e) => {
     const t = e.target as HTMLElement;
     if (t.closest(".hub-close") || t === overlay) { close(); return; }
-    if (t.closest("[data-hubnew]")) { void actions.onCreate().then((ok) => { if (ok) close(); }); return; }
+    const nw = t.closest("[data-hubnew]") as HTMLElement | null;
+    if (nw) { void actions.onCreate(nw.dataset.hubnew as "ppm" | "schedule").then((ok) => { if (ok) close(); }); return; }
     if (t.closest("[data-hubopen]")) { void actions.onOpenOther().then((ok) => { if (ok) close(); }); return; }
     if (t.closest("[data-hubsample]")) { if (actions.onOpenSample()) close(); return; }
     const forget = t.closest("[data-forget]") as HTMLElement | null;

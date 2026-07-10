@@ -37,7 +37,7 @@ export class Store {
     return this.project.days.find((d) => d.id === this.currentDayId);
   }
 
-  // 開啟案子：整份替換，清空歷史與選取
+  // 開啟案子：整份替換，清空歷史與選取；通告排表案直接落在 SCHEDULE 章
   replaceProject(p: Project) {
     this.project = p;
     this.undoStack = [];
@@ -45,7 +45,18 @@ export class Store {
     this.selectedId = null;
     this.selectedIds = [];
     this.currentDayId = p.days[0]?.id ?? "";
+    if (p.mode === "schedule") this.currentChapter = "schedule";
     this.emit();
+  }
+
+  // 案子類型切換（完整 PPM ⇄ 通告排表）：只是檢視範圍，資料一個不少
+  setMode(mode: "ppm" | "schedule") {
+    if ((this.project.mode ?? "ppm") === mode) return;
+    this.snapshot();
+    this.project.mode = mode;
+    if (mode === "schedule") this.currentChapter = "schedule";
+    this.emit();
+    this.touched();
   }
 
   get(): Project {

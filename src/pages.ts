@@ -81,9 +81,10 @@ export function coverSlideHtml(store: Store): string {
   for (const ch of chapterPlan(p)) {
     list += `<li><span class="ag-en">${ch.en}</span><span class="ag-zh">${ch.label}</span></li>`;
   }
+  const sub = p.mode === "schedule" ? "拍攝通告" : "PPM ・ 前製會議";
   return `<div class="pv-title-slide">
     <div class="pv-big">${esc(p.meta.title)}</div>
-    <div class="pv-sub">PPM ・ 前製會議 ・ ${esc(p.meta.client)}</div>
+    <div class="pv-sub">${sub} ・ ${esc(p.meta.client)}</div>
     <ol class="ag-list pv-agenda">${list}</ol>
   </div>`;
 }

@@ -123,11 +123,18 @@ function renderAll() {
 }
 
 function renderSidebar() {
+  const mode = store.get().mode ?? "ppm";
   let html = "";
   for (const ch of CHAPTERS) {
+    // 通告排表模式（製片版）：側欄只剩 SCHEDULE——甘特/通告單/Rundown
+    if (mode === "schedule" && ch.kind !== "schedule") continue;
     const on = ch.id === store.currentChapter ? " on" : "";
     html += `<button class="chap${on}" data-chap="${ch.id}"><span class="chap-en">${ch.en}</span><span class="chap-zh">${ch.label}</span></button>`;
   }
+  // 模式切換：同一份檔案、只是檢視範圍——導演接手就展開、製片交接就收合
+  html += `<button class="mode-switch" data-modeswitch title="同一個案子檔，隨時可切換">${
+    mode === "schedule" ? "⇱ 展開完整 PPM" : "⇲ 通告排表模式"
+  }</button>`;
   sidebar.innerHTML = html;
 }
 
@@ -251,7 +258,13 @@ function esc(s: string): string {
 
 // ---- 事件 ----
 sidebar.addEventListener("click", (e) => {
-  const btn = (e.target as HTMLElement).closest("[data-chap]") as HTMLElement | null;
+  const t = e.target as HTMLElement;
+  if (t.closest("[data-modeswitch]")) {
+    const cur = store.get().mode ?? "ppm";
+    store.setMode(cur === "ppm" ? "schedule" : "ppm");
+    return;
+  }
+  const btn = t.closest("[data-chap]") as HTMLElement | null;
   if (btn) store.setChapter(btn.dataset.chap!);
 });
 agendaArea.addEventListener("click", (e) => {
@@ -399,11 +412,13 @@ function hubOpenSample(): boolean {
   return true;
 }
 
-// 專案管理頁的三個動作：新增（案名＝資料夾名）／開最近案子／開其他案子
-async function hubCreate(): Promise<boolean> {
+// 專案管理頁的動作：新增（案名＝資料夾名；ppm＝完整十章、schedule＝通告排表）
+// ／開最近案子／開其他案子
+async function hubCreate(mode: "ppm" | "schedule"): Promise<boolean> {
   if (!confirmLeave()) return false;
   const proj = emptyProject();
-  const dir = await createProjectFolder(JSON.stringify(proj, null, 2), "未命名案子");
+  proj.mode = mode;
+  const dir = await createProjectFolder(JSON.stringify(proj, null, 2), mode === "schedule" ? "未命名通告" : "未命名案子");
   if (!dir) return false;
   proj.meta.title = dirName() || proj.meta.title; // 案名＝使用者輸入的資料夾名
   store.replaceProject(proj);

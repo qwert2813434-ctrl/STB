@@ -86,7 +86,7 @@ async function logoSlide(pptx: PptxGenJS, p: Project) {
 function coverSlide(pptx: PptxGenJS, p: Project) {
   const sl = pptx.addSlide();
   sl.addText(p.meta.title || "未命名案子", { x: MX, y: 0.85, w: W - MX * 2, h: 0.75, fontFace: FONT, fontSize: 30, bold: true, color: INK });
-  sl.addText(`PPM ・ 前製會議 ・ ${p.meta.client}`, { x: MX, y: 1.62, w: W - MX * 2, h: 0.35, fontFace: FONT, fontSize: 12.5, color: MUTED });
+  sl.addText(`${p.mode === "schedule" ? "拍攝通告" : "PPM ・ 前製會議"} ・ ${p.meta.client}`, { x: MX, y: 1.62, w: W - MX * 2, h: 0.35, fontFace: FONT, fontSize: 12.5, color: MUTED });
   const rows = chapterPlan(p); // 目錄只列會出場的章
   rows.forEach((c, i) => {
     sl.addText([

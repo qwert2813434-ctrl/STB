@@ -733,6 +733,15 @@ body.dragging-any { user-select: none; cursor: grabbing; }
 .ex-thumbs { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; }
 .ex-thumbs img { width: 238px; height: auto; border: 1px solid var(--line); border-radius: 6px; background: #fff; display: block; }
 
+/* 側欄模式切換（完整 PPM ⇄ 通告排表） */
+.mode-switch {
+  margin-top: 14px; width: 100%; text-align: left;
+  font-size: 12px; color: var(--muted);
+  background: transparent; border: 1px dashed var(--border-strong); border-radius: 8px;
+  padding: 7px 10px;
+}
+.mode-switch:hover { color: var(--ink); border-color: var(--ink); background: var(--hover); }
+
 /* 專案管理頁（工具列「專案…」）：最近案子條列＋新增／開啟 */
 .hub-overlay {
   position: fixed; inset: 0; z-index: 3600;

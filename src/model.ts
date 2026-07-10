@@ -30,6 +30,9 @@ export interface Project {
   milestones: Milestone[]; // SCHEDULE 大項「製作時程」甘特圖
   refPages: Record<string, RefItem[]>; // 通用圖文章節，key = 章節 id
   hiddenChapters?: string[]; // 這次不給客戶看的章（簡報/匯出跳過；編輯器照常）
+  // 案子類型：ppm＝完整十章；schedule＝通告排表（製片版——側欄只剩
+  // 甘特/通告單/Rundown）。同一種檔案，隨時可切換＝「整合回 STB」天然成立。
+  mode?: "ppm" | "schedule";
 }
 
 export interface Contact { role: string; name: string; phone: string; }
@@ -267,5 +270,6 @@ export function normalizeProject(raw: unknown): Project {
     hiddenChapters: Array.isArray(r.hiddenChapters)
       ? (r.hiddenChapters as unknown[]).filter((x): x is string => typeof x === "string")
       : [],
+    mode: r.mode === "schedule" ? "schedule" : "ppm",
   };
 }
