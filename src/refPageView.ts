@@ -1,3 +1,4 @@
+import { bindEditKeys } from "./editKeys";
 import type { Store } from "./store";
 import { CHAPTERS, PORTRAIT_CHAPTERS, computeCutNumbers } from "./model";
 import { openCropper } from "./cropper";
@@ -156,14 +157,8 @@ export function bindRefPage(store: Store, root: HTMLElement, getChapter: () => s
       rerender(); // 讓 ▶ 徽章出現
     }
   }, true);
-  root.addEventListener("keydown", (e) => {
-    const el = e.target as HTMLElement;
-    const ke = e as KeyboardEvent;
-    if (el.isContentEditable && ke.key === "Enter" && !ke.isComposing && el.dataset.rf !== "note") {
-      e.preventDefault();
-      el.blur();
-    }
-  });
+  // 輸入框鍵盤規則：Enter 留在框內（中文選字友善）、Esc 結束；附註欄可換行
+  bindEditKeys(root, (el) => el.dataset.rf === "note");
 }
 
 async function pickVideoFile(store: Store, chapterId: string, itemId: string, rerender: () => void) {

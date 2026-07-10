@@ -1,3 +1,4 @@
+import { bindEditKeys } from "./editKeys";
 import type { Store } from "./store";
 import { computeCutNumbers, chainRundown, hhmmToMin, minToHHMM } from "./model";
 import { openCutPicker } from "./cutPicker";
@@ -101,11 +102,7 @@ export function bindRundown(store: Store, root: HTMLElement) {
     if (!el.isContentEditable || !el.dataset.bitem) return;
     store.editBlockField(el.dataset.bitem!, el.dataset.bf as "title" | "loc" | "park" | "props", (el.textContent || "").trim());
   }, true);
-  root.addEventListener("keydown", (e) => {
-    const el = e.target as HTMLElement;
-    const ke = e as KeyboardEvent;
-    if (el.isContentEditable && ke.key === "Enter" && !ke.isComposing) { e.preventDefault(); el.blur(); }
-  });
+  bindEditKeys(root); // Enter 留在框內（中文選字友善）、Esc 結束輸入
 
   // 區塊拖曳排序（抓 ⠿ 把手）：自製指標手勢（同 STB，不用 HTML5 DnD），
   // 放開後時間鏈由 chainRundown 重算

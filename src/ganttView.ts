@@ -1,3 +1,4 @@
+import { bindEditKeys } from "./editKeys";
 import type { Store } from "./store";
 import { GANTT_COLORS } from "./model";
 
@@ -97,11 +98,7 @@ export function bindGantt(store: Store, root: HTMLElement) {
       store.editMilestoneLabel(el.dataset.mlabel, (el.textContent || "").trim());
     }
   }, true);
-  root.addEventListener("keydown", (e) => {
-    const el = e.target as HTMLElement;
-    const ke = e as KeyboardEvent;
-    if (el.isContentEditable && ke.key === "Enter" && !ke.isComposing) { e.preventDefault(); el.blur(); }
-  });
+  bindEditKeys(root); // Enter 留在框內（中文選字友善）、Esc 結束輸入
 
   // 拖曳甘特條：整條拖＝平移日期；拉右緣＝改結束日、拉左緣＝改起始日（往前）。
   // 自製指標手勢（同 STB/Rundown），邊拖邊給視覺回饋，放開才寫回日期。

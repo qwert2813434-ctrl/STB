@@ -1,3 +1,4 @@
+import { bindEditKeys } from "./editKeys";
 import type { Store } from "./store";
 import { chainRundown, hhmmToMin, minToHHMM } from "./model";
 
@@ -73,11 +74,7 @@ export function bindCallSheet(store: Store, root: HTMLElement) {
     if (el.dataset.ct !== undefined) { store.editContact(Number(el.dataset.ct), el.dataset.ctf as "role" | "name" | "phone", text); return; }
     if (el.dataset.cg !== undefined) store.editCallGroup(Number(el.dataset.cg), el.dataset.cgf as "label" | "time" | "loc", text);
   }, true);
-  root.addEventListener("keydown", (e) => {
-    const el = e.target as HTMLElement;
-    const ke = e as KeyboardEvent;
-    if (el.isContentEditable && ke.key === "Enter" && !ke.isComposing) { e.preventDefault(); el.blur(); }
-  });
+  bindEditKeys(root); // Enter 留在框內（中文選字友善）、Esc 結束輸入
 
   // 大組通告列拖曳置換（⠿ 把手，自製指標手勢，同 Rundown）
   let gdrag: { idx: number; started: boolean; sx: number; sy: number } | null = null;

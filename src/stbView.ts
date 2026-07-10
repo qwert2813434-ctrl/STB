@@ -1,3 +1,4 @@
+import { bindEditKeys } from "./editKeys";
 import type { Store } from "./store";
 import { computeCutNumbers, pageCount, PER_PAGE } from "./model";
 
@@ -101,14 +102,8 @@ export function bindStb(
     true
   );
 
-  // Enter 不換行、直接離開編輯——但 IME 組字中的 Enter（選字）不攔截
-  root.addEventListener("keydown", (e) => {
-    const el = e.target as HTMLElement;
-    if (el.isContentEditable && e.key === "Enter" && !e.isComposing) {
-      e.preventDefault();
-      el.blur();
-    }
-  });
+  // 輸入框鍵盤規則（editKeys）：Enter 留在框內（中文選字友善）、Esc 結束
+  bindEditKeys(root);
 
   // 自製指標拖曳：不依賴 HTML5 DnD（WKWebView 裡不可靠——ALIGN 教訓：手勢自己擁有）。
   // pointerdown 在 cut-head 上按住 → 位移超過門檻進入拖曳 → 指到哪張卡亮哪張 → 放開重排。

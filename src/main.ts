@@ -1,3 +1,4 @@
+import { bindEditKeys } from "./editKeys";
 import "./style.css";
 import { invoke } from "@tauri-apps/api/core";
 import { Store } from "./store";
@@ -302,11 +303,7 @@ agendaArea.addEventListener("blur", (e) => {
     store.editMeta(el.dataset.meta as "title" | "client", (el.textContent || "").trim());
   }
 }, true);
-agendaArea.addEventListener("keydown", (e) => {
-  const el = e.target as HTMLElement;
-  const ke = e as KeyboardEvent;
-  if (el.isContentEditable && ke.key === "Enter" && !ke.isComposing) { e.preventDefault(); el.blur(); }
-});
+bindEditKeys(agendaArea); // Enter 留在框內（中文選字友善）、Esc 結束輸入
 
 dayTabs.addEventListener("click", (e) => {
   const t = e.target as HTMLElement;
@@ -598,9 +595,7 @@ const projName = document.getElementById("proj-name")!;
 projName.addEventListener("blur", () => {
   store.editMeta("title", (projName.textContent || "").trim());
 });
-projName.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); projName.blur(); }
-});
+bindEditKeys(projName.parentElement as HTMLElement); // 案名同規則：Enter 留、Esc 結束
 
 bindStb(store, stbArea, (flash) => { if (flash !== undefined) pendingFlash = flash; }, expanded);
 stbArea.addEventListener("click", (e) => {
