@@ -1,7 +1,7 @@
 import type { Store } from "./store";
 import { collectChapters, coverSlideHtml, titleSlideHtml, logoSlideHtml } from "./pages";
 import { rasterLogo } from "./logoAsset";
-import { isTauri } from "./persistence";
+import { isTauri, isMobile } from "./persistence";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import { buildEditablePptx } from "./pptxNative";
@@ -182,7 +182,7 @@ export async function openExportDialog(store: Store) {
         close();
         return;
       }
-      if (navigator.maxTouchPoints >= 2) {
+      if (isMobile()) {
         // iPad/iPhone：沒有「另存到哪」對話框——彈原生分享面板
         //（AirDrop／存到檔案／LINE 都從這裡出去）
         toast.textContent = "開啟分享…";

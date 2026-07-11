@@ -12,8 +12,7 @@ import { openPreview } from "./previewMode";
 import { openExportDialog } from "./exportDialog";
 import { openCropper } from "./cropper";
 import { CHAPTERS, computeCutNumbers, pageCount, chainRundown, hhmmToMin, minToHHMM, normalizeProject } from "./model";
-import { isTauri, currentDir, dirName, chooseFolderAndLoad, createProjectFolder, chooseFolderAndSaveAs, saveToCurrent, loadFromDir, lastProjectDir, upsertRecent, detachDir, adoptDir, extractPosterFor } from "./persistence";
-import { appDataDir } from "@tauri-apps/api/path";
+import { isTauri, isMobile, currentDir, dirName, chooseFolderAndLoad, createProjectFolder, chooseFolderAndSaveAs, saveToCurrent, loadFromDir, lastProjectDir, upsertRecent, detachDir, migrateMobileHome, listMobileProjects, extractPosterFor } from "./persistence";
 import { projectLogo } from "./logoAsset";
 import { openHelp } from "./helpDialog";
 import { openHub } from "./hubDialog";
@@ -517,8 +516,17 @@ async function syncMtime() {
     : 0;
 }
 
+// 專案管理頁：Mac＝最近案子清單；iPad＝掃「檔案」App ▸ STB 的真實資料夾
+const hubActions = {
+  onCreate: hubCreate,
+  onOpenDir: hubOpenDir,
+  onOpenOther: doOpen,
+  onOpenSample: hubOpenSample,
+  list: isMobile() ? listMobileProjects : undefined,
+};
+
 if (isTauri()) {
-  btnHub.addEventListener("click", () => openHub({ onCreate: hubCreate, onOpenDir: hubOpenDir, onOpenOther: doOpen, onOpenSample: hubOpenSample }));
+  btnHub.addEventListener("click", () => openHub(hubActions));
   btnSave.addEventListener("click", doSave);
   btnSaveAs.addEventListener("click", () => void doSaveAs());
   setInterval(async () => {
@@ -550,6 +558,9 @@ if (isTauri()) {
   updateSaveState();
   // 啟動自動開回上次的案子（資料夾被移走就留在示範資料，不吵）
   (async () => {
+    // iPad 一次性搬家（過渡存檔 → 檔案 App 看得到的 Documents）要在開案前做，
+    // localStorage 的路徑指標才會先指到新家
+    if (isMobile()) await migrateMobileHome();
     const last = lastProjectDir();
     if (last) {
       try {
@@ -564,15 +575,8 @@ if (isTauri()) {
         }
       } catch { /* 上次的資料夾不在了：往下走 */ }
     }
-    // iPad/iPhone 過渡存檔：沒有資料夾對話框的世界——認養 App 內部空間
-    // 當案子的家，編輯即自動保存、重開自動載回（正式 Files 方案前的橋）
-    if (navigator.maxTouchPoints >= 2) {
-      try {
-        const base = await appDataDir();
-        adoptDir(`${base.replace(/\/+$/, "")}/STB案子`);
-        updateSaveState("編輯會自動保存在 App 內");
-      } catch { /* 拿不到路徑就維持記憶體模式 */ }
-    }
+    // iPad 沒案子可回：直接開專案管理頁取名建案（示範內容編輯不落地，先建案才存）
+    if (isMobile()) openHub(hubActions);
   })();
 } else {
   btnHub.style.display = "none";

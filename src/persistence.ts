@@ -1,8 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { appDataDir, documentDir } from "@tauri-apps/api/path";
 import type { Project } from "./model";
 import { openTrimmer, type TrimRange } from "./trimmer";
+import { askName } from "./nameDialog";
 
 export interface VideoImport {
   path: string;
@@ -16,6 +18,12 @@ export interface VideoImport {
 
 export function isTauri(): boolean {
   return "__TAURI_INTERNALS__" in window;
+}
+
+// iPad/iPhone（雙指以上觸控）＝行動版：檔案流程走 Documents＋App 內取名，
+// 沒有桌面的存檔/資料夾對話框
+export function isMobile(): boolean {
+  return navigator.maxTouchPoints >= 2;
 }
 
 let projectDir: string | null = null;
@@ -69,11 +77,54 @@ export function resetProjectDir() {
   localStorage.removeItem("lastProjectDir");
 }
 
-// iPad 過渡存檔：直接認養一個目錄當案子的家（App 內部空間），
-// 自動存檔照常運作——iOS 沒有資料夾對話框，正式檔案方案（Files app）前的橋。
-export function adoptDir(dir: string) {
-  projectDir = dir;
-  localStorage.setItem("lastProjectDir", dir);
+// ---- iPad 檔案方案：案子住 App 的 Documents ----
+// 配 Info.plist 的 UIFileSharingEnabled，整個資料夾出現在
+// 「檔案」App ▸ 我的 iPad ▸ STB——備份／改名／刪除／AirDrop 都在那裡做。
+let mobileBaseDir: string | null = null;
+export async function mobileBase(): Promise<string> {
+  if (!mobileBaseDir) mobileBaseDir = (await documentDir()).replace(/\/+$/, "");
+  return mobileBaseDir;
+}
+
+// 一次性搬家：早期「過渡存檔」把案子放在 App 內部空間（檔案 App 看不到），
+// 啟動時搬進 Documents，localStorage 裡的路徑指標跟著改。搬過＝來源不存在＝跳過。
+export async function migrateMobileHome(): Promise<void> {
+  try {
+    const old = `${(await appDataDir()).replace(/\/+$/, "")}/STB案子`;
+    const dst = `${await mobileBase()}/STB案子`;
+    const moved = await invoke<boolean>("move_dir", { src: old, dst });
+    if (!moved) return;
+    if (localStorage.getItem("lastProjectDir") === old) localStorage.setItem("lastProjectDir", dst);
+    const fixed = recentProjects().map((r) => (r.dir === old ? { ...r, dir: dst } : r));
+    localStorage.setItem("recentProjects", JSON.stringify(fixed));
+  } catch { /* 沒得搬或搬不動：不擋啟動 */ }
+}
+
+// iPad 專案清單：掃 Documents 的真實資料夾（在檔案 App 增刪的案子即時反映）
+export async function listMobileProjects(): Promise<RecentEntry[]> {
+  const parent = await mobileBase();
+  const rows = await invoke<{ dir: string; title: string; mtime: number }[]>("list_projects", { parent });
+  return rows.map((r) => ({ dir: r.dir, title: r.title, at: r.mtime }));
+}
+
+// iPad 建案／另存共用：App 內輸入案名 → Documents/{案名}；
+// 同名已存在就提示換名重問（Rust save_as 有防蓋守門）
+async function createInDocuments(srcDir: string | null, contents: string, title: string, def: string): Promise<string | null> {
+  const base = await mobileBase();
+  for (;;) {
+    const name = await askName(title, def);
+    if (!name) return null;
+    const dst = `${base}/${name}`;
+    try {
+      await invoke("save_as", { srcDir, dstDir: dst, contents });
+      projectDir = dst;
+      localStorage.setItem("lastProjectDir", dst);
+      return dst;
+    } catch (err) {
+      if (String(err).includes("已有案子")) { alert("已經有同名的案子——換個名字。"); def = name; continue; }
+      throw err;
+    }
+  }
 }
 
 // 開啟案子：直接選案子的 project.json 檔案——
@@ -99,6 +150,7 @@ export function detachDir() {
 // 走「儲存對話框」——輸入案名＝資料夾名，按鈕就是「儲存」。
 // （不再用資料夾選擇器：按鈕顯示 Open、檔案灰色，Armin 實測反直覺。）
 export async function createProjectFolder(contents: string, suggestedName: string): Promise<string | null> {
+  if (isMobile()) return createInDocuments(null, contents, "輸入案名（案子會存在「檔案」App ▸ STB）", suggestedName);
   const path = await save({ defaultPath: suggestedName, title: "輸入案名（會以案名建立案子資料夾）" });
   if (!path) return null;
   await invoke("save_as", { srcDir: null, dstDir: path, contents });
@@ -118,6 +170,7 @@ export async function saveToCurrent(contents: string): Promise<boolean> {
 // 之後的編輯與自動存檔都寫到新家——版本備份、改稿分支都靠這顆。
 // 同樣走「儲存對話框」：輸入新案名＝新資料夾名。
 export async function chooseFolderAndSaveAs(contents: string, suggestedName: string): Promise<string | null> {
+  if (isMobile()) return createInDocuments(currentDir(), contents, "另存新檔：輸入新案名（整個案子會複製一份）", `${suggestedName} 副本`);
   const path = await save({ defaultPath: `${suggestedName} 副本`, title: "另存新檔：輸入新案名（整個案子會複製過去）" });
   if (!path) return null;
   await invoke("save_as", { srcDir: projectDir, dstDir: path, contents });

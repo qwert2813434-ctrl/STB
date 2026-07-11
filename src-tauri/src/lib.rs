@@ -169,6 +169,72 @@ fn project_mtime(dir: String) -> Result<u64, String> {
   Ok(mtime)
 }
 
+// 列出資料夾下的所有案子（iPad 專案管理頁的來源：掃真實檔案，
+// 在「檔案」App 裡增刪的案子清單即時反映，不靠 localStorage 記憶）
+#[derive(serde::Serialize)]
+struct ProjectEntry {
+  dir: String,
+  title: String,
+  mtime: u64,
+}
+
+#[tauri::command]
+fn list_projects(parent: String) -> Result<Vec<ProjectEntry>, String> {
+  let mut out: Vec<ProjectEntry> = Vec::new();
+  let rd = match fs::read_dir(&parent) {
+    Ok(r) => r,
+    Err(_) => return Ok(out), // 資料夾還不存在＝還沒有案子
+  };
+  for entry in rd.flatten() {
+    let p = entry.path();
+    let pj = p.join("project.json");
+    if !pj.is_file() {
+      continue;
+    }
+    let title = fs::read_to_string(&pj)
+      .ok()
+      .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+      .and_then(|v| {
+        v.get("meta")
+          .and_then(|m| m.get("title"))
+          .and_then(|t| t.as_str())
+          .map(String::from)
+      })
+      .filter(|s| !s.is_empty())
+      .unwrap_or_else(|| {
+        p.file_name()
+          .and_then(|n| n.to_str())
+          .unwrap_or("未命名案子")
+          .to_string()
+      });
+    let mtime = fs::metadata(&pj)
+      .ok()
+      .and_then(|m| m.modified().ok())
+      .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+      .map(|d| d.as_millis() as u64)
+      .unwrap_or(0);
+    out.push(ProjectEntry { dir: p.to_string_lossy().to_string(), title, mtime });
+  }
+  out.sort_by(|a, b| b.mtime.cmp(&a.mtime));
+  Ok(out)
+}
+
+// 整個資料夾搬家（iPad 一次性遷移：過渡存檔住 App 內部空間，
+// 「檔案」App 看不到 → 搬進 Documents）。來源不存在或目的已存在＝不動。
+#[tauri::command]
+fn move_dir(src: String, dst: String) -> Result<bool, String> {
+  let s = Path::new(&src);
+  let d = Path::new(&dst);
+  if !s.is_dir() || d.exists() {
+    return Ok(false);
+  }
+  if let Some(parent) = d.parent() {
+    fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+  }
+  fs::rename(s, d).map_err(|e| format!("搬移失敗：{}", e))?;
+  Ok(true)
+}
+
 // iOS 分享面板：把匯出的檔案寫進暫存，彈原生 UIActivityViewController——
 // AirDrop／存到檔案／LINE 都從這裡出去（iOS 沒有「另存到哪」對話框）。
 // 用 objc2 動態呼叫，免寫 Swift 插件；iPad 必設 popover 錨點否則閃退。
@@ -281,7 +347,7 @@ pub fn run() {
   tauri::Builder::default()
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_opener::init())
-    .invoke_handler(tauri::generate_handler![save_project, load_project, import_asset, read_asset, read_file, save_file, open_path, video_for_embed, save_as, project_mtime, share_export])
+    .invoke_handler(tauri::generate_handler![save_project, load_project, import_asset, read_asset, read_file, save_file, open_path, video_for_embed, save_as, project_mtime, share_export, list_projects, move_dir])
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(

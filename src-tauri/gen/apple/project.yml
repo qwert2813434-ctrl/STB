@@ -41,6 +41,10 @@ targets:
       path: app_iOS/Info.plist
       properties:
         LSRequiresIPhoneOS: true
+        # 案子存 Documents，讓「檔案」App ▸ 我的 iPad ▸ STB 看得到＋可就地開啟
+        # （備份／改名／刪除／AirDrop 案子資料夾都在檔案 App 做）
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
         UILaunchStoryboardName: LaunchScreen
         UIRequiredDeviceCapabilities: [arm64, metal]
         UIRequiresFullScreen: true
