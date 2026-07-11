@@ -19,6 +19,17 @@ import { openHub } from "./hubDialog";
 import { pickBoardImages } from "./cutPicker";
 import { openBlockPicker } from "./assignDialog";
 
+// iPad／觸控裝置：桌面版型用 zoom 等比縮到螢幕寬——zoom 以裝置原生解析度
+// 算繪（viewport 縮小會把文字弄糊）。桌面不受影響；iPad 專屬 UI 是後續獨立設計案。
+const DESIGN_W = 1240;
+function fitMobileZoom() {
+  if (navigator.maxTouchPoints < 2) return; // 非觸控裝置（Mac）不動
+  const z = Math.min(1, window.innerWidth / DESIGN_W);
+  (document.documentElement.style as unknown as { zoom: string }).zoom = String(z);
+}
+window.addEventListener("resize", fitMobileZoom);
+fitMobileZoom();
+
 const store = new Store(sampleProject());
 const expanded = new Set<string>(); // 暫時展開的 VO/Super 行
 let pendingFlash = -1;
