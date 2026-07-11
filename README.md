@@ -1,11 +1,11 @@
-# STB
+# STB - STORYBOARD
 
 **為腳本與前製會議（PPM）而生的 Mac App。**
-由廣告導演 [Armin Kao（錄人影像）](https://passerstudio.com) 依自己的工作流打造。
+由台灣廣告導演 [Armin Kao（錄人影像）](https://passerstudio.com) 依自己的工作流打造。
 
 一份 PPM 十個章節一次到位：目錄、調性、參考節奏、分鏡、REFERENCES、演員、服裝、美術、場景、製作時程。做完直接簡報，開完會直接匯出。
 
-![STB 分鏡章節](docs/screenshots/storyboard.png)
+![STB — 一份文件，說完整支片](docs/screenshots/hero.png)
 
 ## 下載
 
@@ -37,20 +37,9 @@
 
 拖曳條子改期程、可選色，製作時程和通告單同一章搞定。
 
-### 一份 PPM，十個章節
-
-![目錄章節](docs/screenshots/agenda.png)
-
-結構固定、欄位固定——開會的人永遠知道現在在哪一頁。
-
-### 不用另外做簡報
-
-![簡報模式](docs/screenshots/presentation.png)
-
-一鍵放映、鍵盤換頁；參考影片區塊內播放、首尾裁切、簡報自動播。
-
 ### 其他
 
+- **簡報模式**——一鍵放映、鍵盤換頁；參考影片區塊內播放、首尾裁切、簡報自動播
 - **匯出**——PDF（16:9）＋可編輯 PPTX（真文字框、圖片可換、影片自動轉 720p 並依裁切點嵌入）
 - **資料全在本機**——無帳號、無雲端；一個案子＝一個資料夾＋一份 `project.json`
 

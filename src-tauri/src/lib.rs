@@ -169,6 +169,102 @@ fn project_mtime(dir: String) -> Result<u64, String> {
   Ok(mtime)
 }
 
+// iOS 分享面板：把匯出的檔案寫進暫存，彈原生 UIActivityViewController——
+// AirDrop／存到檔案／LINE 都從這裡出去（iOS 沒有「另存到哪」對話框）。
+// 用 objc2 動態呼叫，免寫 Swift 插件；iPad 必設 popover 錨點否則閃退。
+#[cfg(target_os = "ios")]
+mod ios_share {
+  use objc2::msg_send;
+  use objc2::runtime::{AnyClass, AnyObject, Bool};
+
+  #[repr(C)]
+  #[derive(Clone, Copy)]
+  pub struct CGPoint { pub x: f64, pub y: f64 }
+  #[repr(C)]
+  #[derive(Clone, Copy)]
+  pub struct CGSize { pub width: f64, pub height: f64 }
+  #[repr(C)]
+  #[derive(Clone, Copy)]
+  pub struct CGRect { pub origin: CGPoint, pub size: CGSize }
+  unsafe impl objc2::Encode for CGPoint {
+    const ENCODING: objc2::Encoding = objc2::Encoding::Struct("CGPoint", &[f64::ENCODING, f64::ENCODING]);
+  }
+  unsafe impl objc2::Encode for CGSize {
+    const ENCODING: objc2::Encoding = objc2::Encoding::Struct("CGSize", &[f64::ENCODING, f64::ENCODING]);
+  }
+  unsafe impl objc2::Encode for CGRect {
+    const ENCODING: objc2::Encoding = objc2::Encoding::Struct("CGRect", &[CGPoint::ENCODING, CGSize::ENCODING]);
+  }
+
+  pub unsafe fn present(path: &str) {
+    let ns_string = AnyClass::get("NSString").unwrap();
+    let cpath = std::ffi::CString::new(path).unwrap();
+    let ns_path: *mut AnyObject = msg_send![ns_string, stringWithUTF8String: cpath.as_ptr()];
+    let ns_url = AnyClass::get("NSURL").unwrap();
+    let url: *mut AnyObject = msg_send![ns_url, fileURLWithPath: ns_path];
+    let ns_array = AnyClass::get("NSArray").unwrap();
+    let items: *mut AnyObject = msg_send![ns_array, arrayWithObject: url];
+
+    let avc_cls = AnyClass::get("UIActivityViewController").unwrap();
+    let avc: *mut AnyObject = msg_send![avc_cls, alloc];
+    let nil_acts: *mut AnyObject = std::ptr::null_mut();
+    let avc: *mut AnyObject = msg_send![avc, initWithActivityItems: items, applicationActivities: nil_acts];
+
+    let app_cls = AnyClass::get("UIApplication").unwrap();
+    let shared: *mut AnyObject = msg_send![app_cls, sharedApplication];
+    let mut window: *mut AnyObject = msg_send![shared, keyWindow];
+    if window.is_null() {
+      let windows: *mut AnyObject = msg_send![shared, windows];
+      window = msg_send![windows, firstObject];
+    }
+    if window.is_null() { return; }
+    let root: *mut AnyObject = msg_send![window, rootViewController];
+    if root.is_null() { return; }
+
+    // iPad：popover 錨在畫面中央
+    let pop: *mut AnyObject = msg_send![avc, popoverPresentationController];
+    if !pop.is_null() {
+      let view: *mut AnyObject = msg_send![root, view];
+      let bounds: CGRect = msg_send![view, bounds];
+      let anchor = CGRect {
+        origin: CGPoint { x: bounds.size.width / 2.0, y: bounds.size.height / 2.0 },
+        size: CGSize { width: 1.0, height: 1.0 },
+      };
+      let _: () = msg_send![pop, setSourceView: view];
+      let _: () = msg_send![pop, setSourceRect: anchor];
+    }
+    let nil_done: *mut AnyObject = std::ptr::null_mut();
+    let _: () = msg_send![root, presentViewController: avc, animated: Bool::YES, completion: nil_done];
+  }
+}
+
+// 匯出的統一出口（iOS 分享面板／桌面開檔）：寫進暫存 → 交給系統
+#[tauri::command]
+fn share_export(app: tauri::AppHandle, name: String, b64: String) -> Result<(), String> {
+  let bytes = base64::engine::general_purpose::STANDARD
+    .decode(b64.as_bytes())
+    .map_err(|e| format!("檔案解碼失敗：{}", e))?;
+  let path = std::env::temp_dir().join(&name);
+  fs::write(&path, bytes).map_err(|e| format!("寫入暫存失敗：{}", e))?;
+  #[cfg(target_os = "ios")]
+  {
+    let p = path.to_string_lossy().to_string();
+    app
+      .run_on_main_thread(move || unsafe { ios_share::present(&p) })
+      .map_err(|e| e.to_string())?;
+  }
+  #[cfg(not(target_os = "ios"))]
+  {
+    let _ = &app;
+    std::process::Command::new("open")
+      .arg(&path)
+      .spawn()
+      .map(|_| ())
+      .map_err(|e| format!("開啟失敗：{}", e))?;
+  }
+  Ok(())
+}
+
 // 開啟已匯出的檔案：直接走 macOS `open`。
 // （不用 opener plugin 的 openPath——它有路徑 scope 限制，曾讓匯出在最後一步失敗。）
 #[tauri::command]
@@ -185,7 +281,7 @@ pub fn run() {
   tauri::Builder::default()
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_opener::init())
-    .invoke_handler(tauri::generate_handler![save_project, load_project, import_asset, read_asset, read_file, save_file, open_path, video_for_embed, save_as, project_mtime])
+    .invoke_handler(tauri::generate_handler![save_project, load_project, import_asset, read_asset, read_file, save_file, open_path, video_for_embed, save_as, project_mtime, share_export])
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(

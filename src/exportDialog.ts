@@ -182,6 +182,14 @@ export async function openExportDialog(store: Store) {
         close();
         return;
       }
+      if (navigator.maxTouchPoints >= 2) {
+        // iPad/iPhone：沒有「另存到哪」對話框——彈原生分享面板
+        //（AirDrop／存到檔案／LINE 都從這裡出去）
+        toast.textContent = "開啟分享…";
+        await invoke("share_export", { name: `${name}_PPM.${kind}`, b64 });
+        close();
+        return;
+      }
       const path = await save({ defaultPath: `${name}_PPM.${kind}`, filters: [{ name: kind.toUpperCase(), extensions: [kind] }] });
       if (!path) return; // 使用者取消
       await invoke("save_file", { path, b64 });

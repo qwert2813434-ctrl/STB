@@ -26,3 +26,7 @@ tauri-plugin-log = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 base64 = "0.22"
+
+# iOS 分享面板（UIActivityViewController）：匯出的出口——iOS 沒有另存對話框
+[target.'cfg(target_os = "ios")'.dependencies]
+objc2 = "0.5"
