@@ -12,7 +12,8 @@ import { openPreview } from "./previewMode";
 import { openExportDialog } from "./exportDialog";
 import { openCropper } from "./cropper";
 import { CHAPTERS, computeCutNumbers, pageCount, chainRundown, hhmmToMin, minToHHMM, normalizeProject } from "./model";
-import { isTauri, currentDir, dirName, chooseFolderAndLoad, createProjectFolder, chooseFolderAndSaveAs, saveToCurrent, loadFromDir, lastProjectDir, upsertRecent, detachDir, extractPosterFor } from "./persistence";
+import { isTauri, currentDir, dirName, chooseFolderAndLoad, createProjectFolder, chooseFolderAndSaveAs, saveToCurrent, loadFromDir, lastProjectDir, upsertRecent, detachDir, adoptDir, extractPosterFor } from "./persistence";
+import { appDataDir } from "@tauri-apps/api/path";
 import { projectLogo } from "./logoAsset";
 import { openHelp } from "./helpDialog";
 import { openHub } from "./hubDialog";
@@ -550,16 +551,28 @@ if (isTauri()) {
   // 啟動自動開回上次的案子（資料夾被移走就留在示範資料，不吵）
   (async () => {
     const last = lastProjectDir();
-    if (!last) return;
-    try {
-      const raw = await loadFromDir(last);
-      if (raw) {
-        store.replaceProject(normalizeProject(raw));
-        dirty = false;
-        updateSaveState();
-        void healPosters();
-      }
-    } catch { /* 上次的資料夾不在了：忽略 */ }
+    if (last) {
+      try {
+        const raw = await loadFromDir(last);
+        if (raw) {
+          store.replaceProject(normalizeProject(raw));
+          dirty = false;
+          updateSaveState();
+          void healPosters();
+          void syncMtime();
+          return;
+        }
+      } catch { /* 上次的資料夾不在了：往下走 */ }
+    }
+    // iPad/iPhone 過渡存檔：沒有資料夾對話框的世界——認養 App 內部空間
+    // 當案子的家，編輯即自動保存、重開自動載回（正式 Files 方案前的橋）
+    if (navigator.maxTouchPoints >= 2) {
+      try {
+        const base = await appDataDir();
+        adoptDir(`${base.replace(/\/+$/, "")}/STB案子`);
+        updateSaveState("編輯會自動保存在 App 內");
+      } catch { /* 拿不到路徑就維持記憶體模式 */ }
+    }
   })();
 } else {
   btnHub.style.display = "none";

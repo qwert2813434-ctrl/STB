@@ -69,6 +69,13 @@ export function resetProjectDir() {
   localStorage.removeItem("lastProjectDir");
 }
 
+// iPad 過渡存檔：直接認養一個目錄當案子的家（App 內部空間），
+// 自動存檔照常運作——iOS 沒有資料夾對話框，正式檔案方案（Files app）前的橋。
+export function adoptDir(dir: string) {
+  projectDir = dir;
+  localStorage.setItem("lastProjectDir", dir);
+}
+
 // 開啟案子：直接選案子的 project.json 檔案——
 // 資料夾選擇器會把檔案反灰（Armin：看不出有沒有選到）；改選檔案，
 // 只亮 .json、選到什麼一目瞭然，再從檔案位置推回案子資料夾。
