@@ -176,6 +176,9 @@ function renderAgenda() {
 
 function renderInspector() {
   const p = store.get();
+  // 觸控多選模式：body 掛旗標（CSS 讓卡上的字不吃事件——點到哪都算點卡，
+  // 不彈鍵盤不搶焦點；「看起來選了、其實是輸入焦點框」的誤會就此絕跡）
+  document.body.classList.toggle("sel-mode", store.touchSelect);
   // 多選：Mac＝⌘/Shift 點擊；iPad＝長按進入模式（touchSelect，1 顆也算在模式中）
   if (store.touchSelect ? store.selectedIds.length >= 1 : store.selectedIds.length > 1) {
     inspector.innerHTML = `
@@ -184,7 +187,7 @@ function renderInspector() {
       <button data-a="assign">⇒ 指派到時段</button>
       <button data-a="delmulti">刪除選取</button>
       ${store.touchSelect
-        ? `<button data-a="selend">完成</button><span class="hint">點卡片＝加選/取消 · 點空白＝結束</span>`
+        ? `<button data-a="selend">完成</button><span class="hint">點卡片＝加選/取消 · 按「完成」結束</span>`
         : `<span class="hint">⌘ 點擊加選 · Shift 點擊連選</span>`}`;
     return;
   }

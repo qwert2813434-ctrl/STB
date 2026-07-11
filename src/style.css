@@ -752,6 +752,10 @@ body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none
 /* iOS：長按圖片不彈系統預覽選單（長按＝進入多選，手勢自己擁有） */
 img { -webkit-touch-callout: none; }
 
+/* 觸控多選模式：卡上的可編輯字全部不吃指標事件——點到哪都算點卡，
+   不會彈鍵盤、不會出現「輸入焦點框被誤認為選取」 */
+body.sel-mode .cut [contenteditable] { pointer-events: none; }
+
 /* 拖曳「抓取確認感」（Armin iPad 回饋：不知道有沒有抓到）——
    按住把手的瞬間物件立刻浮起（放大＋陰影），移動中維持浮起 */
 .cut, .rd-row, .cs-grow { transition: transform .12s, box-shadow .12s, opacity .12s; }

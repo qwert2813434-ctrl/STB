@@ -85,6 +85,10 @@ export function bindStb(
   let lpFired = false;
   const lpCancel = () => { if (lp) { clearTimeout(lp.timer); lp = null; } };
   root.addEventListener("pointerdown", (e) => {
+    // 新手勢開始＝上一次長按的「吞 click」旗標作廢——iOS 長按放開常常
+    // 根本不發 click，旗標殘留會把下一次正常點擊吃掉（Armin 實測：
+    // 第二張卡看起來選了、底下卻還是「已選 1 顆」的元凶之一）
+    lpFired = false;
     if (e.pointerType === "mouse") return;
     const t = e.target as HTMLElement;
     if (t.isContentEditable || t.closest(".cut-head")) return;
@@ -96,6 +100,7 @@ export function bindStb(
       timer: setTimeout(() => {
         lp = null;
         lpFired = true;
+        (document.activeElement as HTMLElement | null)?.blur?.(); // 收鍵盤/焦點框
         const wasMode = store.touchSelect;
         store.touchSelect = true;
         if (!store.selectedIds.includes(id)) store.toggleSelect(id); // 進場並選上這張（emit 重繪）
@@ -130,11 +135,13 @@ export function bindStb(
 
     const cut = t0.closest(".cut") as HTMLElement | null;
     // 觸控多選模式（長按進入）：點卡片＝加選/取消（觸控版的 ⌘ 點擊）。
-    // stopImmediatePropagation：模式中點縮圖不能觸發換圖（main 的 thumb handler）
-    if (cut && store.touchSelect) {
+    // stopImmediatePropagation：模式中點縮圖不能觸發換圖（main 的 thumb handler）。
+    // 點空白「不」結束模式——結束只有一個出口：底欄「完成」
+    //（Armin 拍板：避免多選到一半誤點空白全部消失）。
+    if (store.touchSelect) {
       e.preventDefault();
       e.stopImmediatePropagation();
-      store.toggleSelect(cut.dataset.id!);
+      if (cut) store.toggleSelect(cut.dataset.id!);
       return;
     }
     // ⌘點擊＝加選/取消、Shift 點擊＝連選（多選群組用），可編輯區也吃
