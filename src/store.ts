@@ -727,6 +727,9 @@ export class Store {
     return this.selectedIds.length ? this.selectedIds.includes(id) : id === this.selectedId;
   }
 
+  canUndo(): boolean { return this.undoStack.length > 0; }
+  canRedo(): boolean { return this.redoStack.length > 0; }
+
   undo() {
     const prev = this.undoStack.pop();
     if (!prev) return;

@@ -115,7 +115,9 @@ function renderAll() {
     statusbar.innerHTML = `
       <span class="k">分鏡</span><span class="v">${filmTag}${filmCuts.length} 顆 cut</span>
       <span class="k" style="margin-left:8px">頁數</span><span class="v">${pageCount(filmCuts.length)}</span>
-      <span class="spacer"></span><span class="hint">把手 ⠿ 拖曳重排 · 點文字直接編輯 · ⌘/Shift 點擊多選</span>`;
+      <span class="spacer"></span><span class="hint">${isMobile()
+        ? "把手 ⠿ 拖曳重排 · 點文字直接編輯 · 長按卡片＝多選 · 雙指輕點＝上一步"
+        : "把手 ⠿ 拖曳重排 · 點文字直接編輯 · ⌘/Shift 點擊多選"}</span>`;
     renderStb(store, stbArea, pendingFlash, expanded);
     pendingFlash = -1;
     renderInspector();
@@ -659,9 +661,17 @@ document.getElementById("btn-print")!.addEventListener("click", () => void openE
 document.getElementById("btn-help")!.addEventListener("click", openHelp);
 // iPad 全 App 復原/重做：雙指輕點＝上一步、三指輕點＝下一步
 //（iPadOS 通用手勢；Mac 仍是 ⌘Z／⇧⌘Z）。對話框開著或正在打字時讓位。
+// 手勢是隱形的——跳個小提示確認「剛剛真的退了一步」（Armin：不知道怎麼按）
+const gestureToast = (msg: string) => {
+  const t = document.createElement("div");
+  t.className = "pv-toast";
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 700);
+};
 bindUndoGestures(document, {
-  onUndo: () => store.undo(),
-  onRedo: () => store.redo(),
+  onUndo: () => { if (store.canUndo()) { store.undo(); gestureToast("↩︎ 上一步"); } },
+  onRedo: () => { if (store.canRedo()) { store.redo(); gestureToast("↪︎ 下一步"); } },
   enabled: () =>
     !document.querySelector('[class*="overlay"]') &&
     !(document.activeElement as HTMLElement | null)?.isContentEditable,
