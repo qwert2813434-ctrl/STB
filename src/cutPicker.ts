@@ -129,12 +129,13 @@ async function fileToBoard(f: File): Promise<string | { why: string; dims?: stri
     const ctx = c.getContext("2d")!;
     const k = Math.max(1280 / w, 720 / h); // cover 置中
     ctx.drawImage(src, (1280 - w * k) / 2, (720 - h * k) / 2, w * k, h * k);
-    const dataUrl = c.toDataURL("image/jpeg", 0.85);
     // iOS 超限來源會「無聲畫成空白」：抽樣中心像素驗證真的有畫上去
     const px = ctx.getImageData(600, 340, 80, 40).data;
     let sum = 0;
     for (let i = 3; i < px.length; i += 4) sum += px[i]; // alpha
-    return sum > 0 ? dataUrl : null;
+    const dataUrl = sum > 0 ? c.toDataURL("image/jpeg", 0.85) : null;
+    c.width = c.height = 0; // iOS：畫布用完立刻歸零釋放（總預算有限，等 GC 會爆＝連匯幾次後全滅的根因）
+    return dataUrl;
   };
   let lastErr = "";
   // 1) createImageBitmap＋resize（邊解邊縮，最省記憶體）

@@ -276,7 +276,9 @@ function extractPoster(srcUrl: string, atSec?: number): Promise<string | null> {
         const scale = Math.max(1600 / vw, 900 / vh);
         const dw = vw * scale, dh = vh * scale;
         c.getContext("2d")!.drawImage(v, (1600 - dw) / 2, (900 - dh) / 2, dw, dh);
-        done(c.toDataURL("image/jpeg", 0.85));
+        const out = c.toDataURL("image/jpeg", 0.85);
+        c.width = c.height = 0; // iOS：畫布用完立刻釋放
+        done(out);
       } catch { done(null); }
     };
     v.onloadedmetadata = () => {

@@ -138,7 +138,9 @@ function mount(img0: HTMLImageElement, dataUrl0: string, aspect: number, resolve
     const sx = -tx / s, sy = -ty / s, sw = vw / s, sh = vh / s;
     ctx.drawImage(img, sx, sy, sw, sh, 0, 0, outW, outH);
     if (bw) toGray(ctx, outW, outH); // 手動灰階（WKWebView 的 ctx.filter 不可靠）
-    close(canvas.toDataURL("image/jpeg", 0.9));
+    const out = canvas.toDataURL("image/jpeg", 0.9);
+    canvas.width = canvas.height = 0; // iOS：畫布用完立刻歸零釋放（總預算有限，等 GC 會爆）
+    close(out);
   });
   overlay.addEventListener("click", (e) => { if (e.target === overlay) close(null); });
 }

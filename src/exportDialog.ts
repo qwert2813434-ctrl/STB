@@ -57,7 +57,9 @@ export async function openExportDialog(store: Store) {
     document.body.appendChild(cap);
     const shot = async (el: HTMLElement): Promise<ExImg> => {
       const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff", logging: false, useCORS: true });
-      return { img: canvas.toDataURL("image/jpeg", 0.92), w: canvas.width, h: canvas.height };
+      const img = { img: canvas.toDataURL("image/jpeg", 0.92), w: canvas.width, h: canvas.height };
+      canvas.width = canvas.height = 0; // iOS：畫布用完立刻釋放
+      return img;
     };
     const slide16 = (html: string): HTMLElement => {
       const box = document.createElement("div");

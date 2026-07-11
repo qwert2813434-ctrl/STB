@@ -25,7 +25,9 @@ export function rasterLogo(src: string): Promise<{ data: string; w: number; h: n
         c.width = Math.max(1, Math.round(iw * scale));
         c.height = Math.max(1, Math.round(ih * scale));
         c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
-        resolve({ data: c.toDataURL("image/png"), w: iw, h: ih });
+        const data = c.toDataURL("image/png");
+        c.width = c.height = 0; // iOS：畫布用完立刻釋放
+        resolve({ data, w: iw, h: ih });
       } catch { resolve(null); }
     };
     img.onerror = () => resolve(null);
