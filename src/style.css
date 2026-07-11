@@ -118,7 +118,9 @@ button:active { transform: scale(.98); }
   margin-right: 2px;
 }
 .cut-grip:active { cursor: grabbing; }
-.cut:hover { border-color: var(--ink); }
+/* hover 只給真滑鼠：iOS 的 :hover 會黏在最後點過的卡上——
+   跟 .sel 同一條黑邊，「取消選取黑框不消失」的真兇 */
+@media (hover: hover) { .cut:hover { border-color: var(--ink); } }
 .cut.sel { border-color: var(--ink); }
 .cut.grouped { border-left: 3px solid var(--faint); }
 
