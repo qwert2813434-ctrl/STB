@@ -681,6 +681,16 @@ export class Store {
     // 不 emit（避免打字時整頁重繪、游標跳掉）；由呼叫端決定何時重繪
   }
 
+  // 塗鴉分鏡：筆跡（可再編輯）＋壓平 PNG 一次寫入；null/null＝清空這格
+  setCutSketch(id: string, sketch: import("./model").CutSketch | null, png: string | null) {
+    this.commit((p) => {
+      const c = p.cuts.find((x) => x.id === id);
+      if (!c) return;
+      c.sketch = sketch;
+      c.imageRef = png;
+    });
+  }
+
   select(id: string | null) {
     this.selectedId = id;
     this.selectedIds = id ? [id] : [];

@@ -20,6 +20,7 @@
     "@tauri-apps/plugin-opener": "^2.5.4",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
+    "perfect-freehand": "^1.2.3",
     "pptxgenjs": "^4.0.1"
   }
 }

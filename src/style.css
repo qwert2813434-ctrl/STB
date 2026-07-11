@@ -160,6 +160,7 @@ button:active { transform: scale(.98); }
   justify-content: center;
   color: var(--faint);
   font-size: 11px;
+  position: relative; /* ✏️ 塗鴉鈕釘右下角 */
 }
 
 .cut-line { font-size: 13px; line-height: 1.55; outline: none; min-height: 1.55em; }
@@ -757,6 +758,47 @@ img { -webkit-touch-callout: none; }
 /* 觸控多選模式：卡上的可編輯字全部不吃指標事件——點到哪都算點卡，
    不會彈鍵盤、不會出現「輸入焦點框被誤認為選取」 */
 body.sel-mode .cut [contenteditable] { pointer-events: none; }
+
+/* ---- 塗鴉分鏡（✏️ 入口＋編輯器）---- */
+.thumb-sketch {
+  position: absolute; right: 4px; bottom: 4px;
+  font-size: 13px; line-height: 1; padding: 5px 7px;
+  background: rgba(255,255,255,.92); border: 1px solid var(--line); border-radius: 8px;
+  opacity: .9;
+}
+@media (hover: hover) {
+  .thumb-sketch { opacity: 0; }
+  .cut-thumb:hover .thumb-sketch { opacity: 1; }
+}
+.sk-overlay {
+  position: fixed; inset: 0; z-index: 3700;
+  background: rgba(20,19,17,.5);
+  display: flex; align-items: center; justify-content: center; padding: 3vh 3vw;
+}
+.sk-panel {
+  background: var(--bg); border-radius: 14px;
+  width: min(1080px, 100%); max-height: 100%;
+  display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: 0 18px 60px rgba(0,0,0,.35);
+}
+.sk-bar {
+  display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+  background: var(--card); border-bottom: 1px solid var(--line);
+}
+.sk-bar .spacer { flex: 1; }
+.sk-sep { width: 1px; height: 20px; background: var(--line); margin: 0 4px; }
+.sk-bar button { font-size: 13px; padding: 6px 12px; border-radius: 8px; }
+.sk-bar button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.sk-bar [data-sklayer] b { font-weight: 600; }
+.sk-bar [data-sklayer].sk-fig b { color: #2e6e46; } /* 人物層＝語意綠，一眼分層 */
+.sk-ok { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.sk-stage { padding: 12px; display: flex; justify-content: center; background: var(--hover); }
+.sk-canvas {
+  width: 100%; max-height: calc(94vh - 130px); aspect-ratio: 16 / 9;
+  background: #fff; border: 1px solid var(--line); border-radius: 8px;
+  touch-action: none; cursor: crosshair;
+}
+.sk-hint { font-size: 12px; color: var(--muted); padding: 8px 14px 12px; line-height: 1.6; }
 
 /* 拖曳「抓取確認感」（Armin iPad 回饋：不知道有沒有抓到）——
    按住把手的瞬間物件立刻浮起（放大＋陰影），移動中維持浮起 */

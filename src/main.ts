@@ -16,6 +16,7 @@ import { isTauri, isMobile, currentDir, dirName, chooseFolderAndLoad, createProj
 import { projectLogo } from "./logoAsset";
 import { openHelp } from "./helpDialog";
 import { openHub } from "./hubDialog";
+import { openSketchEditor } from "./sketchEditor";
 import { pickBoardImages, fileToWorkingImage, pickFiles } from "./cutPicker";
 import { openBlockPicker } from "./assignDialog";
 
@@ -633,8 +634,14 @@ bindStb(store, stbArea, (flash) => { if (flash !== undefined) pendingFlash = fla
 // 觸控多選的就地加選/取消：只刷新底欄計數，不整頁重繪（stbView 發出）
 document.addEventListener("stb:selchange", () => renderInspector());
 stbArea.addEventListener("click", (e) => {
+  // ✏️＝塗鴉分鏡（04 企劃⑤）；已是塗鴉的格點縮圖也直接回編輯器（筆跡可再編輯）
+  const sk = (e.target as HTMLElement).closest("[data-sketch]") as HTMLElement | null;
+  if (sk) { openSketchEditor(store, sk.dataset.sketch!); return; }
   const thumb = (e.target as HTMLElement).closest("[data-thumb]") as HTMLElement | null;
-  if (thumb) pickImage(thumb.dataset.thumb!);
+  if (!thumb) return;
+  const cut = store.get().cuts.find((c) => c.id === thumb.dataset.thumb);
+  if (cut?.sketch) { openSketchEditor(store, cut.id); return; }
+  pickImage(thumb.dataset.thumb!);
 });
 bindRundown(store, rundownArea);
 bindCallSheet(store, callsheetArea);

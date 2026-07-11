@@ -12,6 +12,12 @@ export interface Meta {
 // 跨路引用（Rundown/對照 cut）用「A-01」前綴顯示，編號不打架。
 export interface Film { id: string; name: string; }
 
+// 塗鴉分鏡（04 企劃⑤）：筆跡存資料、可再編輯；imageRef 存壓平 PNG
+// （簡報/匯出走既有圖片管線，零改動）。pts＝[x, y, 壓力] 序列（1280×720 座標）。
+export interface SketchStroke { tool: "pen" | "marker"; pts: number[][]; }
+// 兩層固定圖層：場景（構圖，複製後通常不動）＋人物（表演/運鏡，擦掉重畫）
+export interface CutSketch { scene: SketchStroke[]; figure: SketchStroke[]; }
+
 // cut = 真相。groupId 相同 = 連續鏡群組（05-1/05-2），移動時整組同行。
 export interface Cut {
   id: string;
@@ -22,6 +28,7 @@ export interface Cut {
   vo: string;        // VO（人欄）
   sup: string;       // Super 疊印字卡（人欄）
   imageRef: string | null; // 分鏡圖 assets 檔名
+  sketch?: CutSketch | null; // 塗鴉筆跡（有＝imageRef 是它壓平的，點縮圖回編輯器）
   prompt: string;
   props: string;
   note: string;

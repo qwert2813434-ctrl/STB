@@ -57,7 +57,7 @@ export function renderStb(store: Store, root: HTMLElement, flashFromSeq = -1, ex
             <span class="cut-grip">⠿</span>
             <span class="cut-no${flash}">CUT ${n.label}</span>
           </div>
-          <div class="cut-thumb" data-thumb="${cut.id}">${cut.imageRef ? `<img src="${cut.imageRef}" alt="分鏡" draggable="false">` : `<span class="thumb-add">＋ 分鏡圖</span>`}</div>
+          <div class="cut-thumb" data-thumb="${cut.id}">${cut.imageRef ? `<img src="${cut.imageRef}" alt="分鏡" draggable="false">` : `<span class="thumb-add">＋ 分鏡圖</span>`}<button class="thumb-sketch" data-sketch="${cut.id}" title="塗鴉分鏡（Apple Pencil／滑鼠）">✏️</button></div>
           <div class="cut-line cut-desc" contenteditable draggable="false" data-id="${cut.id}" data-f="desc" data-ph="畫面描述">${esc(cut.desc)}</div>
           ${showVo ? `<div class="cut-line-row cut-vo"><span class="tag">VO</span><span class="cut-edit" contenteditable draggable="false" data-id="${cut.id}" data-f="vo" data-ph="旁白 / 台詞">${esc(cut.vo)}</span></div>` : ""}
           ${showSup ? `<div class="cut-line-row cut-sup"><span class="tag">SUPER</span><span class="cut-edit" contenteditable draggable="false" data-id="${cut.id}" data-f="sup" data-ph="疊印字卡">${esc(cut.sup)}</span></div>` : ""}
