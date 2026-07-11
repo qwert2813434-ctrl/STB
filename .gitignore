@@ -2,4 +2,6 @@ node_modules
 dist
 .DS_Store
 src-tauri/target
-src-tauri/gen
+src-tauri/gen/schemas
+src-tauri/gen/apple/build
+src-tauri/gen/apple/DerivedData
