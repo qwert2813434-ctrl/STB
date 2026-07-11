@@ -743,6 +743,8 @@ body.dragging-any { user-select: none; cursor: grabbing; }
 * { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 /* 拖曳把手要完整接管觸控（不然瀏覽器把手勢當捲動，拖不動＝「按了沒反應」） */
 .rd-grip, .cut-head, .cs-grip, .gt-bar, .gt-resize, .gt-resize-l { touch-action: none; }
+/* 裁切器/裁切影片的拖曳區同理（iPad：拖曳調整照片位置） */
+.crop-stage, .trim-track { touch-action: none; }
 
 /* 多路分頁（分鏡章上方，沿用 Day 分頁視覺） */
 .film-tabs { margin: 2px 0 10px; }

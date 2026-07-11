@@ -130,7 +130,10 @@ export class Store {
   }
 
   private clone(p: Project): Project {
-    return JSON.parse(JSON.stringify(p));
+    // structuredClone：字串（分鏡圖 data URL 等大宗）在拷貝間「共享」不複製——
+    // JSON 往返會把所有圖片位元組每份快照都抄一遍，50 份快照＝數百 MB，
+    // iPad 撞記憶體牆（實測「匯圖多次後開始失敗」的根因）；桌面同樣受惠。
+    return structuredClone(p);
   }
 
   // 任何會改變真相的動作前呼叫，存一份快照
