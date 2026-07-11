@@ -77,13 +77,6 @@ export function openSketchEditor(store: Store, cutId: string) {
   function paintInto(cx: CanvasRenderingContext2D, dimInactive: boolean) {
     cx.fillStyle = "#ffffff";
     cx.fillRect(0, 0, W, H);
-    // 【診斷版】畫布正中央十字靶（640,360）——校準用，修完就拆
-    cx.strokeStyle = "#c00";
-    cx.lineWidth = 2;
-    cx.beginPath();
-    cx.moveTo(W / 2 - 30, H / 2); cx.lineTo(W / 2 + 30, H / 2);
-    cx.moveTo(W / 2, H / 2 - 30); cx.lineTo(W / 2, H / 2 + 30);
-    cx.stroke();
     cx.fillStyle = "#141311";
     for (const which of ["scene", "figure"] as const) {
       const dim = dimInactive && which !== layer ? 0.4 : 1;
@@ -116,23 +109,26 @@ export function openSketchEditor(store: Store, cutId: string) {
   };
 
   // ---- 指標 → 畫布座標 ----
-  // 一律從 offsetX（元素本地座標）出發：iPad 介面整體用 zoom 縮放，
-  // clientX × getBoundingClientRect 的 viewport 換算在 WKWebView 會歪
-  // （筆畫偏移、橡皮擦滿版誤殺的病根）。coalesced 中間點沒有可靠的
-  // offsetX → 用主事件 offset ＋ client 位移、比例自量（rect/offsetWidth）。
-  const toPt = (primary: PointerEvent, ev: PointerEvent): number[] => {
-    const cw = canvas.offsetWidth || 1;
-    const chh = canvas.offsetHeight || 1;
-    const k = canvas.getBoundingClientRect().width / cw; // client px ↔ 本地 px 實測比（含 zoom）
-    const lx = primary.offsetX + (ev.clientX - primary.clientX) / k;
-    const ly = primary.offsetY + (ev.clientY - primary.clientY) / k;
-    return [lx * (W / cw), ly * (H / chh), ev.pressure || 0.5];
+  // 十字靶診斷（2026-07-12 Armin 截圖）定案：WKWebView 在整頁 zoom 下，
+  // 指標事件的 clientX 是「視覺 px」＝版面 px × zoom，而 getBoundingClientRect
+  // 是「版面 px」——兩邊差一個 zoom 倍率（右下角偏最多；橡皮擦殺錯筆同源）。
+  // 修法：clientX 先除以 zoom 回到版面座標。Mac zoom=1 不受影響。
+  const rootZoom = (): number =>
+    parseFloat((document.documentElement.style as unknown as { zoom?: string }).zoom || "1") || 1;
+  const toPt = (ev: PointerEvent): number[] => {
+    const z = rootZoom();
+    const r = canvas.getBoundingClientRect();
+    return [
+      (ev.clientX / z - r.left) * (W / r.width),
+      (ev.clientY / z - r.top) * (H / r.height),
+      ev.pressure || 0.5,
+    ];
   };
 
   // 橡皮擦：劃過的筆畫整筆刪除（物件橡皮擦——筆跡是資料，整筆刪才可再編輯）
   const eraseAt = (e: PointerEvent) => {
-    const [x, y] = toPt(e, e);
-    const rr = 12 * 12;
+    const [x, y] = toPt(e);
+    const rr = 14 * 14;
     const before = work[layer].length;
     work[layer] = work[layer].filter((s) => !s.pts.some((p) => (p[0] - x) * (p[0] - x) + (p[1] - y) * (p[1] - y) < rr));
     if (work[layer].length !== before) { erasedAny = true; render(); }
@@ -140,13 +136,6 @@ export function openSketchEditor(store: Store, cutId: string) {
 
   canvas.addEventListener("pointerdown", (e) => {
     if (e.pointerType === "touch") return; // 手掌/手指不作畫（Pencil 防誤觸）
-    // 【診斷版】把各座標系原始數字攤在 hint 列（點中央十字後截圖回報）
-    {
-      const r = canvas.getBoundingClientRect();
-      const [px, py] = toPt(e, e);
-      const hint = overlay.querySelector(".sk-hint") as HTMLElement;
-      hint.textContent = `診斷｜off ${e.offsetX.toFixed(0)},${e.offsetY.toFixed(0)}｜cli ${e.clientX.toFixed(0)},${e.clientY.toFixed(0)}｜rect ${r.left.toFixed(0)},${r.top.toFixed(0)} ${r.width.toFixed(0)}×${r.height.toFixed(0)}｜cw ${canvas.offsetWidth}×${canvas.offsetHeight}｜pt ${px.toFixed(0)},${py.toFixed(0)}（十字＝640,360）｜win ${window.innerWidth}×${window.innerHeight}`;
-    }
     e.preventDefault();
     try { canvas.setPointerCapture(e.pointerId); } catch { /* 合成事件 */ }
     if (tool === "eraser") {
@@ -156,7 +145,7 @@ export function openSketchEditor(store: Store, cutId: string) {
       eraseAt(e);
       return;
     }
-    drawing = [toPt(e, e)];
+    drawing = [toPt(e)];
     render();
   });
   canvas.addEventListener("pointermove", (e) => {
@@ -165,7 +154,7 @@ export function openSketchEditor(store: Store, cutId: string) {
     if (!drawing) return;
     // getCoalescedEvents：Pencil 240Hz 的中間點全收，線才順
     const evs = (e as PointerEvent & { getCoalescedEvents?: () => PointerEvent[] }).getCoalescedEvents?.() ?? [e];
-    for (const ev of evs) drawing.push(toPt(e, ev));
+    for (const ev of evs) drawing.push(toPt(ev));
     render();
   });
   const finishStroke = () => {
