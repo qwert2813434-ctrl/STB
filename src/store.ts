@@ -31,10 +31,57 @@ export class Store {
   constructor(initial: Project) {
     this.project = initial;
     this.currentDayId = initial.days[0]?.id ?? "";
+    this.currentFilmId = initial.films?.[0]?.id ?? "";
   }
 
   currentDay(): ShootDay | undefined {
     return this.project.days.find((d) => d.id === this.currentDayId);
+  }
+
+  // ---- 多路腳本（films）----
+  currentFilmId = "";
+
+  currentFilm() {
+    return this.project.films.find((f) => f.id === this.currentFilmId) ?? this.project.films[0];
+  }
+
+  setFilm(id: string) {
+    if (this.currentFilmId === id) return; // 同路不重繪（點路名編輯時游標不掉）
+    this.currentFilmId = id;
+    this.selectedId = null;
+    this.selectedIds = [];
+    this.emit();
+  }
+
+  addFilm() {
+    this.commit((p) => {
+      const f = { id: newId("f"), name: `${String.fromCharCode(65 + p.films.length)}路` };
+      p.films.push(f);
+      this.currentFilmId = f.id;
+    });
+  }
+
+  renameFilm(id: string, name: string) {
+    const f = this.project.films.find((x) => x.id === id);
+    if (!f || f.name === name || !name.trim()) { this.emit(); return; }
+    this.commit(() => { f.name = name.trim(); });
+  }
+
+  // 刪除一路：該路分鏡連同 Rundown 指派、對照 cut 引用一併清（至少留一路）
+  deleteFilm(id: string) {
+    if (this.project.films.length <= 1) return;
+    this.commit((p) => {
+      const dead = new Set(p.cuts.filter((c) => c.filmId === id).map((c) => c.id));
+      p.cuts = p.cuts.filter((c) => !dead.has(c.id));
+      p.films = p.films.filter((f) => f.id !== id);
+      for (const d of p.days) for (const b of d.rundown) b.cutIds = b.cutIds.filter((cid) => !dead.has(cid));
+      for (const items of Object.values(p.refPages)) {
+        for (const it of items) if (it.cutRefs) it.cutRefs = it.cutRefs.filter((cid) => !dead.has(cid));
+      }
+      if (this.currentFilmId === id) this.currentFilmId = p.films[0].id;
+      this.selectedId = null;
+      this.selectedIds = [];
+    });
   }
 
   // 開啟案子：整份替換，清空歷史與選取；通告排表案直接落在 SCHEDULE 章
@@ -45,6 +92,7 @@ export class Store {
     this.selectedId = null;
     this.selectedIds = [];
     this.currentDayId = p.days[0]?.id ?? "";
+    this.currentFilmId = p.films[0]?.id ?? "";
     if (p.mode === "schedule") this.currentChapter = "schedule";
     this.emit();
   }
@@ -104,12 +152,18 @@ export class Store {
 
   addCutAfter(id: string | null) {
     this.commit((p) => {
-      const gid = newId("g");
+      const ref = id ? p.cuts.find((c) => c.id === id) : undefined;
+      const filmId = ref?.filmId ?? (this.currentFilmId || p.films[0].id);
       const cut: Cut = {
-        id: newId(), groupId: gid, shot: "", desc: "", vo: "", sup: "",
+        id: newId(), groupId: newId("g"), filmId, shot: "", desc: "", vo: "", sup: "",
         imageRef: null, prompt: "", props: "", note: "",
       };
-      const idx = id ? p.cuts.findIndex((c) => c.id === id) : p.cuts.length - 1;
+      // 沒指定位置＝接在「本路」最後一顆後面（不是全案最後）
+      let idx = id ? p.cuts.findIndex((c) => c.id === id) : -1;
+      if (idx < 0) {
+        idx = p.cuts.length - 1;
+        for (let i = p.cuts.length - 1; i >= 0; i--) if (p.cuts[i].filmId === filmId) { idx = i; break; }
+      }
       p.cuts.splice(idx + 1, 0, cut);
       this.selectedId = cut.id;
       this.selectedIds = [cut.id];
@@ -160,7 +214,7 @@ export class Store {
       let lastIdx = -1;
       p.cuts.forEach((c, i) => { if (c.groupId === src.groupId) lastIdx = i; });
       const sub: Cut = {
-        id: newId(), groupId: src.groupId, shot: "", desc: "", vo: "", sup: "",
+        id: newId(), groupId: src.groupId, filmId: src.filmId, shot: "", desc: "", vo: "", sup: "",
         imageRef: null, prompt: "", props: "", note: "",
       };
       p.cuts.splice(lastIdx + 1, 0, sub);
@@ -284,10 +338,11 @@ export class Store {
   addCutsFromImages(images: string[]): string[] {
     const ids: string[] = [];
     this.commit((p) => {
+      const filmId = this.currentFilmId || p.films[0].id;
       for (const img of images) {
         const id = newId();
         ids.push(id);
-        p.cuts.push({ id, groupId: newId("g"), shot: "", desc: "", vo: "", sup: "", imageRef: img, prompt: "", props: "", note: "" });
+        p.cuts.push({ id, groupId: newId("g"), filmId, shot: "", desc: "", vo: "", sup: "", imageRef: img, prompt: "", props: "", note: "" });
       }
     });
     return ids;
@@ -642,7 +697,9 @@ export class Store {
     const b = this.project.cuts.findIndex((c) => c.id === id);
     if (a < 0 || b < 0) { this.select(id); return; }
     const [s, e] = a < b ? [a, b] : [b, a];
-    this.selectedIds = this.project.cuts.slice(s, e + 1).map((c) => c.id);
+    // 連選限同一路（畫面一次只顯示一路，跨路的中間 cut 不該被掃進來）
+    const filmId = this.project.cuts[b].filmId;
+    this.selectedIds = this.project.cuts.slice(s, e + 1).filter((c) => c.filmId === filmId).map((c) => c.id);
     this.selectedId = id;
     this.emit();
   }

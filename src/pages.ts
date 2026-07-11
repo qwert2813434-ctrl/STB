@@ -54,7 +54,11 @@ export function collectChapters(store: Store): ChapterPages[] {
   for (const ch of chapterPlan(p)) {
     let pages: HTMLElement[] = [];
     if (ch.kind === "storyboard") {
-      pages = collect(() => renderStb(store, temp, -1, new Set()));
+      // 多路：逐路收頁（每路自己的頁、頁標帶路名）
+      for (const f of p.films) {
+        if (!p.cuts.some((c) => c.filmId === f.id)) continue;
+        pages.push(...collect(() => renderStb(store, temp, -1, new Set(), f.id)));
+      }
     } else if (ch.kind === "schedule") {
       pages = collect(() => renderGantt(store, temp));
       for (const day of p.days) {

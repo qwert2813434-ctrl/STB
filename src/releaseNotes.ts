@@ -1,11 +1,21 @@
 // 版本與更新紀錄——每次發版在最上面加一段（慣例同 ALIGNED 設定頁：
 // 版本號、日期、使用者看得懂的變更點；工程細節留在 進度與下一步.md）。
 
-export const APP_VERSION = "1.1.0";
+export const APP_VERSION = "1.2.0";
 
 export interface ReleaseNote { version: string; date: string; items: string[]; }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.2.0",
+    date: "2026-07-11",
+    items: [
+      "多路腳本：一份 PPM 同時做兩路/三路短片——分鏡章上方「＋ 一路」開新路，每路獨立 CUT 01 起跳",
+      "跨路引用不打架：Rundown 縮圖、對照 cut 顯示「A-01、B-01」路前綴編號",
+      "路分頁可改名（點當前路的名字直接打）、可刪除（連同該路分鏡與指派）；簡報與匯出逐路出頁、頁標帶路名",
+      "匯入分鏡圖、新增 cut、指派到時段全部跟著「目前所在的路」",
+    ],
+  },
   {
     version: "1.1.0",
     date: "2026-07-10",

@@ -7,7 +7,7 @@ import { openCropper } from "./cropper";
 // 渲染 Rundown 拍攝日程頁：真實時間區塊、地點/停車/道具、指派的 cut（顯示編號）。
 export function renderRundown(store: Store, root: HTMLElement, dayOverride?: import("./model").ShootDay) {
   const p = store.get();
-  const numbers = computeCutNumbers(p.cuts);
+  const numbers = computeCutNumbers(p.cuts, p.films);
   const day = dayOverride ?? store.currentDay();
   if (!day) { root.innerHTML = ""; return; }
   const times = chainRundown(day.rundown, hhmmToMin(day.callTime));

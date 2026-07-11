@@ -97,9 +97,11 @@ function renderAll() {
     statusbar.innerHTML = `<span class="k">PPM</span><span class="v">${CHAPTERS.length - 1} 章</span><span class="spacer"></span><span class="hint">點左側章節開始，或點目錄項目</span>`;
     renderAgenda();
   } else if (kind === "storyboard") {
+    const filmCuts = p.cuts.filter((c) => c.filmId === store.currentFilmId);
+    const filmTag = p.films.length > 1 ? `${store.currentFilm()?.name ?? ""} ` : "";
     statusbar.innerHTML = `
-      <span class="k">分鏡</span><span class="v">${p.cuts.length} 顆 cut</span>
-      <span class="k" style="margin-left:8px">頁數</span><span class="v">${pageCount(p.cuts.length)}</span>
+      <span class="k">分鏡</span><span class="v">${filmTag}${filmCuts.length} 顆 cut</span>
+      <span class="k" style="margin-left:8px">頁數</span><span class="v">${pageCount(filmCuts.length)}</span>
       <span class="spacer"></span><span class="hint">把手 ⠿ 拖曳重排 · 點文字直接編輯 · ⌘/Shift 點擊多選</span>`;
     renderStb(store, stbArea, pendingFlash, expanded);
     pendingFlash = -1;
@@ -180,7 +182,7 @@ function renderInspector() {
       <span class="hint">外部軟體做的分鏡：多選圖檔一次帶入，拖曳排序、⌘/Shift 多選組連續鏡或指派到時段</span>`;
     return;
   }
-  const numbers = computeCutNumbers(p.cuts);
+  const numbers = computeCutNumbers(p.cuts, p.films);
   const n = numbers.get(id);
   if (!n) return;
   const cut = p.cuts.find((c) => c.id === id)!;
@@ -215,7 +217,9 @@ function focusLine(id: string, field: string) {
 
 function addCut() {
   store.addCutAfter(store.selectedId);
-  const seq = store.get().cuts.findIndex((c) => c.id === store.selectedId);
+  // flash 用「路內」序（畫面一次只顯示一路）
+  const cs = store.get().cuts.filter((c) => c.filmId === store.currentFilmId);
+  const seq = cs.findIndex((c) => c.id === store.selectedId);
   pendingFlash = seq >= 0 ? seq : 0;
   renderAll();
 }
@@ -347,7 +351,8 @@ inspector.addEventListener("click", (e) => {
   else if (a === "delmulti") store.deleteCuts([...store.selectedIds]);
   else if (a === "subshot") {
     store.addSubShot(id);
-    const seq = store.get().cuts.findIndex((c) => c.id === store.selectedId);
+    const cs = store.get().cuts.filter((c) => c.filmId === store.currentFilmId);
+    const seq = cs.findIndex((c) => c.id === store.selectedId);
     pendingFlash = seq >= 0 ? seq : 0;
     renderAll();
   }

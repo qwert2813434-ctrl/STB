@@ -8,10 +8,15 @@ export interface Meta {
   logo?: string | null; // 首頁 LOGO（data URL，透明 PNG 佳）；null＝內建預設（錄人）
 }
 
+// 多路腳本：一份 PPM 同時含多支片（兩路/三路），每路獨立 CUT 01 起跳。
+// 跨路引用（Rundown/對照 cut）用「A-01」前綴顯示，編號不打架。
+export interface Film { id: string; name: string; }
+
 // cut = 真相。groupId 相同 = 連續鏡群組（05-1/05-2），移動時整組同行。
 export interface Cut {
   id: string;
   groupId: string;
+  filmId: string;    // 屬於哪一路（films 的 id）
   shot: string;      // 景別 W/M/CU
   desc: string;      // 畫面描述（人欄）
   vo: string;        // VO（人欄）
@@ -25,7 +30,8 @@ export interface Cut {
 export interface Project {
   meta: Meta;          // 整片層級：片名、客戶、版次
   contacts: Contact[]; // 通告單聯絡人（製片／監製／導演＋電話，整片層級）
-  cuts: Cut[];         // STORYBOARD 章：整支片的分鏡（不分天）
+  films: Film[];       // 多路腳本：至少一路；cut 以 filmId 歸屬
+  cuts: Cut[];         // STORYBOARD 章：全部路的分鏡（依 filmId 分路顯示/編號）
   days: ShootDay[];    // SCHEDULE 子項「拍攝日程」：各拍攝日（通告＋該日 Rundown）
   milestones: Milestone[]; // SCHEDULE 大項「製作時程」甘特圖
   refPages: Record<string, RefItem[]>; // 通用圖文章節，key = 章節 id
@@ -137,28 +143,38 @@ export interface CutNumber {
 
 export const PER_PAGE = 8; // 4×2，檔位制可調
 
-// 依出現順序給群組主號；群組成員 >1 則加子號
-export function computeCutNumbers(cuts: Cut[]): Map<string, CutNumber> {
-  const order: string[] = [];
-  const members = new Map<string, string[]>();
-  for (const c of cuts) {
-    if (!members.has(c.groupId)) {
-      members.set(c.groupId, []);
-      order.push(c.groupId);
-    }
-    members.get(c.groupId)!.push(c.id);
-  }
+// 依出現順序給群組主號；群組成員 >1 則加子號。
+// 多路（films.length>1）：每路獨立從 01 編，label 加路前綴（A-05、B-01…）
+// ——跨路引用（Rundown/對照 cut）不打架；單路維持原樣（CUT 05）。
+export function computeCutNumbers(cuts: Cut[], films?: Film[]): Map<string, CutNumber> {
   const out = new Map<string, CutNumber>();
-  order.forEach((gid, idx) => {
-    const mem = members.get(gid)!;
-    const main = String(idx + 1).padStart(2, "0");
-    mem.forEach((cid, mi) => {
-      const sub = mem.length > 1 ? mi + 1 : null;
-      out.set(cid, {
-        main,
-        sub,
-        label: main + (sub ? "-" + sub : ""),
-        groupSize: mem.length,
+  const filmOrder: string[] = films?.length ? films.map((f) => f.id) : [];
+  for (const c of cuts) if (!filmOrder.includes(c.filmId)) filmOrder.push(c.filmId); // 防漏
+  const multi = filmOrder.length > 1;
+
+  filmOrder.forEach((fid, fi) => {
+    const sub = cuts.filter((c) => c.filmId === fid);
+    const order: string[] = [];
+    const members = new Map<string, string[]>();
+    for (const c of sub) {
+      if (!members.has(c.groupId)) {
+        members.set(c.groupId, []);
+        order.push(c.groupId);
+      }
+      members.get(c.groupId)!.push(c.id);
+    }
+    const prefix = multi ? String.fromCharCode(65 + fi) + "-" : "";
+    order.forEach((gid, idx) => {
+      const mem = members.get(gid)!;
+      const main = String(idx + 1).padStart(2, "0");
+      mem.forEach((cid, mi) => {
+        const subNo = mem.length > 1 ? mi + 1 : null;
+        out.set(cid, {
+          main,
+          sub: subNo,
+          label: prefix + main + (subNo ? "-" + subNo : ""),
+          groupSize: mem.length,
+        });
       });
     });
   });
@@ -211,6 +227,14 @@ export function normalizeProject(raw: unknown): Project {
   const meta = (r.meta ?? {}) as Partial<Project["meta"]>;
   const cuts = Array.isArray(r.cuts) ? r.cuts : [];
   const days = Array.isArray(r.days) ? r.days : [];
+  // 多路：舊檔沒有 films → 給一路（A路），所有 cut 歸它
+  const films: Film[] = Array.isArray(r.films) && (r.films as unknown[]).length
+    ? (r.films as Partial<Film>[]).map((f, i) => ({
+        id: f?.id ?? newId("f"),
+        name: f?.name ?? `${String.fromCharCode(65 + i)}路`,
+      }))
+    : [{ id: newId("f"), name: "A路" }];
+  const filmIds = new Set(films.map((f) => f.id));
   return {
     meta: {
       title: meta.title ?? "未命名案子",
@@ -226,9 +250,11 @@ export function normalizeProject(raw: unknown): Project {
           { role: "監製", name: "示意監製", phone: "0900-000-000" },
           { role: "導演", name: "高偉鳴", phone: "0900-000-000" },
         ],
+    films,
     cuts: cuts.map((c) => ({
       id: c?.id ?? newId(),
       groupId: c?.groupId ?? newId("g"),
+      filmId: c?.filmId && filmIds.has(c.filmId) ? c.filmId : films[0].id,
       shot: c?.shot ?? "",
       desc: c?.desc ?? "",
       vo: c?.vo ?? "",

@@ -4,18 +4,40 @@ import { computeCutNumbers, pageCount, PER_PAGE } from "./model";
 
 // 渲染 STB 頁式版面。inline 編輯不觸發整頁重繪（避免游標跳）。
 // expanded：暫時展開但還沒填字的 VO/Super 行（key = `${cutId}:vo`／`:sup`）。
-export function renderStb(store: Store, root: HTMLElement, flashFromSeq = -1, expanded = new Set<string>()) {
+// 多路：一次只顯示一路（上方路分頁切換）；filmOverride＝匯出時指定路（不出分頁列）。
+export function renderStb(store: Store, root: HTMLElement, flashFromSeq = -1, expanded = new Set<string>(), filmOverride?: string) {
   const p = store.get();
-  const numbers = computeCutNumbers(p.cuts);
-  const pages = pageCount(p.cuts.length);
+  const filmId = filmOverride ?? (store.currentFilmId || p.films[0]?.id);
+  const film = p.films.find((f) => f.id === filmId);
+  const cuts = p.cuts.filter((c) => c.filmId === filmId);
+  const multi = p.films.length > 1;
+  const numbers = computeCutNumbers(p.cuts, p.films);
+  const pages = pageCount(cuts.length);
   let html = "";
 
+  // 路分頁（同 Day 分頁互動）：點切換；點「當前路」的名字＝直接改名；✕ 刪路
+  if (!filmOverride) {
+    html += `<div class="day-tabs film-tabs">`;
+    for (const f of p.films) {
+      const on = f.id === filmId;
+      html += `<span class="daytab-wrap">
+        <button class="daytab${on ? " on" : ""}" data-film="${f.id}" title="${on ? "點名字直接改" : "切換到這一路"}">${
+          on
+            ? `<span class="cut-edit" contenteditable draggable="false" data-filmname="${f.id}" data-ph="路名">${esc(f.name)}</span>`
+            : esc(f.name)
+        }</button>
+        ${p.films.length > 1 ? `<button class="daytab-del" data-delfilm="${f.id}" title="刪除此路（含其分鏡）">✕</button>` : ""}
+      </span>`;
+    }
+    html += `<button class="daytab-add" data-addfilm title="一份 PPM 多支片：每路獨立 CUT 01 起跳">＋ 一路</button></div>`;
+  }
+
   for (let pg = 0; pg < pages; pg++) {
-    html += `<p class="page-label">STB · 頁 ${pg + 1} / ${pages} · A5 橫</p>`;
+    html += `<p class="page-label">STB${multi ? ` · ${esc(film?.name ?? "")}` : ""} · 頁 ${pg + 1} / ${pages} · A5 橫</p>`;
     html += `<div class="page">`;
     for (let slot = 0; slot < PER_PAGE; slot++) {
       const seq = pg * PER_PAGE + slot;
-      const cut = p.cuts[seq];
+      const cut = cuts[seq];
       if (!cut) {
         html += `<div class="cut-empty"></div>`;
         continue;
@@ -57,7 +79,23 @@ export function bindStb(
   expanded: Set<string>
 ) {
   root.addEventListener("click", (e) => {
-    const cut = (e.target as HTMLElement).closest(".cut") as HTMLElement | null;
+    const t0 = e.target as HTMLElement;
+    // 路分頁：切換／新增／刪除（當前路的名字是可編輯區，會走下面的早退不切換）
+    if (t0.closest("[data-addfilm]")) { store.addFilm(); return; }
+    const delFilm = t0.closest("[data-delfilm]") as HTMLElement | null;
+    if (delFilm) {
+      const p = store.get();
+      const f = p.films.find((x) => x.id === delFilm.dataset.delfilm);
+      const n = p.cuts.filter((c) => c.filmId === f?.id).length;
+      if (f && confirm(`刪除「${f.name}」？此路的 ${n} 顆分鏡（含 Rundown 指派）會一併刪除。`)) {
+        store.deleteFilm(f.id);
+      }
+      return;
+    }
+    const filmTab = t0.closest("[data-film]") as HTMLElement | null;
+    if (filmTab && !t0.isContentEditable) { store.setFilm(filmTab.dataset.film!); return; }
+
+    const cut = t0.closest(".cut") as HTMLElement | null;
     // ⌘點擊＝加選/取消、Shift 點擊＝連選（多選群組用），可編輯區也吃
     if (cut && (e.metaKey || e.ctrlKey)) { e.preventDefault(); store.toggleSelect(cut.dataset.id!); return; }
     if (cut && e.shiftKey && store.selectedId) { e.preventDefault(); store.selectRange(cut.dataset.id!); return; }
@@ -89,6 +127,11 @@ export function bindStb(
     (e) => {
       const el = e.target as HTMLElement;
       if (!el.isContentEditable) return;
+      // 路名改名（路分頁上的可編輯字）
+      if (el.dataset.filmname) {
+        store.renameFilm(el.dataset.filmname, (el.textContent || "").trim());
+        return;
+      }
       const id = el.dataset.id!;
       const field = el.dataset.f as "desc" | "vo" | "sup" | "shot";
       // tag 已移出可編輯區，直接取純文字

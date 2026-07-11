@@ -20,8 +20,9 @@ export function emptyProject(name = "未命名案子"): Project {
 
 // 示範案：全部使用中性示意文字（發佈給別人看時不含任何真實專案內容）。
 // 05 群組有兩個成員 → 連續鏡 05-1 / 05-2。
+// 經 normalizeProject 出場：films/filmId 等新欄位自動補齊（單路）。
 export function sampleProject(): Project {
-  return {
+  return normalizeProject({
     meta: {
       title: "示範案_品牌形象篇",
       client: "示範製作公司",
@@ -100,5 +101,5 @@ export function sampleProject(): Project {
         { id: "l1", imageRef: null, title: "場景參考（示意）", note: "採光好、材質溫潤；空間感與陳設方向示意。" },
       ],
     },
-  };
+  });
 }

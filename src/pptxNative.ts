@@ -175,7 +175,7 @@ async function refSlides(pptx: PptxGenJS, p: Project, chId: string, en: string, 
       if (side && it.cutRefs?.length) {
         const sx = MX + imgW + 0.35, sw = W - sx - MX;
         sl.addText("對照 CUT", { x: sx, y: TOP, w: sw, h: 0.26, fontFace: FONT, fontSize: 9, color: MUTED, charSpacing: 2 });
-        const numbers = computeCutNumbers(p.cuts);
+        const numbers = computeCutNumbers(p.cuts, p.films);
         const thumbs = p.cuts.filter((c) => it.cutRefs!.includes(c.id));
         const tw = 1.35, th = tw * 9 / 16;
         thumbs.forEach((c, i) => {
@@ -226,15 +226,19 @@ async function refSlides(pptx: PptxGenJS, p: Project, chId: string, en: string, 
 // ---- 分鏡（STORYBOARD）：4×2，8 顆一頁 ----
 
 function stbSlides(pptx: PptxGenJS, p: Project, en: string, zh: string) {
-  const numbers = computeCutNumbers(p.cuts);
-  const pages = Math.max(1, Math.ceil(p.cuts.length / PER_PAGE));
+  const numbers = computeCutNumbers(p.cuts, p.films);
   const cw = (W - MX * 2 - 3 * 0.22) / 4;
   const rh = (H - TOP - 0.25) / 2;
+  const multi = p.films.length > 1;
+  for (const f of p.films) { // 多路：逐路出頁，頁標帶路名
+    const cuts = p.cuts.filter((c) => c.filmId === f.id);
+    if (!cuts.length) continue;
+    const pages = Math.max(1, Math.ceil(cuts.length / PER_PAGE));
   for (let pg = 0; pg < pages; pg++) {
     const sl = pptx.addSlide();
-    header(sl, en, `${zh} · 頁 ${pg + 1}/${pages}`);
+    header(sl, en, `${zh}${multi ? ` · ${f.name}` : ""} · 頁 ${pg + 1}/${pages}`);
     for (let slot = 0; slot < PER_PAGE; slot++) {
-      const cut = p.cuts[pg * PER_PAGE + slot];
+      const cut = cuts[pg * PER_PAGE + slot];
       if (!cut) continue;
       const n = numbers.get(cut.id)!;
       const x = MX + (slot % 4) * (cw + 0.22);
@@ -265,6 +269,7 @@ function stbSlides(pptx: PptxGenJS, p: Project, en: string, zh: string) {
         ], { x, y: cy, w: cw, h: 0.2, fontFace: FONT, valign: "top", margin: 0, lineSpacingMultiple: 0.95 });
       }
     }
+  }
   }
 }
 
@@ -357,7 +362,7 @@ function callSheetSlide(pptx: PptxGenJS, p: Project, day: ShootDay, dayIdx: numb
 
 function rundownSlides(pptx: PptxGenJS, p: Project, day: ShootDay, dayIdx: number, en: string) {
   if (!day.rundown.length) return;
-  const numbers = computeCutNumbers(p.cuts);
+  const numbers = computeCutNumbers(p.cuts, p.films);
   const times = chainRundown(day.rundown, hhmmToMin(day.callTime));
   const perSlide = 4;
   for (let s = 0; s < day.rundown.length; s += perSlide) {

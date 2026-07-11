@@ -86,7 +86,7 @@ export function renderRefPage(store: Store, root: HTMLElement, chapterId: string
 // 對照 cut 區：有選就顯示縮圖列＋範圍標籤；沒選給一個「＋ 對照 cut」按鈕
 function renderCutRefs(store: Store, itemId: string, cutIds: string[]): string {
   const p = store.get();
-  const numbers = computeCutNumbers(p.cuts);
+  const numbers = computeCutNumbers(p.cuts, p.films);
   if (!cutIds.length) {
     return `<button class="ref-mini ref-cutbtn" data-refcut="${itemId}"><i>⌗</i> 對照 cut</button>`;
   }

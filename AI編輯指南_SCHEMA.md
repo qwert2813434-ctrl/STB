@@ -23,11 +23,13 @@ STB：自動重載，畫面更新 ✓
 {
   "meta": { "title": "案名", "client": "製作公司", "version": 1, "logo": null },
   "contacts": [ { "role": "製片", "name": "", "phone": "" } ],
-  "cuts": [ /* 分鏡，見下 */ ],
+  "films": [ { "id": "f1", "name": "A路 30秒" } ], // 多路腳本：一份 PPM 多支片，至少一路
+  "cuts": [ /* 分鏡，見下；每顆有 filmId 歸屬某一路，各路獨立 CUT 01 起跳 */ ],
   "days": [ /* 拍攝日（通告＋Rundown），見下 */ ],
   "milestones": [ /* 甘特圖事項，見下 */ ],
   "refPages": { /* 圖文參考章，見下 */ },
-  "hiddenChapters": []   // 這次簡報不給客戶看的章 id，例 ["actor"]
+  "hiddenChapters": [],  // 這次簡報不給客戶看的章 id，例 ["actor"]
+  "mode": "ppm"          // ppm＝完整十章；schedule＝通告排表（製片版）
 }
 ```
 
@@ -36,6 +38,7 @@ STB：自動重載，畫面更新 ✓
 ```jsonc
 {
   "id": "c1",            // 唯一字串 id；新增時用不重複的新值
+  "filmId": "f1",        // 屬於哪一路（films 的 id）；多路時編號顯示 A-01、B-01
   "groupId": "g1",       // 相同 groupId＝連續鏡群組（編號變 05-1/05-2）。
                          // ⚠️ 同群組的 cut 在陣列中必須相鄰
   "shot": "特寫",         // 景別：大景/中景/特寫＋俯拍/平拍 等自由組合

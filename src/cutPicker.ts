@@ -28,8 +28,9 @@ export function openCutPicker(store: Store, selected: string[]): Promise<string[
 
     function renderGrid() {
       const p = store.get();
-      const numbers = computeCutNumbers(p.cuts);
-      gridEl.innerHTML = p.cuts.map((c) => {
+      const numbers = computeCutNumbers(p.cuts, p.films);
+      const multi = p.films.length > 1;
+      const cell = (c: (typeof p.cuts)[number]) => {
         const n = numbers.get(c.id)!;
         const on = chosen.has(c.id) ? " on" : "";
         return `<button class="cp-cell${on}" data-cp="${c.id}">
@@ -37,6 +38,12 @@ export function openCutPicker(store: Store, selected: string[]): Promise<string[
           <span class="cp-thumb">${c.imageRef ? `<img src="${c.imageRef}" alt="">` : "16:9"}</span>
           <span class="cp-desc">${esc(c.desc || "")}</span>
         </button>`;
+      };
+      // 多路：依路分組列出（路名小標橫跨整列）
+      gridEl.innerHTML = p.films.map((f) => {
+        const cs = p.cuts.filter((c) => c.filmId === f.id);
+        if (!cs.length) return "";
+        return (multi ? `<div class="cp-filmh">${esc(f.name)}</div>` : "") + cs.map(cell).join("");
       }).join("") || `<div class="cp-empty">這個案子還沒有分鏡。<br>按左下「＋ 匯入分鏡圖」，把其他軟體輸出的分鏡圖（可多選）一次帶進來。</div>`;
     }
     renderGrid();
@@ -115,7 +122,7 @@ export function pickBoardImages(): Promise<string[]> {
 export function cutRefLabel(store: Store, cutIds: string[]): string {
   if (!cutIds.length) return "";
   const p = store.get();
-  const numbers = computeCutNumbers(p.cuts);
+  const numbers = computeCutNumbers(p.cuts, p.films);
   const labels = p.cuts.filter((c) => cutIds.includes(c.id)).map((c) => numbers.get(c.id)!.label);
   if (labels.length <= 2) return labels.map((l) => "CUT " + l).join("、");
   return `CUT ${labels[0]}–${labels[labels.length - 1]}`;
