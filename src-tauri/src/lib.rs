@@ -304,6 +304,191 @@ mod ios_share {
   }
 }
 
+// iOS 原生照片選擇器（PHPickerViewController）：iCloud 空殼問題的根治——
+// 系統選擇器自己把雲端原檔下載完才交檔案，App 拿到的永遠是完整檔。
+// 同 ios_share 走 objc2 動態呼叫；delegate 用 declare_class 宣告，
+// 檔案由 loadFileRepresentation 給（回呼結束系統即刪暫存，必須當場拷走）。
+#[cfg(target_os = "ios")]
+mod ios_photos {
+  use block2::RcBlock;
+  use objc2::rc::Id;
+  use objc2::runtime::{AnyClass, AnyObject, Bool, NSObject};
+  use objc2::{declare_class, msg_send, msg_send_id, mutability, ClassType, DeclaredClass};
+  use std::cell::RefCell;
+  use std::sync::mpsc::Sender;
+  use std::sync::{Arc, Mutex};
+
+  pub struct Ivars {
+    tx: RefCell<Option<Sender<Vec<String>>>>,
+  }
+
+  declare_class!(
+    pub struct PickerDelegate;
+
+    unsafe impl ClassType for PickerDelegate {
+      type Super = NSObject;
+      type Mutability = mutability::InteriorMutable;
+      const NAME: &'static str = "STBPickerDelegate";
+    }
+
+    impl DeclaredClass for PickerDelegate {
+      type Ivars = Ivars;
+    }
+
+    unsafe impl PickerDelegate {
+      #[method(picker:didFinishPicking:)]
+      fn did_finish(&self, picker: *mut AnyObject, results: *mut AnyObject) {
+        unsafe {
+          let nil: *mut AnyObject = std::ptr::null_mut();
+          let _: () = msg_send![picker, dismissViewControllerAnimated: Bool::YES, completion: nil];
+          let Some(tx) = self.ivars().tx.borrow_mut().take() else { return };
+          let count: usize = msg_send![results, count];
+          if count == 0 {
+            let _ = tx.send(Vec::new()); // 取消／沒選＝空清單
+            return;
+          }
+          // 本輪暫存區：每次選照片先清空重建，不讓舊檔累積
+          let out_dir = std::env::temp_dir().join("stb_picked");
+          let _ = std::fs::remove_dir_all(&out_dir);
+          let _ = std::fs::create_dir_all(&out_dir);
+          // (每格結果, 已完成數, 出口)——回呼在系統背景佇列，用鎖收攏
+          let state = Arc::new(Mutex::new((vec![None::<String>; count], 0usize, Some(tx))));
+          let finish_one = |st: &Arc<Mutex<(Vec<Option<String>>, usize, Option<Sender<Vec<String>>>)>>, i: usize, saved: Option<String>| {
+            let mut g = st.lock().unwrap();
+            g.0[i] = saved;
+            g.1 += 1;
+            if g.1 == count {
+              if let Some(tx) = g.2.take() {
+                let list: Vec<String> = g.0.iter().flatten().cloned().collect();
+                let _ = tx.send(list);
+              }
+            }
+          };
+          for i in 0..count {
+            let item: *mut AnyObject = msg_send![results, objectAtIndex: i];
+            let provider: *mut AnyObject = msg_send![item, itemProvider];
+            let type_img = ns_string("public.image");
+            let has: Bool = msg_send![provider, hasItemConformingToTypeIdentifier: type_img];
+            if provider.is_null() || !has.as_bool() {
+              finish_one(&state, i, None);
+              continue;
+            }
+            let st = state.clone();
+            let od = out_dir.clone();
+            let block = RcBlock::new(move |url: *mut AnyObject, _err: *mut AnyObject| {
+              let mut saved = None;
+              if !url.is_null() {
+                let p: *mut AnyObject = msg_send![url, path];
+                if !p.is_null() {
+                  let c: *const std::os::raw::c_char = msg_send![p, UTF8String];
+                  let src = std::ffi::CStr::from_ptr(c).to_string_lossy().to_string();
+                  let fname = std::path::Path::new(&src)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("photo.jpg");
+                  let dst = od.join(format!("{:03}_{}", i, fname));
+                  if std::fs::copy(&src, &dst).is_ok() {
+                    saved = Some(dst.to_string_lossy().to_string());
+                  }
+                }
+              }
+              let mut g = st.lock().unwrap();
+              g.0[i] = saved;
+              g.1 += 1;
+              if g.1 == count {
+                if let Some(tx) = g.2.take() {
+                  let list: Vec<String> = g.0.iter().flatten().cloned().collect();
+                  let _ = tx.send(list);
+                }
+              }
+            });
+            let _: () = msg_send![provider, loadFileRepresentationForTypeIdentifier: type_img, completionHandler: &*block];
+          }
+        }
+      }
+    }
+  );
+
+  impl PickerDelegate {
+    fn new(tx: Sender<Vec<String>>) -> Id<Self> {
+      let this = Self::alloc().set_ivars(Ivars { tx: RefCell::new(Some(tx)) });
+      unsafe { msg_send_id![super(this), init] }
+    }
+  }
+
+  unsafe fn ns_string(s: &str) -> *mut AnyObject {
+    let cls = AnyClass::get("NSString").unwrap();
+    let c = std::ffi::CString::new(s).unwrap();
+    msg_send![cls, stringWithUTF8String: c.as_ptr()]
+  }
+
+  extern "C" {
+    // delegate 是弱引用：掛到 picker 的關聯物件上保命（picker 活多久它活多久）
+    fn objc_setAssociatedObject(
+      object: *mut AnyObject,
+      key: *const std::os::raw::c_void,
+      value: *mut AnyObject,
+      policy: usize,
+    );
+  }
+  static ASSOC_KEY: u8 = 0;
+
+  pub unsafe fn present(tx: Sender<Vec<String>>, limit: usize) {
+    let Some(cfg_cls) = AnyClass::get("PHPickerConfiguration") else { return }; // 沒連 PhotosUI＝tx 落地回空
+    let cfg: *mut AnyObject = msg_send![cfg_cls, alloc];
+    let cfg: *mut AnyObject = msg_send![cfg, init];
+    let _: () = msg_send![cfg, setSelectionLimit: limit as isize]; // 0＝不限張數
+    if let Some(filter_cls) = AnyClass::get("PHPickerFilter") {
+      let img_filter: *mut AnyObject = msg_send![filter_cls, imagesFilter];
+      let _: () = msg_send![cfg, setFilter: img_filter];
+    }
+
+    let Some(picker_cls) = AnyClass::get("PHPickerViewController") else { return };
+    let picker: *mut AnyObject = msg_send![picker_cls, alloc];
+    let picker: *mut AnyObject = msg_send![picker, initWithConfiguration: cfg];
+
+    let delegate = PickerDelegate::new(tx);
+    let del_ptr = Id::as_ptr(&delegate) as *mut AnyObject;
+    objc_setAssociatedObject(picker, &ASSOC_KEY as *const u8 as *const _, del_ptr, 1); // RETAIN_NONATOMIC
+    let _: () = msg_send![picker, setDelegate: del_ptr];
+
+    let app_cls = AnyClass::get("UIApplication").unwrap();
+    let shared: *mut AnyObject = msg_send![app_cls, sharedApplication];
+    let mut window: *mut AnyObject = msg_send![shared, keyWindow];
+    if window.is_null() {
+      let windows: *mut AnyObject = msg_send![shared, windows];
+      window = msg_send![windows, firstObject];
+    }
+    if window.is_null() { return; }
+    let root: *mut AnyObject = msg_send![window, rootViewController];
+    if root.is_null() { return; }
+    let nil_done: *mut AnyObject = std::ptr::null_mut();
+    let _: () = msg_send![root, presentViewController: picker, animated: Bool::YES, completion: nil_done];
+  }
+}
+
+// 選照片（iOS）：彈原生 PHPicker → 回傳拷進暫存的檔案路徑清單。
+// limit 0＝不限張數；取消＝空清單。等待走 blocking pool，不卡 UI。
+#[tauri::command]
+async fn pick_photos(app: tauri::AppHandle, limit: usize) -> Result<Vec<String>, String> {
+  #[cfg(target_os = "ios")]
+  {
+    let (tx, rx) = std::sync::mpsc::channel::<Vec<String>>();
+    app
+      .run_on_main_thread(move || unsafe { ios_photos::present(tx, limit) })
+      .map_err(|e| e.to_string())?;
+    let paths = tauri::async_runtime::spawn_blocking(move || rx.recv().unwrap_or_default())
+      .await
+      .map_err(|e| e.to_string())?;
+    Ok(paths)
+  }
+  #[cfg(not(target_os = "ios"))]
+  {
+    let _ = (app, limit);
+    Err("原生照片選擇器僅 iOS 提供".into())
+  }
+}
+
 // 匯出的統一出口（iOS 分享面板／桌面開檔）：寫進暫存 → 交給系統
 #[tauri::command]
 fn share_export(app: tauri::AppHandle, name: String, b64: String) -> Result<(), String> {
@@ -347,7 +532,7 @@ pub fn run() {
   tauri::Builder::default()
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_opener::init())
-    .invoke_handler(tauri::generate_handler![save_project, load_project, import_asset, read_asset, read_file, save_file, open_path, video_for_embed, save_as, project_mtime, share_export, list_projects, move_dir])
+    .invoke_handler(tauri::generate_handler![save_project, load_project, import_asset, read_asset, read_file, save_file, open_path, video_for_embed, save_as, project_mtime, share_export, list_projects, move_dir, pick_photos])
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(

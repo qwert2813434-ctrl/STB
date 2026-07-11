@@ -1,5 +1,7 @@
 import type { Store } from "./store";
 import { computeCutNumbers } from "./model";
+import { invoke } from "@tauri-apps/api/core";
+import { isMobile } from "./persistence";
 
 // cut 對照選擇器：列出所有分鏡縮圖＋編號，勾選要對照的 cut，確定回傳 id 陣列。
 // 用於 REF 項目與 Rundown 時段的「對照 cutXX–cutYY」。
@@ -123,7 +125,31 @@ export function pickBoardImages(): Promise<string[]> {
 // 會在原生選擇器開著時被 GC 回收 → onchange 永遠不回來（無聲失敗）。
 // iPad 實測指紋：逐顆加圖前兩張成功、之後全滅（session 越久 GC 越勤）。
 let liveInput: HTMLInputElement | null = null;
-export function pickFiles(accept: string, multiple: boolean): Promise<File[]> {
+export async function pickFiles(accept: string, multiple: boolean): Promise<File[]> {
+  // iPad：原生 PHPicker——iCloud 原檔由「系統」下載完才交檔（空殼問題根治，
+  // 也沒有網頁 input 被 GC 的地雷）。取消＝空清單。失敗才退回網頁 input。
+  if (isMobile() && accept.startsWith("image")) {
+    const toast = document.createElement("div");
+    toast.className = "pv-toast";
+    toast.textContent = "正在準備照片…（在 iCloud 的原檔會先下載）";
+    document.body.appendChild(toast);
+    try {
+      const paths = await invoke<string[]>("pick_photos", { limit: multiple ? 0 : 1 });
+      const files: File[] = [];
+      for (const p of paths) {
+        const buf = await invoke<ArrayBuffer>("read_file", { path: p });
+        const name = p.split("/").pop() ?? "photo.jpg";
+        const ext = name.split(".").pop()?.toLowerCase() ?? "";
+        const type = ({ heic: "image/heic", heif: "image/heif", png: "image/png", gif: "image/gif", webp: "image/webp" } as Record<string, string>)[ext] ?? "image/jpeg";
+        files.push(new File([buf], name, { type }));
+      }
+      return files;
+    } catch (err) {
+      console.error("PHPicker 失敗，退回網頁選擇器", err);
+    } finally {
+      toast.remove();
+    }
+  }
   return new Promise((resolve) => {
     liveInput?.remove(); // 上一個沒回來的（iOS 取消不觸發事件）先清掉
     const input = document.createElement("input");
