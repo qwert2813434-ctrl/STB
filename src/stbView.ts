@@ -1,4 +1,5 @@
 import { bindEditKeys } from "./editKeys";
+import { bindPointerDrag } from "./pointerDrag";
 import type { Store } from "./store";
 import { computeCutNumbers, pageCount, PER_PAGE } from "./model";
 
@@ -148,46 +149,12 @@ export function bindStb(
   // 輸入框鍵盤規則（editKeys）：Enter 留在框內（中文選字友善）、Esc 結束
   bindEditKeys(root);
 
-  // 自製指標拖曳：不依賴 HTML5 DnD（WKWebView 裡不可靠——ALIGN 教訓：手勢自己擁有）。
-  // pointerdown 在 cut-head 上按住 → 位移超過門檻進入拖曳 → 指到哪張卡亮哪張 → 放開重排。
-  let pdrag: { id: string; started: boolean; sx: number; sy: number } | null = null;
-
-  const clearDragUi = () => {
-    document.body.classList.remove("dragging-any");
-    root.querySelectorAll(".dragging, .drop-target").forEach((el) => el.classList.remove("dragging", "drop-target"));
-  };
-
-  root.addEventListener("pointerdown", (e) => {
-    const head = (e.target as HTMLElement).closest(".cut-head") as HTMLElement | null;
-    const cut = head?.closest(".cut") as HTMLElement | null;
-    if (!head || !cut) return;
-    pdrag = { id: cut.dataset.id!, started: false, sx: e.clientX, sy: e.clientY };
-    try { head.setPointerCapture(e.pointerId); } catch { /* 合成事件無有效 pointerId */ }
+  // 拖曳排序（抓 cut-head）：共用指標拖曳（跟手＋彈回，見 pointerDrag.ts）
+  bindPointerDrag({
+    root,
+    handleSel: ".cut-head",
+    itemSel: ".cut",
+    idOf: (el) => el.dataset.id,
+    onDrop: (from, to) => { store.moveGroup(from, to); onChange(0); },
   });
-  root.addEventListener("pointermove", (e) => {
-    if (!pdrag) return;
-    if (!pdrag.started) {
-      if (Math.abs(e.clientX - pdrag.sx) + Math.abs(e.clientY - pdrag.sy) < 5) return;
-      pdrag.started = true;
-      root.querySelector(`.cut[data-id="${pdrag.id}"]`)?.classList.add("dragging");
-      document.body.classList.add("dragging-any");
-    }
-    e.preventDefault();
-    const over = document.elementFromPoint(e.clientX, e.clientY)?.closest(".cut") as HTMLElement | null;
-    root.querySelectorAll(".drop-target").forEach((el) => el.classList.remove("drop-target"));
-    if (over && over.dataset.id !== pdrag.id) over.classList.add("drop-target");
-  });
-  const finishDrag = (e: PointerEvent) => {
-    if (!pdrag) return;
-    const was = pdrag;
-    pdrag = null;
-    const over = document.elementFromPoint(e.clientX, e.clientY)?.closest(".cut") as HTMLElement | null;
-    clearDragUi();
-    if (was.started && over && over.dataset.id !== was.id) {
-      store.moveGroup(was.id, over.dataset.id!);
-      onChange(0);
-    }
-  };
-  root.addEventListener("pointerup", finishDrag);
-  root.addEventListener("pointercancel", () => { pdrag = null; clearDragUi(); });
 }

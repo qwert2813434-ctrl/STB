@@ -1,4 +1,5 @@
 import { bindEditKeys } from "./editKeys";
+import { bindPointerDrag } from "./pointerDrag";
 import type { Store } from "./store";
 import { chainRundown, hhmmToMin, minToHHMM } from "./model";
 
@@ -76,44 +77,14 @@ export function bindCallSheet(store: Store, root: HTMLElement) {
   }, true);
   bindEditKeys(root); // Enter 留在框內（中文選字友善）、Esc 結束輸入
 
-  // 大組通告列拖曳置換（⠿ 把手，自製指標手勢，同 Rundown）
-  let gdrag: { idx: number; started: boolean; sx: number; sy: number } | null = null;
-  const clearDragUi = () => {
-    document.body.classList.remove("dragging-any");
-    root.querySelectorAll(".dragging, .drop-target").forEach((el) => el.classList.remove("dragging", "drop-target"));
-  };
-  root.addEventListener("pointerdown", (e) => {
-    const grip = (e.target as HTMLElement).closest(".cs-grip") as HTMLElement | null;
-    if (!grip) return;
-    gdrag = { idx: Number(grip.dataset.cgrip), started: false, sx: e.clientX, sy: e.clientY };
-    try { grip.setPointerCapture(e.pointerId); } catch { /* 合成事件 */ }
+  // 大組通告列拖曳置換（⠿ 把手）：共用指標拖曳（跟手＋彈回，見 pointerDrag.ts）
+  bindPointerDrag({
+    root,
+    handleSel: ".cs-grip",
+    itemSel: ".cs-grow",
+    idOf: (el) => el.dataset.cgrow,
+    onDrop: (from, to) => store.moveCallGroup(Number(from), Number(to)),
   });
-  root.addEventListener("pointermove", (e) => {
-    if (!gdrag) return;
-    if (!gdrag.started) {
-      if (Math.abs(e.clientX - gdrag.sx) + Math.abs(e.clientY - gdrag.sy) < 5) return;
-      gdrag.started = true;
-      root.querySelector(`.cs-grow[data-cgrow="${gdrag.idx}"]`)?.classList.add("dragging");
-      document.body.classList.add("dragging-any");
-    }
-    e.preventDefault();
-    const over = document.elementFromPoint(e.clientX, e.clientY)?.closest(".cs-grow") as HTMLElement | null;
-    root.querySelectorAll(".drop-target").forEach((el) => el.classList.remove("drop-target"));
-    if (over && Number(over.dataset.cgrow) !== gdrag.idx) over.classList.add("drop-target");
-  });
-  const finishDrag = (e: PointerEvent) => {
-    if (!gdrag) return;
-    const was = gdrag;
-    gdrag = null;
-    const over = document.elementFromPoint(e.clientX, e.clientY)?.closest(".cs-grow") as HTMLElement | null;
-    clearDragUi();
-    if (was.started && over) {
-      const dst = Number(over.dataset.cgrow);
-      if (dst !== was.idx) store.moveCallGroup(was.idx, dst);
-    }
-  };
-  root.addEventListener("pointerup", finishDrag);
-  root.addEventListener("pointercancel", () => { gdrag = null; clearDragUi(); });
 }
 
 function esc(s: string): string {

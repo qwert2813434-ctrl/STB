@@ -120,7 +120,6 @@ button:active { transform: scale(.98); }
 .cut-grip:active { cursor: grabbing; }
 .cut:hover { border-color: var(--ink); }
 .cut.sel { border-color: var(--ink); }
-.cut.dragging { opacity: .4; }
 .cut.grouped { border-left: 3px solid var(--faint); }
 
 .cut-head {
@@ -398,7 +397,6 @@ button:active { transform: scale(.98); }
 .cs-glist { display: grid; grid-template-columns: 1fr 1fr; gap: 0 30px; align-items: start; }
 .cs-grip { cursor: grab; color: var(--faint); font-size: 12px; user-select: none; touch-action: none; flex: none; }
 .cs-grip:active { cursor: grabbing; }
-.cs-grow.dragging { opacity: .4; }
 .cs-grow.drop-target { box-shadow: 0 -2px 0 var(--ink); }
 
 /* 拖曳手感 + 分鏡圖 */
@@ -414,7 +412,6 @@ body.dragging-any { user-select: none; cursor: grabbing; }
 .cut-thumb:hover .thumb-add { color: var(--ink2); }
 .rd-grip { cursor: grab; color: var(--faint); font-size: 12px; user-select: none; align-self: center; }
 .rd-grip:active { cursor: grabbing; }
-.rd-row.dragging { opacity: .4; }
 .rd-row.drop-target { box-shadow: 0 -2px 0 var(--ink); }
 .rd-cut-box { overflow: hidden; }
 .rd-cut-box img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -769,6 +766,14 @@ body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none
   position: relative; z-index: 5;
   background: var(--card);
   border-radius: 10px;
+}
+/* 跟手中的卡片：不吃指標事件（elementFromPoint 才看得到底下的落點）；
+   transform 不做過渡——跟手不能拖泥帶水（彈回動畫由 pointerDrag 用
+   inline transition 蓋回來） */
+.cut.dragging, .rd-row.dragging, .cs-grow.dragging {
+  pointer-events: none;
+  transition: box-shadow .12s, opacity .12s;
+  z-index: 40;
 }
 /* 目標位置：明確的落點指示 */
 .cut.drop-target { border-color: var(--ink); box-shadow: -4px 0 0 var(--ink), 0 4px 16px rgba(0,0,0,.12); }

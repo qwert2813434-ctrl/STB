@@ -1,4 +1,5 @@
 import { bindEditKeys } from "./editKeys";
+import { bindPointerDrag } from "./pointerDrag";
 import type { Store } from "./store";
 import { computeCutNumbers, chainRundown, hhmmToMin, minToHHMM } from "./model";
 import { openCutPicker, fileToWorkingImage, pickFiles } from "./cutPicker";
@@ -104,50 +105,17 @@ export function bindRundown(store: Store, root: HTMLElement) {
   }, true);
   bindEditKeys(root); // Enter 留在框內（中文選字友善）、Esc 結束輸入
 
-  // 區塊拖曳排序（抓 ⠿ 把手）：自製指標手勢（同 STB，不用 HTML5 DnD），
-  // 放開後時間鏈由 chainRundown 重算
-  let pdrag: { id: string; started: boolean; sx: number; sy: number } | null = null;
-
-  const clearDragUi = () => {
-    document.body.classList.remove("dragging-any");
-    root.querySelectorAll(".dragging, .drop-target").forEach((el) => el.classList.remove("dragging", "drop-target"));
-  };
-
-  root.addEventListener("pointerdown", (e) => {
-    // 把手＝⠿＋時間欄（時間是機器算的不可編輯，正好當大面積拖曳區——
-    // iPad 實測：⠿ 太小，手指落在時間上會觸發 iOS 選字）
-    const grip = (e.target as HTMLElement).closest(".rd-grip, .rd-time") as HTMLElement | null;
-    if (!grip) return;
-    const row = grip.closest(".rd-row") as HTMLElement | null;
-    if (!row?.dataset.block) return;
-    pdrag = { id: row.dataset.block, started: false, sx: e.clientX, sy: e.clientY };
-    try { grip.setPointerCapture(e.pointerId); } catch { /* 合成事件無有效 pointerId */ }
+  // 區塊拖曳排序：共用指標拖曳（跟手＋彈回，見 pointerDrag.ts）。
+  // 把手＝⠿＋時間欄（時間是機器算的不可編輯，正好當大面積拖曳區——
+  // iPad 實測：⠿ 太小，手指落在時間上會觸發 iOS 選字）。
+  // 放開後時間鏈由 chainRundown 重算。
+  bindPointerDrag({
+    root,
+    handleSel: ".rd-grip, .rd-time",
+    itemSel: ".rd-row",
+    idOf: (el) => el.dataset.block,
+    onDrop: (from, to) => store.moveBlock(from, to),
   });
-  root.addEventListener("pointermove", (e) => {
-    if (!pdrag) return;
-    if (!pdrag.started) {
-      if (Math.abs(e.clientX - pdrag.sx) + Math.abs(e.clientY - pdrag.sy) < 5) return;
-      pdrag.started = true;
-      root.querySelector(`.rd-row[data-block="${pdrag.id}"]`)?.classList.add("dragging");
-      document.body.classList.add("dragging-any");
-    }
-    e.preventDefault();
-    const over = document.elementFromPoint(e.clientX, e.clientY)?.closest(".rd-row") as HTMLElement | null;
-    root.querySelectorAll(".drop-target").forEach((el) => el.classList.remove("drop-target"));
-    if (over && over.dataset.block !== pdrag.id) over.classList.add("drop-target");
-  });
-  const finishDrag = (e: PointerEvent) => {
-    if (!pdrag) return;
-    const was = pdrag;
-    pdrag = null;
-    const over = document.elementFromPoint(e.clientX, e.clientY)?.closest(".rd-row") as HTMLElement | null;
-    clearDragUi();
-    if (was.started && over && over.dataset.block !== was.id) {
-      store.moveBlock(was.id, over.dataset.block!);
-    }
-  };
-  root.addEventListener("pointerup", finishDrag);
-  root.addEventListener("pointercancel", () => { pdrag = null; clearDragUi(); });
 }
 
 async function pickParkImage(store: Store, blockId: string) {
