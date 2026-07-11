@@ -2,6 +2,7 @@ import { getStroke } from "perfect-freehand";
 import type { Store } from "./store";
 import type { CutSketch, SketchStroke } from "./model";
 import { pickFiles, fileToWorkingImage } from "./cutPicker";
+import { bindUndoGestures } from "./touchUndo";
 
 // 塗鴉分鏡編輯器（04 企劃⑤，技術路線 A：web canvas＋Pointer Events）。
 // 定位：不跟分鏡師比質感——跟「沒有分鏡」比清楚。溝通工具，不是繪畫 App。
@@ -32,6 +33,7 @@ export function openSketchEditor(store: Store, cutId: string) {
   // 聰明預設：空白＝先畫場景（構圖）；已有場景＝進來多半是改人物
   let layer: "scene" | "figure" = work.scene.length ? "figure" : "scene";
   const undoStack: CutSketch[] = [];
+  const redoStack: CutSketch[] = [];
   let drawing: number[][] | null = null; // 進行中的筆畫
   let erasing = false;
   let erasedAny = false;
@@ -49,13 +51,14 @@ export function openSketchEditor(store: Store, cutId: string) {
         <button data-skunder title="勘景照半透明墊底沿描——不會畫畫也能構圖正確；輸出的塗鴉不含墊底"></button>
         <span class="spacer"></span>
         <button data-skundo>復原</button>
+        <button data-skredo>重做</button>
         <button data-skclear>清除本層</button>
         <span class="sk-sep"></span>
         <button class="sk-cancel">取消</button>
         <button class="sk-ok">完成</button>
       </div>
       <div class="sk-stage"><canvas class="sk-canvas" width="${W}" height="${H}"></canvas></div>
-      <div class="sk-hint">Apple Pencil／滑鼠作畫，手指不會誤觸 · 橡皮擦＝擦到哪消到哪（只擦目前圖層） · 完成＝存進分鏡格，之後點縮圖可回來繼續改</div>
+      <div class="sk-hint">Apple Pencil／滑鼠作畫，手指不會誤觸 · <b>雙指輕點＝復原、三指輕點＝重做</b> · 橡皮擦＝擦到哪消到哪（只擦目前圖層） · 完成＝存進分鏡格，之後點縮圖可回來繼續改</div>
     </div>`;
   document.body.appendChild(overlay);
   const canvas = overlay.querySelector(".sk-canvas") as HTMLCanvasElement;
@@ -131,7 +134,21 @@ export function openSketchEditor(store: Store, cutId: string) {
   const pushUndo = () => {
     undoStack.push(structuredClone(work));
     if (undoStack.length > 50) undoStack.shift();
+    redoStack.length = 0; // 新動作＝重做線斷掉
   };
+  // 復原/重做共用：從一疊拿快照、現況推進另一疊（墊底變動一併跟上）
+  const applySnapshot = (from: CutSketch[], to: CutSketch[]) => {
+    const s = from.pop();
+    if (!s) return;
+    to.push(structuredClone(work));
+    const underlayChanged = s.underlay !== work.underlay;
+    work = s;
+    if (underlayChanged) loadUnderlay();
+    syncBar();
+    render();
+  };
+  const doUndo = () => applySnapshot(undoStack, redoStack);
+  const doRedo = () => applySnapshot(redoStack, undoStack);
 
   // ---- 指標 → 畫布座標 ----
   // 十字靶診斷（2026-07-12 Armin 截圖）定案：WKWebView 在整頁 zoom 下，
@@ -253,16 +270,8 @@ export function openSketchEditor(store: Store, cutId: string) {
       }
       return;
     }
-    if (t.closest("[data-skundo]")) {
-      const prev = undoStack.pop();
-      if (prev) {
-        const underlayChanged = prev.underlay !== work.underlay;
-        work = prev;
-        if (underlayChanged) { loadUnderlay(); syncBar(); }
-        render();
-      }
-      return;
-    }
+    if (t.closest("[data-skundo]")) { doUndo(); return; }
+    if (t.closest("[data-skredo]")) { doRedo(); return; }
     if (t.closest("[data-skclear]")) {
       if (!work[layer].length) return;
       pushUndo();
@@ -309,11 +318,17 @@ export function openSketchEditor(store: Store, cutId: string) {
     if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); return; }
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
       e.preventDefault(); e.stopPropagation();
-      const prev = undoStack.pop();
-      if (prev) { work = prev; render(); }
+      if (e.shiftKey) doRedo(); else doUndo();
     }
   }
   document.addEventListener("keydown", onKey, true);
+
+  // iPadOS 通用手勢：雙指輕點＝復原、三指輕點＝重做（畫到一半不觸發）
+  bindUndoGestures(overlay, {
+    onUndo: doUndo,
+    onRedo: doRedo,
+    enabled: () => !drawing && !erasing,
+  });
 
   syncBar();
   loadUnderlay();

@@ -17,6 +17,7 @@ import { projectLogo } from "./logoAsset";
 import { openHelp } from "./helpDialog";
 import { openHub } from "./hubDialog";
 import { openSketchEditor } from "./sketchEditor";
+import { bindUndoGestures } from "./touchUndo";
 import { pickBoardImages, fileToWorkingImage, pickFiles } from "./cutPicker";
 import { openBlockPicker } from "./assignDialog";
 
@@ -656,5 +657,15 @@ bindRefPage(store, refpageArea, () => store.currentChapter, renderAll);
 document.getElementById("btn-preview")!.addEventListener("click", () => openPreview(store));
 document.getElementById("btn-print")!.addEventListener("click", () => void openExportDialog(store));
 document.getElementById("btn-help")!.addEventListener("click", openHelp);
+// iPad 全 App 復原/重做：雙指輕點＝上一步、三指輕點＝下一步
+//（iPadOS 通用手勢；Mac 仍是 ⌘Z／⇧⌘Z）。對話框開著或正在打字時讓位。
+bindUndoGestures(document, {
+  onUndo: () => store.undo(),
+  onRedo: () => store.redo(),
+  enabled: () =>
+    !document.querySelector('[class*="overlay"]') &&
+    !(document.activeElement as HTMLElement | null)?.isContentEditable,
+});
+
 store.subscribe(renderAll);
 renderAll();
