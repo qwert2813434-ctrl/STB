@@ -63,6 +63,9 @@ targets:
         # 1,2＝iPhone＋iPad 原生。不設＝預設 iPhone-only → iPad 上跑「相容小視窗」
         # （置中黑邊＋右下放大鈕、iPhone 解析度放大＝糊、iPhone 記憶體上限＝大圖解碼失敗）
         TARGETED_DEVICE_FAMILY: "1,2"
+        # 指定 App 圖示：缺這行 actool 不會把 AppIcon.appiconset 編進 bundle
+        # （實測：包裡完全沒 icon、主畫面永遠預設圖）
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_BITCODE: false
         ARCHS: [arm64]
         VALID_ARCHS: arm64 
