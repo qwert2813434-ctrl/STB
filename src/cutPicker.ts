@@ -98,6 +98,8 @@ export function pickBoardImages(): Promise<string[]> {
         const r = await fileToBoard(f);
         if (typeof r === "string") out.push(r);
         else failed.push(`${f.name}（${(f.size / 1048576).toFixed(1)}MB${r.dims ? `・${r.dims}` : ""}・${r.why}）`);
+        // 呼吸間隔：讓 iOS 有空回收上一張的解碼緩衝（批次 10 張連轟會耗盡）
+        await new Promise((r2) => setTimeout(r2, 80));
       }
       // 失敗不再無聲，且分清原因（iPad 實測：iCloud 最佳化儲存＝原檔在雲端，
       // 挑選當下還沒下載完就會拿到空殼——Armin 抓到的根因）
@@ -122,55 +124,82 @@ export function pickBoardImages(): Promise<string[]> {
 // 首選 createImageBitmap＋resize：WebKit 邊解碼邊縮圖——手機原檔（HEIC、
 // 48MP）不會撐爆 WebView 記憶體/解碼上限（iPad 實測「部分照片永遠失敗」的根因）；
 // 舊環境退回 FileReader＋<img> 路徑。
+// 全 App 共用的一塊工作畫布：iOS 對 canvas 有「總預算」而且回收慢——
+// 就算每次用完歸零，連續大量開新畫布仍會耗盡（iPad 實測：批次 10 張第一輪
+// 掉 1 張、第二輪全滅）。固定重用同一塊＝預算恆定，永不累積。
+let workCanvas: HTMLCanvasElement | null = null;
+function getWorkCanvas(w: number, h: number): { c: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
+  if (!workCanvas) workCanvas = document.createElement("canvas");
+  workCanvas.width = w;   // 重設尺寸同時清空內容
+  workCanvas.height = h;
+  return { c: workCanvas, ctx: workCanvas.getContext("2d")! };
+}
+
+// 解碼一張使用者的照片（HEIC/48MP/全景都可能）→ 回傳可畫的來源與尺寸。
+// 順序：createImageBitmap＋resize（邊解邊縮最省）→ <img>（WebKit 內建
+// 影像快取，同一張重複匯入會命中快取）→ createImageBitmap 原尺寸。
+async function decodePhoto(f: File): Promise<{ src: CanvasImageSource; w: number; h: number; cleanup: () => void } | { why: string }> {
+  let lastErr = "";
+  try {
+    const bmp = await createImageBitmap(f, { resizeWidth: 1920, resizeQuality: "high" });
+    return { src: bmp, w: bmp.width, h: bmp.height, cleanup: () => bmp.close() };
+  } catch (e) { lastErr = String((e as Error)?.message ?? e); }
+  const url = URL.createObjectURL(f);
+  const img = await new Promise<HTMLImageElement | null>((res) => {
+    const im = new Image();
+    im.onload = () => res(im);
+    im.onerror = () => res(null);
+    im.src = url;
+  });
+  if (img) {
+    return { src: img, w: img.naturalWidth, h: img.naturalHeight, cleanup: () => { img.src = ""; URL.revokeObjectURL(url); } };
+  }
+  URL.revokeObjectURL(url);
+  try {
+    const bmp = await createImageBitmap(f);
+    return { src: bmp, w: bmp.width, h: bmp.height, cleanup: () => bmp.close() };
+  } catch (e) { lastErr = String((e as Error)?.message ?? e); }
+  return { why: `無法解碼（${lastErr || "格式不支援"}）` };
+}
+
 async function fileToBoard(f: File): Promise<string | { why: string; dims?: string }> {
-  const draw = (w: number, h: number, src: CanvasImageSource): string | null => {
-    const c = document.createElement("canvas");
-    c.width = 1280; c.height = 720;
-    const ctx = c.getContext("2d")!;
-    const k = Math.max(1280 / w, 720 / h); // cover 置中
-    ctx.drawImage(src, (1280 - w * k) / 2, (720 - h * k) / 2, w * k, h * k);
+  const d = await decodePhoto(f);
+  if ("why" in d) return d;
+  try {
+    const { ctx } = getWorkCanvas(1280, 720);
+    const k = Math.max(1280 / d.w, 720 / d.h); // cover 置中
+    ctx.drawImage(d.src, (1280 - d.w * k) / 2, (720 - d.h * k) / 2, d.w * k, d.h * k);
     // iOS 超限來源會「無聲畫成空白」：抽樣中心像素驗證真的有畫上去
     const px = ctx.getImageData(600, 340, 80, 40).data;
     let sum = 0;
-    for (let i = 3; i < px.length; i += 4) sum += px[i]; // alpha
-    const dataUrl = sum > 0 ? c.toDataURL("image/jpeg", 0.85) : null;
-    c.width = c.height = 0; // iOS：畫布用完立刻歸零釋放（總預算有限，等 GC 會爆＝連匯幾次後全滅的根因）
-    return dataUrl;
-  };
-  let lastErr = "";
-  // 1) createImageBitmap＋resize（邊解邊縮，最省記憶體）
-  try {
-    const bmp = await createImageBitmap(f, { resizeWidth: 1920, resizeQuality: "high" });
-    const d = draw(bmp.width, bmp.height, bmp);
-    bmp.close();
-    if (d) return d;
-    lastErr = "縮圖後畫布為空";
-  } catch (e) { lastErr = String((e as Error)?.message ?? e); }
-  // 2) createImageBitmap 原尺寸
-  try {
-    const bmp = await createImageBitmap(f);
-    const d = draw(bmp.width, bmp.height, bmp);
-    const dims = `${bmp.width}×${bmp.height}`;
-    bmp.close();
-    if (d) return d;
-    return { why: "超過繪圖上限（畫布為空）", dims };
-  } catch (e) { lastErr = String((e as Error)?.message ?? e); }
-  // 3) 備援：<img>（objectURL 比 dataURL 省一份記憶體）
-  const url = URL.createObjectURL(f);
-  try {
-    const img = await new Promise<HTMLImageElement | null>((res) => {
-      const im = new Image();
-      im.onload = () => res(im);
-      im.onerror = () => res(null);
-      im.src = url;
-    });
-    if (!img) return { why: `無法解碼（${lastErr || "格式不支援"}）` };
-    const d = draw(img.naturalWidth, img.naturalHeight, img);
-    const dims = `${img.naturalWidth}×${img.naturalHeight}`;
-    if (d) return d;
-    return { why: "超過繪圖上限（畫布為空）", dims };
+    for (let i = 3; i < px.length; i += 4) sum += px[i];
+    if (sum === 0) return { why: "超過繪圖上限（畫布為空）", dims: `${d.w}×${d.h}` };
+    return workCanvas!.toDataURL("image/jpeg", 0.85);
   } finally {
-    URL.revokeObjectURL(url);
+    d.cleanup();
+  }
+}
+
+// 單張照片 → 縮小後的「工作圖」（最長邊 maxEdge）——給裁切器用。
+// 逐顆 cut 加圖的舊路是把 48MP 原檔整張餵進裁切器（iPad 連加幾顆就把
+// 解碼資源吃光＝A路 cut3 後全滅的根因）；統一先縮再裁，裁切體驗不變。
+export async function fileToWorkingImage(f: File, maxEdge = 2000): Promise<string | null> {
+  if (f.size === 0) return null; // iCloud 空殼
+  const d = await decodePhoto(f);
+  if ("why" in d) return null;
+  try {
+    const k = Math.min(1, maxEdge / Math.max(d.w, d.h));
+    const w = Math.max(1, Math.round(d.w * k));
+    const h = Math.max(1, Math.round(d.h * k));
+    const { ctx } = getWorkCanvas(w, h);
+    ctx.drawImage(d.src, 0, 0, w, h);
+    const px = ctx.getImageData(Math.floor(w / 2) - 8, Math.floor(h / 2) - 8, 16, 16).data;
+    let sum = 0;
+    for (let i = 3; i < px.length; i += 4) sum += px[i];
+    if (sum === 0) return null;
+    return workCanvas!.toDataURL("image/jpeg", 0.9);
+  } finally {
+    d.cleanup();
   }
 }
 

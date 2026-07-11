@@ -1,3 +1,4 @@
+import { fileToWorkingImage } from "./cutPicker";
 // 共用圖片編輯器：裁切（拖曳定位）＋區塊內縮放（滑桿）＋一鍵黑白＋換一張圖。
 // 固定比例取景框（16:9 或 9:16），套用時用 canvas 輸出。
 // 沿用 ALIGN 教訓：等比例置中起始、位移夾限（圖永遠蓋滿框）、無效值防呆。
@@ -98,26 +99,25 @@ function mount(img0: HTMLImageElement, dataUrl0: string, aspect: number, resolve
       const input = document.createElement("input");
       input.type = "file";
       input.accept = "image/*";
-      input.onchange = () => {
+      input.onchange = async () => {
         const f = input.files?.[0];
         if (!f) return;
-        const r = new FileReader();
-        r.onload = () => {
-          const nimg = new Image();
-          nimg.onload = () => {
-            if (!nimg.naturalWidth) return;
-            img = nimg;
-            iw = nimg.naturalWidth; ih = nimg.naturalHeight;
-            baseScale = Math.max(vw / iw, vh / ih);
-            zoom = 1; zoomEl.value = "100";
-            tx = (vw - iw * baseScale) / 2;
-            ty = (vh - ih * baseScale) / 2;
-            imgEl.src = r.result as string;
-            clampAndPaint();
-          };
-          nimg.src = r.result as string;
+        // 先縮成工作圖再換上（iPad：原檔直餵會耗盡解碼資源）
+        const url = await fileToWorkingImage(f);
+        if (!url) { alert("這張照片讀不進來——若原檔還在 iCloud，等幾秒再試一次。"); return; }
+        const nimg = new Image();
+        nimg.onload = () => {
+          if (!nimg.naturalWidth) return;
+          img = nimg;
+          iw = nimg.naturalWidth; ih = nimg.naturalHeight;
+          baseScale = Math.max(vw / iw, vh / ih);
+          zoom = 1; zoomEl.value = "100";
+          tx = (vw - iw * baseScale) / 2;
+          ty = (vh - ih * baseScale) / 2;
+          imgEl.src = url;
+          clampAndPaint();
         };
-        r.readAsDataURL(f);
+        nimg.src = url;
       };
       input.click();
     });

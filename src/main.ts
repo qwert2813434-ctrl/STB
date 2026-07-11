@@ -16,7 +16,7 @@ import { isTauri, currentDir, dirName, chooseFolderAndLoad, createProjectFolder,
 import { projectLogo } from "./logoAsset";
 import { openHelp } from "./helpDialog";
 import { openHub } from "./hubDialog";
-import { pickBoardImages } from "./cutPicker";
+import { pickBoardImages, fileToWorkingImage } from "./cutPicker";
 import { openBlockPicker } from "./assignDialog";
 
 // iPad／觸控裝置：桌面版型用 zoom 等比縮到螢幕寬——zoom 以裝置原生解析度
@@ -247,15 +247,14 @@ async function pickImage(cutId: string) {
   const input = document.createElement("input");
   input.type = "file";
   input.accept = "image/*";
-  input.onchange = () => {
+  input.onchange = async () => {
     const file = input.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const cropped = await openCropper(reader.result as string, 16 / 9, { allowReplace: true });
-      if (cropped) store.setImage(cutId, cropped);
-    };
-    reader.readAsDataURL(file);
+    // 先縮成工作圖再進裁切器（原檔 48MP 直餵會耗盡 iPad 解碼資源）
+    const url = await fileToWorkingImage(file);
+    if (!url) { alert("這張照片讀不進來——若原檔還在 iCloud，等幾秒再試一次；全景/超大圖請先裁切。"); return; }
+    const cropped = await openCropper(url, 16 / 9, { allowReplace: true });
+    if (cropped) store.setImage(cutId, cropped);
   };
   input.click();
 }
