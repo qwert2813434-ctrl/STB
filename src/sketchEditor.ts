@@ -1,6 +1,7 @@
 import { getStroke } from "perfect-freehand";
 import type { Store } from "./store";
 import type { CutSketch, SketchStroke } from "./model";
+import { pickFiles, fileToWorkingImage } from "./cutPicker";
 
 // 塗鴉分鏡編輯器（04 企劃⑤，技術路線 A：web canvas＋Pointer Events）。
 // 定位：不跟分鏡師比質感——跟「沒有分鏡」比清楚。溝通工具，不是繪畫 App。
@@ -16,12 +17,17 @@ export function openSketchEditor(store: Store, cutId: string) {
   const cut = store.get().cuts.find((c) => c.id === cutId);
   if (!cut) return;
   if (document.querySelector(".sk-overlay")) return;
-  // 已有照片、還沒有筆跡：完成後塗鴉會取代照片——先講清楚
+  // 已有照片、還沒有筆跡：照片自動變半透明「墊底」沿描（不會消失，
+  // 收在筆跡資料裡；輸出＝純塗鴉。不想描就取消，照片原封不動）
   if (cut.imageRef && !cut.sketch) {
-    if (!confirm("這格已有分鏡圖。塗鴉完成後會以塗鴉取代現有圖片。繼續？")) return;
+    if (!confirm("這格已有照片。開塗鴉會把照片當「半透明墊底」讓你沿描——完成後這格顯示塗鴉（照片收在筆跡裡，可隨時回編輯器）。繼續？")) return;
   }
 
   let work: CutSketch = cut.sketch ? structuredClone(cut.sketch) : { scene: [], figure: [] };
+  // 照片格開塗鴉＝拿照片當半透明墊底沿描（勘景照描圖，04 企劃核心）——
+  // 照片收進 sketch.underlay，不會消失；輸出壓平不含墊底
+  if (cut.imageRef && !cut.sketch) work.underlay = cut.imageRef;
+  let underlayImg: HTMLImageElement | null = null; // 墊底的解碼快取
   let tool: "pen" | "marker" | "eraser" = "pen";
   // 聰明預設：空白＝先畫場景（構圖）；已有場景＝進來多半是改人物
   let layer: "scene" | "figure" = work.scene.length ? "figure" : "scene";
@@ -40,6 +46,7 @@ export function openSketchEditor(store: Store, cutId: string) {
         <button data-sktool="eraser">橡皮擦</button>
         <span class="sk-sep"></span>
         <button data-sklayer title="兩層固定圖層：場景畫構圖、人物畫表演與運鏡——之後複製 cut 只重畫人物層">正在畫：<b></b></button>
+        <button data-skunder title="勘景照半透明墊底沿描——不會畫畫也能構圖正確；輸出的塗鴉不含墊底"></button>
         <span class="spacer"></span>
         <button data-skundo>復原</button>
         <button data-skclear>清除本層</button>
@@ -74,12 +81,21 @@ export function openSketchEditor(store: Store, cutId: string) {
     return p;
   }
 
-  function paintInto(cx: CanvasRenderingContext2D, dimInactive: boolean) {
+  // editorMode＝編輯畫面（顯示墊底、非作用層打淡）；false＝輸出壓平（純塗鴉）
+  function paintInto(cx: CanvasRenderingContext2D, editorMode: boolean) {
     cx.fillStyle = "#ffffff";
     cx.fillRect(0, 0, W, H);
+    if (editorMode && underlayImg) {
+      // 墊底 45% 沿描；cover 置中不變形
+      const iw = underlayImg.naturalWidth || W, ih = underlayImg.naturalHeight || H;
+      const s = Math.max(W / iw, H / ih);
+      cx.globalAlpha = 0.45;
+      cx.drawImage(underlayImg, (W - iw * s) / 2, (H - ih * s) / 2, iw * s, ih * s);
+      cx.globalAlpha = 1;
+    }
     cx.fillStyle = "#141311";
     for (const which of ["scene", "figure"] as const) {
-      const dim = dimInactive && which !== layer ? 0.4 : 1;
+      const dim = editorMode && which !== layer ? 0.4 : 1;
       for (const s of work[which]) {
         cx.globalAlpha = (s.tool === "marker" ? 0.32 : 1) * dim;
         cx.fill(strokePath(s));
@@ -101,6 +117,15 @@ export function openSketchEditor(store: Store, cutId: string) {
     overlay.querySelectorAll("[data-sktool]").forEach((b) => b.classList.toggle("on", (b as HTMLElement).dataset.sktool === tool));
     layerLabel.textContent = layer === "scene" ? "場景" : "人物";
     (overlay.querySelector("[data-sklayer]") as HTMLElement).classList.toggle("sk-fig", layer === "figure");
+    (overlay.querySelector("[data-skunder]") as HTMLElement).textContent = work.underlay ? "✕ 移除墊底" : "＋ 墊底照片";
+  };
+
+  // 墊底解碼（快取一張 <img>；underlay 變動後呼叫）
+  const loadUnderlay = () => {
+    if (!work.underlay) { underlayImg = null; render(); return; }
+    const img = new Image();
+    img.onload = () => { underlayImg = img; render(); };
+    img.src = work.underlay;
   };
 
   const pushUndo = () => {
@@ -193,10 +218,14 @@ export function openSketchEditor(store: Store, cutId: string) {
   // 不丟棄（丟棄＝手掌一放筆畫整段蒸發，Armin 平放 iPad 實測的失效感）
   canvas.addEventListener("pointercancel", finishStroke);
 
-  // 真・防手掌：手掌壓在畫布上時，擋掉 WebKit 拿這個觸點去做原生手勢
-  // （捲動/縮放）——不擋的話系統手勢一啟動就會 cancel 掉筆的事件流
-  canvas.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
-  canvas.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
+  // 真・防手掌：手掌壓在編輯器任何地方（畫布＋周邊面板）都擋掉 WebKit
+  // 拿觸點做原生手勢——系統手勢一啟動就會 cancel 掉筆的事件流。
+  // 小觸點（小拇指側）系統不會自動當手掌，全靠這裡。工具列除外（按鈕要能點）。
+  const palmGuard = (e: TouchEvent) => {
+    if (!(e.target as HTMLElement).closest(".sk-bar")) e.preventDefault();
+  };
+  overlay.addEventListener("touchstart", palmGuard, { passive: false });
+  overlay.addEventListener("touchmove", palmGuard, { passive: false });
 
   // ---- 工具列 ----
   overlay.addEventListener("click", (e) => {
@@ -204,9 +233,34 @@ export function openSketchEditor(store: Store, cutId: string) {
     const tb = t.closest("[data-sktool]") as HTMLElement | null;
     if (tb) { tool = tb.dataset.sktool as typeof tool; syncBar(); return; }
     if (t.closest("[data-sklayer]")) { layer = layer === "scene" ? "figure" : "scene"; syncBar(); render(); return; }
+    if (t.closest("[data-skunder]")) {
+      if (work.underlay) {
+        pushUndo();
+        work.underlay = null;
+        underlayImg = null;
+        syncBar();
+        render();
+      } else {
+        void pickFiles("image/*", false).then(async ([f]) => {
+          if (!f) return;
+          const url = await fileToWorkingImage(f, 1280); // 縮到 1280 寬（墊底不用原檔）
+          if (!url) { alert("這張照片讀不進來——若原檔還在 iCloud，等幾秒再試一次。"); return; }
+          pushUndo();
+          work.underlay = url;
+          loadUnderlay();
+          syncBar();
+        });
+      }
+      return;
+    }
     if (t.closest("[data-skundo]")) {
       const prev = undoStack.pop();
-      if (prev) { work = prev; render(); }
+      if (prev) {
+        const underlayChanged = prev.underlay !== work.underlay;
+        work = prev;
+        if (underlayChanged) { loadUnderlay(); syncBar(); }
+        render();
+      }
       return;
     }
     if (t.closest("[data-skclear]")) {
@@ -226,9 +280,8 @@ export function openSketchEditor(store: Store, cutId: string) {
     c.width = W; c.height = H;
     const cx = c.getContext("2d")!;
     const keep = drawing; drawing = null;
-    const dim = layer; layer = "scene"; // 壓平不分層、不打淡
-    paintInto(cx, false);
-    layer = dim; drawing = keep;
+    paintInto(cx, false); // 壓平＝純塗鴉：不含墊底、不打淡
+    drawing = keep;
     const out = c.toDataURL("image/png"); // 線稿用 PNG：銳利且壓得小
     c.width = c.height = 0;
     return out;
@@ -236,8 +289,10 @@ export function openSketchEditor(store: Store, cutId: string) {
 
   function save() {
     if (!work.scene.length && !work.figure.length) {
+      // 沒有任何筆畫：有墊底＝照片原樣放回（等於沒描，不動這格）；
       // 全空＝移除塗鴉（連圖一起清空這格）
-      store.setCutSketch(cutId, null, null);
+      if (work.underlay) store.setCutSketch(cutId, null, work.underlay);
+      else store.setCutSketch(cutId, null, null);
       close();
       return;
     }
@@ -261,5 +316,6 @@ export function openSketchEditor(store: Store, cutId: string) {
   document.addEventListener("keydown", onKey, true);
 
   syncBar();
+  loadUnderlay();
   render();
 }

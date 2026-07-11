@@ -15,8 +15,9 @@ export interface Film { id: string; name: string; }
 // 塗鴉分鏡（04 企劃⑤）：筆跡存資料、可再編輯；imageRef 存壓平 PNG
 // （簡報/匯出走既有圖片管線，零改動）。pts＝[x, y, 壓力] 序列（1280×720 座標）。
 export interface SketchStroke { tool: "pen" | "marker"; pts: number[][]; }
-// 兩層固定圖層：場景（構圖，複製後通常不動）＋人物（表演/運鏡，擦掉重畫）
-export interface CutSketch { scene: SketchStroke[]; figure: SketchStroke[]; }
+// 兩層固定圖層：場景（構圖，複製後通常不動）＋人物（表演/運鏡，擦掉重畫）。
+// underlay＝勘景照描圖墊底（半透明顯示沿描；輸出壓平「不含」墊底）。
+export interface CutSketch { scene: SketchStroke[]; figure: SketchStroke[]; underlay?: string | null; }
 
 // cut = 真相。groupId 相同 = 連續鏡群組（05-1/05-2），移動時整組同行。
 export interface Cut {
