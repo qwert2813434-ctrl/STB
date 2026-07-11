@@ -101,12 +101,15 @@ export function pickBoardImages(): Promise<string[]> {
       }
       // 失敗不再無聲，且分清原因（iPad 實測：iCloud 最佳化儲存＝原檔在雲端，
       // 挑選當下還沒下載完就會拿到空殼——Armin 抓到的根因）
+      // 「剛剛的點選」其實已觸發 iCloud 開始下載原檔——教使用者重試節奏，
+      // 不依賴任何看不到的下載指示器（挑選介面不顯示下載狀態＝系統限制）
+      const retryHint = "剛剛的點選已經讓 iCloud 開始下載這幾張了——\n等個幾秒，再按一次「＋ 匯入分鏡圖」選同樣的照片，通常第二次就會成功。\n（一直失敗的話：設定 → 照片 → 改「下載並保留原始檔」可根治）";
       let msg = "";
       if (cloudy.length) {
-        msg += `☁️ ${cloudy.length} 張的原始檔還在 iCloud、尚未下載到這台裝置：\n${cloudy.join("\n")}\n\n解法：先在「照片」App 點開那幾張，等畫面完全變清晰（下載完成），再回來加入。\n`;
+        msg += `☁️ ${cloudy.length} 張的原始檔還在 iCloud：\n${cloudy.join("\n")}\n\n${retryHint}\n`;
       }
       if (failed.length) {
-        msg += `\n⚠️ ${failed.length} 張讀取失敗（也可能是 iCloud 下載到一半）：\n${failed.join("\n")}\n\n可先在「照片」點開等載入、或編輯後另存再試。`;
+        msg += `\n⚠️ ${failed.length} 張這次沒讀成：\n${failed.join("\n")}\n\n${cloudy.length ? "同上，等幾秒重選。" : retryHint}`;
       }
       if (msg) alert(msg);
       resolve(out);
