@@ -213,6 +213,7 @@ function renderInspector() {
     ${grouped ? `<button data-a="detach">拆除群組</button>` : ""}
     ${canVo ? `<button data-a="addvo">+ VO</button>` : ""}
     ${canSup ? `<button data-a="addsup">+ Super</button>` : ""}
+    <button data-a="sketch" title="Apple Pencil／滑鼠塗鴉分鏡（Pencil 直接點縮圖也可）">✏️ 塗鴉</button>
     <button data-a="assign">⇒ 指派到時段</button>
     <button data-a="dup">複製</button>
     <button data-a="del">刪除</button>
@@ -355,6 +356,7 @@ inspector.addEventListener("click", (e) => {
     return;
   }
   if (a === "selend") { store.select(null); return; } // 結束觸控多選（select(null) 會關模式）
+  if (a === "sketch") { openSketchEditor(store, id); return; }
   if (a === "add") addCut();
   else if (a === "dup") store.duplicateCut(id);
   else if (a === "del") store.deleteCut(id);
@@ -633,15 +635,19 @@ bindEditKeys(projName.parentElement as HTMLElement); // 案名同規則：Enter 
 bindStb(store, stbArea, (flash) => { if (flash !== undefined) pendingFlash = flash; }, expanded);
 // 觸控多選的就地加選/取消：只刷新底欄計數，不整頁重繪（stbView 發出）
 document.addEventListener("stb:selchange", () => renderInspector());
+// Pencil 點縮圖＝直接進塗鴉（iPad 不放常駐 ✏️ 鈕——筆本身就是入口）
+let lastPtrType = "";
+stbArea.addEventListener("pointerdown", (e) => { lastPtrType = (e as PointerEvent).pointerType; }, true);
 stbArea.addEventListener("click", (e) => {
-  // ✏️＝塗鴉分鏡（04 企劃⑤）；已是塗鴉的格點縮圖也直接回編輯器（筆跡可再編輯）
+  // ✏️（桌面 hover 鈕）＝塗鴉分鏡；已是塗鴉的格點縮圖也直接回編輯器（筆跡可再編輯）
   const sk = (e.target as HTMLElement).closest("[data-sketch]") as HTMLElement | null;
   if (sk) { openSketchEditor(store, sk.dataset.sketch!); return; }
   const thumb = (e.target as HTMLElement).closest("[data-thumb]") as HTMLElement | null;
   if (!thumb) return;
   const cut = store.get().cuts.find((c) => c.id === thumb.dataset.thumb);
-  if (cut?.sketch) { openSketchEditor(store, cut.id); return; }
-  pickImage(thumb.dataset.thumb!);
+  if (!cut) return;
+  if (cut.sketch || lastPtrType === "pen") { openSketchEditor(store, cut.id); return; }
+  pickImage(cut.id);
 });
 bindRundown(store, rundownArea);
 bindCallSheet(store, callsheetArea);

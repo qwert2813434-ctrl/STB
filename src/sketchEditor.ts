@@ -63,7 +63,7 @@ export function openSketchEditor(store: Store, cutId: string) {
       size: s.tool === "marker" ? 24 : 7,
       thinning: s.tool === "marker" ? 0 : 0.55,
       smoothing: 0.5,
-      streamline: 0.45,
+      streamline: 0.3, // 低一點＝墨水更貼筆尖（不拖尾）
       simulatePressure: sim,
     });
     const p = new Path2D();
@@ -108,20 +108,24 @@ export function openSketchEditor(store: Store, cutId: string) {
     if (undoStack.length > 50) undoStack.shift();
   };
 
-  // ---- 指標 → 畫布座標（畫布用 CSS 縮放顯示，依實際框換算回 1280×720）----
-  const toPt = (e: PointerEvent): number[] => {
-    const r = canvas.getBoundingClientRect();
-    return [
-      (e.clientX - r.left) * (W / r.width),
-      (e.clientY - r.top) * (H / r.height),
-      e.pressure || 0.5,
-    ];
+  // ---- 指標 → 畫布座標 ----
+  // 一律從 offsetX（元素本地座標）出發：iPad 介面整體用 zoom 縮放，
+  // clientX × getBoundingClientRect 的 viewport 換算在 WKWebView 會歪
+  // （筆畫偏移、橡皮擦滿版誤殺的病根）。coalesced 中間點沒有可靠的
+  // offsetX → 用主事件 offset ＋ client 位移、比例自量（rect/offsetWidth）。
+  const toPt = (primary: PointerEvent, ev: PointerEvent): number[] => {
+    const cw = canvas.offsetWidth || 1;
+    const chh = canvas.offsetHeight || 1;
+    const k = canvas.getBoundingClientRect().width / cw; // client px ↔ 本地 px 實測比（含 zoom）
+    const lx = primary.offsetX + (ev.clientX - primary.clientX) / k;
+    const ly = primary.offsetY + (ev.clientY - primary.clientY) / k;
+    return [lx * (W / cw), ly * (H / chh), ev.pressure || 0.5];
   };
 
   // 橡皮擦：劃過的筆畫整筆刪除（物件橡皮擦——筆跡是資料，整筆刪才可再編輯）
   const eraseAt = (e: PointerEvent) => {
-    const [x, y] = toPt(e);
-    const rr = 18 * 18;
+    const [x, y] = toPt(e, e);
+    const rr = 12 * 12;
     const before = work[layer].length;
     work[layer] = work[layer].filter((s) => !s.pts.some((p) => (p[0] - x) * (p[0] - x) + (p[1] - y) * (p[1] - y) < rr));
     if (work[layer].length !== before) { erasedAny = true; render(); }
@@ -138,7 +142,7 @@ export function openSketchEditor(store: Store, cutId: string) {
       eraseAt(e);
       return;
     }
-    drawing = [toPt(e)];
+    drawing = [toPt(e, e)];
     render();
   });
   canvas.addEventListener("pointermove", (e) => {
@@ -147,7 +151,7 @@ export function openSketchEditor(store: Store, cutId: string) {
     if (!drawing) return;
     // getCoalescedEvents：Pencil 240Hz 的中間點全收，線才順
     const evs = (e as PointerEvent & { getCoalescedEvents?: () => PointerEvent[] }).getCoalescedEvents?.() ?? [e];
-    for (const ev of evs) drawing.push(toPt(ev));
+    for (const ev of evs) drawing.push(toPt(e, ev));
     render();
   });
   const finishStroke = () => {

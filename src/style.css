@@ -760,14 +760,17 @@ img { -webkit-touch-callout: none; }
 body.sel-mode .cut [contenteditable] { pointer-events: none; }
 
 /* ---- 塗鴉分鏡（✏️ 入口＋編輯器）---- */
-.thumb-sketch {
-  position: absolute; right: 4px; bottom: 4px;
-  font-size: 13px; line-height: 1; padding: 5px 7px;
-  background: rgba(255,255,255,.92); border: 1px solid var(--line); border-radius: 8px;
-  opacity: .9;
-}
+/* ✏️ 只給有滑鼠的桌面（hover 才現身）；iPad 不放常駐鈕（Armin：醜）——
+   入口＝Apple Pencil 直接點縮圖，或選卡後底欄「塗鴉」 */
+.thumb-sketch { display: none; }
 @media (hover: hover) {
-  .thumb-sketch { opacity: 0; }
+  .thumb-sketch {
+    display: block;
+    position: absolute; right: 4px; bottom: 4px;
+    font-size: 13px; line-height: 1; padding: 5px 7px;
+    background: rgba(255,255,255,.92); border: 1px solid var(--line); border-radius: 8px;
+    opacity: 0;
+  }
   .cut-thumb:hover .thumb-sketch { opacity: 1; }
 }
 .sk-overlay {
