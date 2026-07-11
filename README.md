@@ -46,12 +46,11 @@
 > ⚠️ 案子資料夾裡的 `assets/` 是影片素材，`project.json` 以連結掛用——
 > **請勿單獨移動或刪除資料夾內的檔案**；備份或搬移請複製**整個資料夾**。
 
-## 用 AI 寫腳本（v1.1）
+## 用 AI 改案子（實驗性）
 
-STB 的真相是一份 `project.json`——**AI 改 JSON 就是改案子**，而且 App 開著時
-外部修改會在 2 秒內自動重載。把 [AI編輯指南_SCHEMA.md](AI編輯指南_SCHEMA.md)
-連同需求貼給 ChatGPT／Gemini／Claude（或用 Claude Code 直接開案子資料夾），
-就能自然語言生腳本、改 VO、排 Rundown，STB 畫面即時跟上。
+STB 的資料就是一份 `project.json`，schema 見 [AI編輯指南_SCHEMA.md](AI編輯指南_SCHEMA.md)；
+App 開著時會每 2 秒偵測檔案的外部修改並自動重載。理論上 AI 改 JSON 就是改案子——
+這條工作流我們還在實測，歡迎嘗試、歡迎回報。
 
 ## 自己改（歡迎魔改）
 
