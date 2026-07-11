@@ -114,9 +114,13 @@ export function bindRundown(store: Store, root: HTMLElement) {
   };
 
   root.addEventListener("pointerdown", (e) => {
-    const grip = (e.target as HTMLElement).closest(".rd-grip") as HTMLElement | null;
+    // 把手＝⠿＋時間欄（時間是機器算的不可編輯，正好當大面積拖曳區——
+    // iPad 實測：⠿ 太小，手指落在時間上會觸發 iOS 選字）
+    const grip = (e.target as HTMLElement).closest(".rd-grip, .rd-time") as HTMLElement | null;
     if (!grip) return;
-    pdrag = { id: grip.dataset.block!, started: false, sx: e.clientX, sy: e.clientY };
+    const row = grip.closest(".rd-row") as HTMLElement | null;
+    if (!row?.dataset.block) return;
+    pdrag = { id: row.dataset.block, started: false, sx: e.clientX, sy: e.clientY };
     try { grip.setPointerCapture(e.pointerId); } catch { /* 合成事件無有效 pointerId */ }
   });
   root.addEventListener("pointermove", (e) => {
