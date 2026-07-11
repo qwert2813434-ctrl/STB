@@ -60,6 +60,9 @@ targets:
         RUST_LOG: info
     settings:
       base:
+        # 1,2＝iPhone＋iPad 原生。不設＝預設 iPhone-only → iPad 上跑「相容小視窗」
+        # （置中黑邊＋右下放大鈕、iPhone 解析度放大＝糊、iPhone 記憶體上限＝大圖解碼失敗）
+        TARGETED_DEVICE_FAMILY: "1,2"
         ENABLE_BITCODE: false
         ARCHS: [arm64]
         VALID_ARCHS: arm64 
