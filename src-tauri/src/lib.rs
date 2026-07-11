@@ -283,24 +283,25 @@ mod ios_share {
       let windows: *mut AnyObject = msg_send![shared, windows];
       window = msg_send![windows, firstObject];
     }
-    if window.is_null() { return; }
-    let root: *mut AnyObject = msg_send![window, rootViewController];
-    if root.is_null() { return; }
-
-    // iPad：popover 錨在畫面中央
-    let pop: *mut AnyObject = msg_send![avc, popoverPresentationController];
-    if !pop.is_null() {
-      let view: *mut AnyObject = msg_send![root, view];
-      let bounds: CGRect = msg_send![view, bounds];
-      let anchor = CGRect {
-        origin: CGPoint { x: bounds.size.width / 2.0, y: bounds.size.height / 2.0 },
-        size: CGSize { width: 1.0, height: 1.0 },
-      };
-      let _: () = msg_send![pop, setSourceView: view];
-      let _: () = msg_send![pop, setSourceRect: anchor];
+    let root: *mut AnyObject = if window.is_null() { std::ptr::null_mut() } else { msg_send![window, rootViewController] };
+    if !root.is_null() {
+      // iPad：popover 錨在畫面中央
+      let pop: *mut AnyObject = msg_send![avc, popoverPresentationController];
+      if !pop.is_null() {
+        let view: *mut AnyObject = msg_send![root, view];
+        let bounds: CGRect = msg_send![view, bounds];
+        let anchor = CGRect {
+          origin: CGPoint { x: bounds.size.width / 2.0, y: bounds.size.height / 2.0 },
+          size: CGSize { width: 1.0, height: 1.0 },
+        };
+        let _: () = msg_send![pop, setSourceView: view];
+        let _: () = msg_send![pop, setSourceRect: anchor];
+      }
+      let nil_done: *mut AnyObject = std::ptr::null_mut();
+      let _: () = msg_send![root, presentViewController: avc, animated: Bool::YES, completion: nil_done];
     }
-    let nil_done: *mut AnyObject = std::ptr::null_mut();
-    let _: () = msg_send![root, presentViewController: avc, animated: Bool::YES, completion: nil_done];
+    // 放掉 alloc/init 的 +1（呈現機制自己會持有；同 pick_photos 的 leak 修正）
+    let _: () = msg_send![avc, release];
   }
 }
 
@@ -336,6 +337,15 @@ mod ios_photos {
     }
 
     unsafe impl PickerDelegate {
+      // 使用者「點選單外側／往下滑」關掉（不按取消）：iOS 不叫 didFinishPicking，
+      // 走這條——沒送過結果就送空清單，前端的等待與 toast 才會收工。
+      #[method(presentationControllerDidDismiss:)]
+      fn did_dismiss(&self, _pc: *mut AnyObject) {
+        if let Some(tx) = self.ivars().tx.borrow_mut().take() {
+          let _ = tx.send(Vec::new());
+        }
+      }
+
       #[method(picker:didFinishPicking:)]
       fn did_finish(&self, picker: *mut AnyObject, results: *mut AnyObject) {
         unsafe {
@@ -451,6 +461,11 @@ mod ios_photos {
     let del_ptr = Id::as_ptr(&delegate) as *mut AnyObject;
     objc_setAssociatedObject(picker, &ASSOC_KEY as *const u8 as *const _, del_ptr, 1); // RETAIN_NONATOMIC
     let _: () = msg_send![picker, setDelegate: del_ptr];
+    // 滑掉/點外側關閉的通知走 presentationController 的 delegate
+    let pc: *mut AnyObject = msg_send![picker, presentationController];
+    if !pc.is_null() {
+      let _: () = msg_send![pc, setDelegate: del_ptr];
+    }
 
     let app_cls = AnyClass::get("UIApplication").unwrap();
     let shared: *mut AnyObject = msg_send![app_cls, sharedApplication];
@@ -459,11 +474,18 @@ mod ios_photos {
       let windows: *mut AnyObject = msg_send![shared, windows];
       window = msg_send![windows, firstObject];
     }
-    if window.is_null() { return; }
-    let root: *mut AnyObject = msg_send![window, rootViewController];
-    if root.is_null() { return; }
-    let nil_done: *mut AnyObject = std::ptr::null_mut();
-    let _: () = msg_send![root, presentViewController: picker, animated: Bool::YES, completion: nil_done];
+    let root: *mut AnyObject = if window.is_null() { std::ptr::null_mut() } else { msg_send![window, rootViewController] };
+    if !root.is_null() {
+      let nil_done: *mut AnyObject = std::ptr::null_mut();
+      let _: () = msg_send![root, presentViewController: picker, animated: Bool::YES, completion: nil_done];
+    }
+    // 放掉我們 alloc/init 拿到的 +1（畫面呈現本身會持有 picker）——
+    // 之前漏了這個 release：滑掉選單時 picker 永遠不死 → delegate 不死 →
+    // channel 不關 → 前端「正在準備照片…」永遠掛著（Armin 抓到的卡死）。
+    // 沒呈現成功的話這裡就是最後一個引用，picker 連同 delegate 一起釋放，
+    // channel 斷線＝前端收到空清單，一樣收得了工。
+    let _: () = msg_send![picker, release];
+    let _: () = msg_send![cfg, release];
   }
 }
 

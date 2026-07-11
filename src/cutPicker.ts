@@ -132,6 +132,7 @@ export async function pickFiles(accept: string, multiple: boolean): Promise<File
     const toast = document.createElement("div");
     toast.className = "pv-toast";
     toast.textContent = "正在準備照片…（在 iCloud 的原檔會先下載）";
+    toast.addEventListener("click", () => toast.remove()); // 保險絲：萬一等待卡住，點一下就收
     document.body.appendChild(toast);
     try {
       const paths = await invoke<string[]>("pick_photos", { limit: multiple ? 0 : 1 });
