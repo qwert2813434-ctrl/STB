@@ -46,6 +46,9 @@ STB：自動重載，畫面更新 ✓
   "vo": "水來自自然",      // 旁白（無則空字串）
   "sup": "",             // SUPER 疊印字卡（無則空字串）
   "imageRef": null,      // 分鏡圖。⚠️ AI 不要動這欄（data URL，動了圖就沒了）
+  "sketch": null,        // 塗鴉分鏡筆跡（App 內 Apple Pencil／滑鼠畫的）。
+                         // ⚠️ AI 不要動：{scene, figure} 為筆畫點陣資料、
+                         // underlay 為墊底照片；imageRef 是它壓平的輸出
   "prompt": "", "props": "", "note": ""
 }
 ```
@@ -99,7 +102,7 @@ key＝章節 id：`tone` 調性｜`rhythm` 參考節奏｜`references` 參考資
 
 ## AI 必守規則
 
-1. **不要動任何 `imageRef`／`videoFile`／`parkImage`／`logo`**——它們是圖檔資料或素材連結，改了內容就消失。改文字、改結構、增刪項目都安全。
+1. **不要動任何 `imageRef`／`sketch`／`videoFile`／`parkImage`／`logo`**——它們是圖檔資料、筆跡資料或素材連結，改了內容就消失。改文字、改結構、增刪項目都安全。
 2. **id 唯一**：新增項目給不重複的字串 id（如 `c9`、`b7`、`ai1`）。
 3. **連續鏡相鄰**：相同 `groupId` 的 cut 必須在陣列裡緊鄰。
 4. 時間 `HH:MM`、日期 `YYYY-MM-DD`、`durMin` 用 5 的倍數。
