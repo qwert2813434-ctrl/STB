@@ -77,6 +77,13 @@ export function openSketchEditor(store: Store, cutId: string) {
   function paintInto(cx: CanvasRenderingContext2D, dimInactive: boolean) {
     cx.fillStyle = "#ffffff";
     cx.fillRect(0, 0, W, H);
+    // 【診斷版】畫布正中央十字靶（640,360）——校準用，修完就拆
+    cx.strokeStyle = "#c00";
+    cx.lineWidth = 2;
+    cx.beginPath();
+    cx.moveTo(W / 2 - 30, H / 2); cx.lineTo(W / 2 + 30, H / 2);
+    cx.moveTo(W / 2, H / 2 - 30); cx.lineTo(W / 2, H / 2 + 30);
+    cx.stroke();
     cx.fillStyle = "#141311";
     for (const which of ["scene", "figure"] as const) {
       const dim = dimInactive && which !== layer ? 0.4 : 1;
@@ -133,6 +140,13 @@ export function openSketchEditor(store: Store, cutId: string) {
 
   canvas.addEventListener("pointerdown", (e) => {
     if (e.pointerType === "touch") return; // 手掌/手指不作畫（Pencil 防誤觸）
+    // 【診斷版】把各座標系原始數字攤在 hint 列（點中央十字後截圖回報）
+    {
+      const r = canvas.getBoundingClientRect();
+      const [px, py] = toPt(e, e);
+      const hint = overlay.querySelector(".sk-hint") as HTMLElement;
+      hint.textContent = `診斷｜off ${e.offsetX.toFixed(0)},${e.offsetY.toFixed(0)}｜cli ${e.clientX.toFixed(0)},${e.clientY.toFixed(0)}｜rect ${r.left.toFixed(0)},${r.top.toFixed(0)} ${r.width.toFixed(0)}×${r.height.toFixed(0)}｜cw ${canvas.offsetWidth}×${canvas.offsetHeight}｜pt ${px.toFixed(0)},${py.toFixed(0)}（十字＝640,360）｜win ${window.innerWidth}×${window.innerHeight}`;
+    }
     e.preventDefault();
     try { canvas.setPointerCapture(e.pointerId); } catch { /* 合成事件 */ }
     if (tool === "eraser") {
