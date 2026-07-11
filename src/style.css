@@ -746,6 +746,28 @@ body.dragging-any { user-select: none; cursor: grabbing; }
 /* 裁切器/裁切影片的拖曳區同理（iPad：拖曳調整照片位置） */
 .crop-stage, .trim-track { touch-action: none; }
 
+/* 拖曳「抓取確認感」（Armin iPad 回饋：不知道有沒有抓到）——
+   按住把手的瞬間物件立刻浮起（放大＋陰影），移動中維持浮起 */
+.cut, .rd-row, .cs-grow { transition: transform .12s, box-shadow .12s, opacity .12s; }
+.cut:has(.cut-head:active), .cut.dragging {
+  transform: scale(1.03);
+  box-shadow: 0 10px 28px rgba(0,0,0,.22);
+  opacity: .95;
+  position: relative; z-index: 5;
+}
+.rd-row:has(.rd-grip:active), .rd-row.dragging,
+.cs-grow:has(.cs-grip:active), .cs-grow.dragging {
+  transform: scale(1.015);
+  box-shadow: 0 8px 22px rgba(0,0,0,.18);
+  opacity: .95;
+  position: relative; z-index: 5;
+  background: var(--card);
+  border-radius: 10px;
+}
+/* 目標位置：明確的落點指示 */
+.cut.drop-target { border-color: var(--ink); box-shadow: -4px 0 0 var(--ink), 0 4px 16px rgba(0,0,0,.12); }
+.rd-row.drop-target, .cs-grow.drop-target { box-shadow: 0 -3px 0 var(--ink); background: var(--hover); }
+
 /* 多路分頁（分鏡章上方，沿用 Day 分頁視覺） */
 .film-tabs { margin: 2px 0 10px; }
 .film-tabs .daytab .cut-edit { min-width: 40px; display: inline-block; }
