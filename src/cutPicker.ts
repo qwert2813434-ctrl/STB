@@ -92,12 +92,12 @@ export function pickBoardImages(): Promise<string[]> {
       const files = [...(input.files ?? [])].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
       const out: string[] = [];
       const cloudy: string[] = [];  // iCloud 原檔還沒下載（空殼檔）——舊照片常見
-      const failed: string[] = [];  // 真正解碼失敗
+      const failed: string[] = [];  // 真正解碼失敗（附尺寸與原因，遠端除錯用）
       for (const f of files) {
         if (f.size === 0) { cloudy.push(f.name); continue; }
-        const board = await fileToBoard(f);
-        if (board) out.push(board);
-        else failed.push(f.name);
+        const r = await fileToBoard(f);
+        if (typeof r === "string") out.push(r);
+        else failed.push(`${f.name}（${(f.size / 1048576).toFixed(1)}MB${r.dims ? `・${r.dims}` : ""}・${r.why}）`);
       }
       // 失敗不再無聲，且分清原因（iPad 實測：iCloud 最佳化儲存＝原檔在雲端，
       // 挑選當下還沒下載完就會拿到空殼——Armin 抓到的根因）
@@ -109,7 +109,7 @@ export function pickBoardImages(): Promise<string[]> {
         msg += `☁️ ${cloudy.length} 張的原始檔還在 iCloud：\n${cloudy.join("\n")}\n\n${retryHint}\n`;
       }
       if (failed.length) {
-        msg += `\n⚠️ ${failed.length} 張這次沒讀成：\n${failed.join("\n")}\n\n${cloudy.length ? "同上，等幾秒重選。" : retryHint}`;
+        msg += `\n⚠️ ${failed.length} 張讀取失敗（尺寸/格式超過系統上限，全景照與超大圖常見）：\n${failed.join("\n")}\n\n可在「照片」App 裁切或縮小後再加入。`;
       }
       if (msg) alert(msg);
       resolve(out);
@@ -122,40 +122,55 @@ export function pickBoardImages(): Promise<string[]> {
 // 首選 createImageBitmap＋resize：WebKit 邊解碼邊縮圖——手機原檔（HEIC、
 // 48MP）不會撐爆 WebView 記憶體/解碼上限（iPad 實測「部分照片永遠失敗」的根因）；
 // 舊環境退回 FileReader＋<img> 路徑。
-async function fileToBoard(f: File): Promise<string | null> {
-  let bmp: ImageBitmap | null = null;
-  try {
-    bmp = await createImageBitmap(f, { resizeWidth: 1920, resizeQuality: "high" });
-  } catch {
-    try { bmp = await createImageBitmap(f); } catch { bmp = null; }
-  }
-  const draw = (w: number, h: number, src: CanvasImageSource): string => {
+async function fileToBoard(f: File): Promise<string | { why: string; dims?: string }> {
+  const draw = (w: number, h: number, src: CanvasImageSource): string | null => {
     const c = document.createElement("canvas");
     c.width = 1280; c.height = 720;
     const ctx = c.getContext("2d")!;
     const k = Math.max(1280 / w, 720 / h); // cover 置中
     ctx.drawImage(src, (1280 - w * k) / 2, (720 - h * k) / 2, w * k, h * k);
-    return c.toDataURL("image/jpeg", 0.85);
+    const dataUrl = c.toDataURL("image/jpeg", 0.85);
+    // iOS 超限來源會「無聲畫成空白」：抽樣中心像素驗證真的有畫上去
+    const px = ctx.getImageData(600, 340, 80, 40).data;
+    let sum = 0;
+    for (let i = 3; i < px.length; i += 4) sum += px[i]; // alpha
+    return sum > 0 ? dataUrl : null;
   };
-  if (bmp) {
-    const dataUrl = draw(bmp.width, bmp.height, bmp);
+  let lastErr = "";
+  // 1) createImageBitmap＋resize（邊解邊縮，最省記憶體）
+  try {
+    const bmp = await createImageBitmap(f, { resizeWidth: 1920, resizeQuality: "high" });
+    const d = draw(bmp.width, bmp.height, bmp);
     bmp.close();
-    return dataUrl;
+    if (d) return d;
+    lastErr = "縮圖後畫布為空";
+  } catch (e) { lastErr = String((e as Error)?.message ?? e); }
+  // 2) createImageBitmap 原尺寸
+  try {
+    const bmp = await createImageBitmap(f);
+    const d = draw(bmp.width, bmp.height, bmp);
+    const dims = `${bmp.width}×${bmp.height}`;
+    bmp.close();
+    if (d) return d;
+    return { why: "超過繪圖上限（畫布為空）", dims };
+  } catch (e) { lastErr = String((e as Error)?.message ?? e); }
+  // 3) 備援：<img>（objectURL 比 dataURL 省一份記憶體）
+  const url = URL.createObjectURL(f);
+  try {
+    const img = await new Promise<HTMLImageElement | null>((res) => {
+      const im = new Image();
+      im.onload = () => res(im);
+      im.onerror = () => res(null);
+      im.src = url;
+    });
+    if (!img) return { why: `無法解碼（${lastErr || "格式不支援"}）` };
+    const d = draw(img.naturalWidth, img.naturalHeight, img);
+    const dims = `${img.naturalWidth}×${img.naturalHeight}`;
+    if (d) return d;
+    return { why: "超過繪圖上限（畫布為空）", dims };
+  } finally {
+    URL.revokeObjectURL(url);
   }
-  // 備援：FileReader → <img>
-  const url = await new Promise<string>((res) => {
-    const r = new FileReader();
-    r.onload = () => res(r.result as string);
-    r.readAsDataURL(f);
-  });
-  const img = await new Promise<HTMLImageElement | null>((res) => {
-    const im = new Image();
-    im.onload = () => res(im);
-    im.onerror = () => res(null);
-    im.src = url;
-  });
-  if (!img) return null;
-  return draw(img.naturalWidth, img.naturalHeight, img);
 }
 
 // 對照 cut 的顯示標籤：連續段落用範圍（CUT 03–05），跳號用逗號
