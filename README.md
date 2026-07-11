@@ -9,7 +9,7 @@
 
 ## 下載
 
-👉 **[Releases 頁面下載最新版 DMG](../../releases/latest)**
+👉 **[下載 STB for Mac（DMG）](https://raw.githubusercontent.com/qwert2813434-ctrl/STB/main/release/STB_1.0.0_aarch64.dmg)**（檔名固定，內容永遠是最新版）
 
 **系統需求**：Apple Silicon（M1 或更新）、macOS 13 Ventura 或更新。
 
