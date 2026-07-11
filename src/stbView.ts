@@ -79,7 +79,39 @@ export function bindStb(
   onChange: (flashFromSeq?: number) => void,
   expanded: Set<string>
 ) {
+  // 長按卡片＝進入多選模式（iPad 沒有 ⌘ 鍵；04 企劃「多選改長按」）。
+  // 編輯字、拖曳把手不攔（各有原生行為）；手指動了＝要捲動/拖曳，不是長按。
+  let lp: { timer: ReturnType<typeof setTimeout>; x: number; y: number } | null = null;
+  let lpFired = false;
+  const lpCancel = () => { if (lp) { clearTimeout(lp.timer); lp = null; } };
+  root.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse") return;
+    const t = e.target as HTMLElement;
+    if (t.isContentEditable || t.closest(".cut-head")) return;
+    const id = (t.closest(".cut") as HTMLElement | null)?.dataset.id;
+    if (!id) return;
+    lp = {
+      x: e.clientX,
+      y: e.clientY,
+      timer: setTimeout(() => {
+        lp = null;
+        lpFired = true;
+        const wasMode = store.touchSelect;
+        store.touchSelect = true;
+        if (!store.selectedIds.includes(id)) store.toggleSelect(id); // 進場並選上這張（emit 重繪）
+        else if (!wasMode) store.select(id); // 已是單選：只是升級成模式 UI（emit 重繪）
+      }, 450),
+    };
+  });
+  root.addEventListener("pointermove", (e) => {
+    if (lp && Math.abs(e.clientX - lp.x) + Math.abs(e.clientY - lp.y) > 8) lpCancel();
+  });
+  root.addEventListener("pointerup", lpCancel);
+  root.addEventListener("pointercancel", lpCancel);
+
   root.addEventListener("click", (e) => {
+    // 長按剛成立：吞掉隨後那一下 click（否則立刻又 toggle 回去）
+    if (lpFired) { lpFired = false; e.preventDefault(); e.stopImmediatePropagation(); return; }
     const t0 = e.target as HTMLElement;
     // 路分頁：切換／新增／刪除（當前路的名字是可編輯區，會走下面的早退不切換）
     if (t0.closest("[data-addfilm]")) { store.addFilm(); return; }
@@ -97,6 +129,14 @@ export function bindStb(
     if (filmTab && !t0.isContentEditable) { store.setFilm(filmTab.dataset.film!); return; }
 
     const cut = t0.closest(".cut") as HTMLElement | null;
+    // 觸控多選模式（長按進入）：點卡片＝加選/取消（觸控版的 ⌘ 點擊）。
+    // stopImmediatePropagation：模式中點縮圖不能觸發換圖（main 的 thumb handler）
+    if (cut && store.touchSelect) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      store.toggleSelect(cut.dataset.id!);
+      return;
+    }
     // ⌘點擊＝加選/取消、Shift 點擊＝連選（多選群組用），可編輯區也吃
     if (cut && (e.metaKey || e.ctrlKey)) { e.preventDefault(); store.toggleSelect(cut.dataset.id!); return; }
     if (cut && e.shiftKey && store.selectedId) { e.preventDefault(); store.selectRange(cut.dataset.id!); return; }

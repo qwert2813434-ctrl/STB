@@ -176,14 +176,16 @@ function renderAgenda() {
 
 function renderInspector() {
   const p = store.get();
-  // 多選（⌘/Shift 點擊）：組成連續鏡／整批刪除
-  if (store.selectedIds.length > 1) {
+  // 多選：Mac＝⌘/Shift 點擊；iPad＝長按進入模式（touchSelect，1 顆也算在模式中）
+  if (store.touchSelect ? store.selectedIds.length >= 1 : store.selectedIds.length > 1) {
     inspector.innerHTML = `
       <span class="cur">已選 ${store.selectedIds.length} 顆</span>
-      <button data-a="group">組成連續鏡</button>
+      ${store.selectedIds.length > 1 ? `<button data-a="group">組成連續鏡</button>` : ""}
       <button data-a="assign">⇒ 指派到時段</button>
       <button data-a="delmulti">刪除選取</button>
-      <span class="hint">⌘ 點擊加選 · Shift 點擊連選</span>`;
+      ${store.touchSelect
+        ? `<button data-a="selend">完成</button><span class="hint">點卡片＝加選/取消 · 點空白＝結束</span>`
+        : `<span class="hint">⌘ 點擊加選 · Shift 點擊連選</span>`}`;
     return;
   }
   const id = store.selectedId;
@@ -348,6 +350,7 @@ inspector.addEventListener("click", (e) => {
     });
     return;
   }
+  if (a === "selend") { store.select(null); return; } // 結束觸控多選（select(null) 會關模式）
   if (a === "add") addCut();
   else if (a === "dup") store.duplicateCut(id);
   else if (a === "del") store.deleteCut(id);

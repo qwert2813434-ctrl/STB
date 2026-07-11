@@ -25,6 +25,7 @@ export class Store {
   private listeners: Listener[] = [];
   selectedId: string | null = null;
   selectedIds: string[] = []; // 多選（⌘/Shift 點擊）；單選時＝[selectedId]
+  touchSelect = false; // iPad 長按進入的多選模式：點卡片＝加選/取消（觸控沒有 ⌘ 鍵）
   currentDayId: string;
   currentChapter = "storyboard"; // PPM 章節 id（預設進分鏡）
 
@@ -50,6 +51,7 @@ export class Store {
     this.currentFilmId = id;
     this.selectedId = null;
     this.selectedIds = [];
+    this.touchSelect = false;
     this.emit();
   }
 
@@ -682,15 +684,17 @@ export class Store {
   select(id: string | null) {
     this.selectedId = id;
     this.selectedIds = id ? [id] : [];
+    if (!id) this.touchSelect = false; // 清空選取＝離開觸控多選模式
     this.emit();
   }
 
-  // ⌘點擊：加選/取消（多選群組用）
+  // ⌘點擊：加選/取消（多選群組用）；觸控多選模式的「點卡片」也走這裡
   toggleSelect(id: string) {
     const i = this.selectedIds.indexOf(id);
     if (i >= 0) this.selectedIds.splice(i, 1);
     else this.selectedIds.push(id);
     this.selectedId = this.selectedIds[this.selectedIds.length - 1] ?? null;
+    if (!this.selectedIds.length) this.touchSelect = false; // 全取消＝自動離開模式
     this.emit();
   }
 

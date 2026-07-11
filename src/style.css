@@ -749,6 +749,9 @@ body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none
 /* 裁切器/裁切影片的拖曳區同理（iPad：拖曳調整照片位置） */
 .crop-stage, .trim-track { touch-action: none; }
 
+/* iOS：長按圖片不彈系統預覽選單（長按＝進入多選，手勢自己擁有） */
+img { -webkit-touch-callout: none; }
+
 /* 拖曳「抓取確認感」（Armin iPad 回饋：不知道有沒有抓到）——
    按住把手的瞬間物件立刻浮起（放大＋陰影），移動中維持浮起 */
 .cut, .rd-row, .cs-grow { transition: transform .12s, box-shadow .12s, opacity .12s; }
