@@ -738,6 +738,12 @@ body.dragging-any { user-select: none; cursor: grabbing; }
 /* 多路：選擇器內的路名小標（橫跨整列） */
 .cp-filmh { grid-column: 1 / -1; font-family: var(--mono); font-size: 11px; letter-spacing: .1em; color: var(--muted); padding: 8px 4px 2px; }
 
+/* ---- 觸控（iPad）---- */
+/* 拿掉 iOS 的 ~350ms 點擊延遲（等雙擊縮放的判斷期）＝「每按一下慢一拍」的元凶 */
+* { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+/* 拖曳把手要完整接管觸控（不然瀏覽器把手勢當捲動，拖不動＝「按了沒反應」） */
+.rd-grip, .cut-head, .cs-grip, .gt-bar, .gt-resize, .gt-resize-l { touch-action: none; }
+
 /* 多路分頁（分鏡章上方，沿用 Day 分頁視覺） */
 .film-tabs { margin: 2px 0 10px; }
 .film-tabs .daytab .cut-edit { min-width: 40px; display: inline-block; }

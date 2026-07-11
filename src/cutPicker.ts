@@ -91,31 +91,60 @@ export function pickBoardImages(): Promise<string[]> {
     input.onchange = async () => {
       const files = [...(input.files ?? [])].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
       const out: string[] = [];
+      const failed: string[] = [];
       for (const f of files) {
-        const url = await new Promise<string>((res) => {
-          const r = new FileReader();
-          r.onload = () => res(r.result as string);
-          r.readAsDataURL(f);
-        });
-        const img = await new Promise<HTMLImageElement | null>((res) => {
-          const im = new Image();
-          im.onload = () => res(im);
-          im.onerror = () => res(null);
-          im.src = url;
-        });
-        if (!img) continue;
-        const c = document.createElement("canvas");
-        c.width = 1280; c.height = 720;
-        const ctx = c.getContext("2d")!;
-        const k = Math.max(1280 / img.naturalWidth, 720 / img.naturalHeight); // cover 置中
-        const w = img.naturalWidth * k, h = img.naturalHeight * k;
-        ctx.drawImage(img, (1280 - w) / 2, (720 - h) / 2, w, h);
-        out.push(c.toDataURL("image/jpeg", 0.85));
+        const board = await fileToBoard(f);
+        if (board) out.push(board);
+        else failed.push(f.name);
+      }
+      // 失敗不再無聲（iPad 實測：HEIC／48MP 原檔曾靜默消失，找不到邏輯）
+      if (failed.length) {
+        alert(`這 ${failed.length} 張讀不進來（格式或尺寸超過系統解碼上限）：\n${failed.join("\n")}\n\n可先在「照片」App 以「拷貝」或編輯後再試，或改用截圖。`);
       }
       resolve(out);
     };
     input.click();
   });
+}
+
+// 單檔 → 1280×720 cover 置中的分鏡圖。
+// 首選 createImageBitmap＋resize：WebKit 邊解碼邊縮圖——手機原檔（HEIC、
+// 48MP）不會撐爆 WebView 記憶體/解碼上限（iPad 實測「部分照片永遠失敗」的根因）；
+// 舊環境退回 FileReader＋<img> 路徑。
+async function fileToBoard(f: File): Promise<string | null> {
+  let bmp: ImageBitmap | null = null;
+  try {
+    bmp = await createImageBitmap(f, { resizeWidth: 1920, resizeQuality: "high" });
+  } catch {
+    try { bmp = await createImageBitmap(f); } catch { bmp = null; }
+  }
+  const draw = (w: number, h: number, src: CanvasImageSource): string => {
+    const c = document.createElement("canvas");
+    c.width = 1280; c.height = 720;
+    const ctx = c.getContext("2d")!;
+    const k = Math.max(1280 / w, 720 / h); // cover 置中
+    ctx.drawImage(src, (1280 - w * k) / 2, (720 - h * k) / 2, w * k, h * k);
+    return c.toDataURL("image/jpeg", 0.85);
+  };
+  if (bmp) {
+    const dataUrl = draw(bmp.width, bmp.height, bmp);
+    bmp.close();
+    return dataUrl;
+  }
+  // 備援：FileReader → <img>
+  const url = await new Promise<string>((res) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result as string);
+    r.readAsDataURL(f);
+  });
+  const img = await new Promise<HTMLImageElement | null>((res) => {
+    const im = new Image();
+    im.onload = () => res(im);
+    im.onerror = () => res(null);
+    im.src = url;
+  });
+  if (!img) return null;
+  return draw(img.naturalWidth, img.naturalHeight, img);
 }
 
 // 對照 cut 的顯示標籤：連續段落用範圍（CUT 03–05），跳號用逗號
