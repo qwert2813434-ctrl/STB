@@ -795,6 +795,9 @@ body.sel-mode .cut [contenteditable] { pointer-events: none; }
 .sk-bar [data-sklayer] b { font-weight: 600; }
 .sk-bar [data-sklayer].sk-fig b { color: #2e6e46; } /* 人物層＝語意綠，一眼分層 */
 .sk-ok { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+/* 整個編輯器不給原生手勢：手掌常落在畫布外的面板上，
+   一樣會觸發系統捲動/縮放而 cancel 掉筆（平放 iPad 寫生姿勢） */
+.sk-overlay, .sk-panel, .sk-stage { touch-action: none; }
 .sk-stage { padding: 12px; display: flex; justify-content: center; background: var(--hover); }
 .sk-canvas {
   width: 100%; max-height: calc(94vh - 130px); aspect-ratio: 16 / 9;

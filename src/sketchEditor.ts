@@ -189,7 +189,14 @@ export function openSketchEditor(store: Store, cutId: string) {
     render();
   };
   canvas.addEventListener("pointerup", finishStroke);
-  canvas.addEventListener("pointercancel", () => { drawing = null; erasing = false; render(); });
+  // pointercancel＝iOS 因手掌/手勢中止筆的事件流——已畫的部分「收下」
+  // 不丟棄（丟棄＝手掌一放筆畫整段蒸發，Armin 平放 iPad 實測的失效感）
+  canvas.addEventListener("pointercancel", finishStroke);
+
+  // 真・防手掌：手掌壓在畫布上時，擋掉 WebKit 拿這個觸點去做原生手勢
+  // （捲動/縮放）——不擋的話系統手勢一啟動就會 cancel 掉筆的事件流
+  canvas.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
+  canvas.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
 
   // ---- 工具列 ----
   overlay.addEventListener("click", (e) => {
