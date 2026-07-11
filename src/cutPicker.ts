@@ -91,16 +91,24 @@ export function pickBoardImages(): Promise<string[]> {
     input.onchange = async () => {
       const files = [...(input.files ?? [])].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
       const out: string[] = [];
-      const failed: string[] = [];
+      const cloudy: string[] = [];  // iCloud 原檔還沒下載（空殼檔）——舊照片常見
+      const failed: string[] = [];  // 真正解碼失敗
       for (const f of files) {
+        if (f.size === 0) { cloudy.push(f.name); continue; }
         const board = await fileToBoard(f);
         if (board) out.push(board);
         else failed.push(f.name);
       }
-      // 失敗不再無聲（iPad 實測：HEIC／48MP 原檔曾靜默消失，找不到邏輯）
-      if (failed.length) {
-        alert(`這 ${failed.length} 張讀不進來（格式或尺寸超過系統解碼上限）：\n${failed.join("\n")}\n\n可先在「照片」App 以「拷貝」或編輯後再試，或改用截圖。`);
+      // 失敗不再無聲，且分清原因（iPad 實測：iCloud 最佳化儲存＝原檔在雲端，
+      // 挑選當下還沒下載完就會拿到空殼——Armin 抓到的根因）
+      let msg = "";
+      if (cloudy.length) {
+        msg += `☁️ ${cloudy.length} 張的原始檔還在 iCloud、尚未下載到這台裝置：\n${cloudy.join("\n")}\n\n解法：先在「照片」App 點開那幾張，等畫面完全變清晰（下載完成），再回來加入。\n`;
       }
+      if (failed.length) {
+        msg += `\n⚠️ ${failed.length} 張讀取失敗（也可能是 iCloud 下載到一半）：\n${failed.join("\n")}\n\n可先在「照片」點開等載入、或編輯後另存再試。`;
+      }
+      if (msg) alert(msg);
       resolve(out);
     };
     input.click();
