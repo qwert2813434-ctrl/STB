@@ -1,7 +1,7 @@
 import { bindEditKeys } from "./editKeys";
 import type { Store } from "./store";
 import { computeCutNumbers, chainRundown, hhmmToMin, minToHHMM } from "./model";
-import { openCutPicker, fileToWorkingImage } from "./cutPicker";
+import { openCutPicker, fileToWorkingImage, pickFiles } from "./cutPicker";
 import { openCropper } from "./cropper";
 
 // 渲染 Rundown 拍攝日程頁：真實時間區塊、地點/停車/道具、指派的 cut（顯示編號）。
@@ -146,20 +146,14 @@ export function bindRundown(store: Store, root: HTMLElement) {
   root.addEventListener("pointercancel", () => { pdrag = null; clearDragUi(); });
 }
 
-function pickParkImage(store: Store, blockId: string) {
-  const input = document.createElement("input");
-  input.type = "file";
-  input.accept = "image/*";
-  input.onchange = async () => {
-    const f = input.files?.[0];
-    if (!f) return;
-    // 先縮成工作圖再裁（iPad：原檔直餵會耗盡解碼資源）
-    const url = await fileToWorkingImage(f);
-    if (!url) { alert("這張照片讀不進來——若原檔還在 iCloud，等幾秒再試一次。"); return; }
-    const cropped = await openCropper(url, 16 / 9, { allowReplace: true });
-    if (cropped) store.setBlockParkImage(blockId, cropped);
-  };
-  input.click();
+async function pickParkImage(store: Store, blockId: string) {
+  const [f] = await pickFiles("image/*", false);
+  if (!f) return;
+  // 先縮成工作圖再裁（iPad：原檔直餵會耗盡解碼資源）
+  const url = await fileToWorkingImage(f);
+  if (!url) { alert("這張照片讀不進來——若原檔還在 iCloud，等幾秒再試一次。"); return; }
+  const cropped = await openCropper(url, 16 / 9, { allowReplace: true });
+  if (cropped) store.setBlockParkImage(blockId, cropped);
 }
 
 // 點既有停車圖：在編輯器裡裁切／縮放／一鍵黑白／換一張

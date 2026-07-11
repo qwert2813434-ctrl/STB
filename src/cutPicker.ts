@@ -84,12 +84,8 @@ export function openCutPicker(store: Store, selected: string[]): Promise<string[
 // 分鏡章 inspector 的「＋ 匯入分鏡圖」也用這條。
 export function pickBoardImages(): Promise<string[]> {
   return new Promise((resolve) => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*";
-    input.multiple = true;
-    input.onchange = async () => {
-      const files = [...(input.files ?? [])].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    void pickFiles("image/*", true).then(async (picked) => {
+      const files = picked.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
       const out: string[] = [];
       const cloudy: string[] = [];  // iCloud 原檔還沒下載（空殼檔）——舊照片常見
       const failed: string[] = [];  // 真正解碼失敗（附尺寸與原因，遠端除錯用）
@@ -115,8 +111,7 @@ export function pickBoardImages(): Promise<string[]> {
       }
       if (msg) alert(msg);
       resolve(out);
-    };
-    input.click();
+    });
   });
 }
 
@@ -124,6 +119,30 @@ export function pickBoardImages(): Promise<string[]> {
 // 首選 createImageBitmap＋resize：WebKit 邊解碼邊縮圖——手機原檔（HEIC、
 // 48MP）不會撐爆 WebView 記憶體/解碼上限（iPad 實測「部分照片永遠失敗」的根因）；
 // 舊環境退回 FileReader＋<img> 路徑。
+// 統一選檔器：input 要「掛進 DOM＋保持模組引用」——iOS 上懸空的 input
+// 會在原生選擇器開著時被 GC 回收 → onchange 永遠不回來（無聲失敗）。
+// iPad 實測指紋：逐顆加圖前兩張成功、之後全滅（session 越久 GC 越勤）。
+let liveInput: HTMLInputElement | null = null;
+export function pickFiles(accept: string, multiple: boolean): Promise<File[]> {
+  return new Promise((resolve) => {
+    liveInput?.remove(); // 上一個沒回來的（iOS 取消不觸發事件）先清掉
+    const input = document.createElement("input");
+    liveInput = input;
+    input.type = "file";
+    input.accept = accept;
+    input.multiple = multiple;
+    input.style.cssText = "position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0;";
+    document.body.appendChild(input);
+    input.onchange = () => {
+      const files = [...(input.files ?? [])];
+      input.remove();
+      if (liveInput === input) liveInput = null;
+      resolve(files);
+    };
+    input.click();
+  });
+}
+
 // 全 App 共用的一塊工作畫布：iOS 對 canvas 有「總預算」而且回收慢——
 // 就算每次用完歸零，連續大量開新畫布仍會耗盡（iPad 實測：批次 10 張第一輪
 // 掉 1 張、第二輪全滅）。固定重用同一塊＝預算恆定，永不累積。

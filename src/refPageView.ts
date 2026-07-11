@@ -3,7 +3,7 @@ import type { Store } from "./store";
 import { CHAPTERS, PORTRAIT_CHAPTERS, computeCutNumbers } from "./model";
 import { openCropper } from "./cropper";
 import { openExternal, chooseVideoImport, chooseMediaImport, mountInlineVideo, isTauri } from "./persistence";
-import { openCutPicker, cutRefLabel, fileToWorkingImage } from "./cutPicker";
+import { openCutPicker, cutRefLabel, fileToWorkingImage, pickFiles } from "./cutPicker";
 
 // 通用圖文參考頁：一個組件覆蓋 TONE / REFERENCE RHYTHM / REFERENCES /
 // ACTOR / WARDROBE / SETTING / LOCATION 七章。
@@ -199,21 +199,15 @@ async function pickRefMedia(store: Store, chapterId: string, itemId: string, rer
   if (cropped) store.setRefImage(chapterId, itemId, cropped);
 }
 
-function pickRefImage(store: Store, chapterId: string, itemId: string) {
+async function pickRefImage(store: Store, chapterId: string, itemId: string) {
   const portrait = PORTRAIT_CHAPTERS.has(chapterId);
-  const input = document.createElement("input");
-  input.type = "file";
-  input.accept = "image/*";
-  input.onchange = async () => {
-    const f = input.files?.[0];
-    if (!f) return;
-    // 先縮成工作圖再裁（iPad：原檔直餵會耗盡解碼資源）
-    const url = await fileToWorkingImage(f);
-    if (!url) { alert("這張照片讀不進來——若原檔還在 iCloud，等幾秒再試一次。"); return; }
-    const cropped = await openCropper(url, portrait ? 9 / 16 : 16 / 9, { allowReplace: true });
-    if (cropped) store.setRefImage(chapterId, itemId, cropped);
-  };
-  input.click();
+  const [f] = await pickFiles("image/*", false);
+  if (!f) return;
+  // 先縮成工作圖再裁（iPad：原檔直餵會耗盡解碼資源）
+  const url = await fileToWorkingImage(f);
+  if (!url) { alert("這張照片讀不進來——若原檔還在 iCloud，等幾秒再試一次。"); return; }
+  const cropped = await openCropper(url, portrait ? 9 / 16 : 16 / 9, { allowReplace: true });
+  if (cropped) store.setRefImage(chapterId, itemId, cropped);
 }
 
 // 點既有參考圖：裁切／縮放／一鍵黑白／換一張
