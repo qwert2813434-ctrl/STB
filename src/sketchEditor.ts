@@ -48,7 +48,7 @@ export function openSketchEditor(store: Store, cutId: string) {
         <button class="sk-ok">完成</button>
       </div>
       <div class="sk-stage"><canvas class="sk-canvas" width="${W}" height="${H}"></canvas></div>
-      <div class="sk-hint">Apple Pencil／滑鼠作畫，手指不會誤觸 · 橡皮擦＝劃過的筆畫整筆刪除（只擦目前圖層） · 完成＝存進分鏡格，之後點縮圖可回來繼續改</div>
+      <div class="sk-hint">Apple Pencil／滑鼠作畫，手指不會誤觸 · 橡皮擦＝擦到哪消到哪（只擦目前圖層） · 完成＝存進分鏡格，之後點縮圖可回來繼續改</div>
     </div>`;
   document.body.appendChild(overlay);
   const canvas = overlay.querySelector(".sk-canvas") as HTMLCanvasElement;
@@ -125,13 +125,30 @@ export function openSketchEditor(store: Store, cutId: string) {
     ];
   };
 
-  // 橡皮擦：劃過的筆畫整筆刪除（物件橡皮擦——筆跡是資料，整筆刪才可再編輯）
+  // 切段橡皮擦：擦到哪消到哪——擦中一筆的中段，該筆自動裂成前後兩筆，
+  // 剩下的段落仍是筆跡資料（可再編輯）。整筆刪除版 Armin 實測不直覺，
+  // 這才是備忘錄手感與「筆跡＝資料」紅線的交集。
   const eraseAt = (e: PointerEvent) => {
     const [x, y] = toPt(e);
-    const rr = 14 * 14;
-    const before = work[layer].length;
-    work[layer] = work[layer].filter((s) => !s.pts.some((p) => (p[0] - x) * (p[0] - x) + (p[1] - y) * (p[1] - y) < rr));
-    if (work[layer].length !== before) { erasedAny = true; render(); }
+    const rr = 18 * 18;
+    const out: SketchStroke[] = [];
+    let changed = false;
+    for (const s of work[layer]) {
+      const runs: number[][][] = [];
+      let run: number[][] = [];
+      let hit = false;
+      for (const p of s.pts) {
+        if ((p[0] - x) * (p[0] - x) + (p[1] - y) * (p[1] - y) < rr) {
+          hit = true;
+          if (run.length) { runs.push(run); run = []; }
+        } else run.push(p);
+      }
+      if (run.length) runs.push(run);
+      if (!hit) { out.push(s); continue; }
+      changed = true;
+      for (const r of runs) if (r.length >= 3) out.push({ tool: s.tool, pts: r }); // 太短的碎屑不留
+    }
+    if (changed) { work[layer] = out; erasedAny = true; render(); }
   };
 
   canvas.addEventListener("pointerdown", (e) => {
