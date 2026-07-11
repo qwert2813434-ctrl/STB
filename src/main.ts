@@ -630,6 +630,8 @@ projName.addEventListener("blur", () => {
 bindEditKeys(projName.parentElement as HTMLElement); // 案名同規則：Enter 留、Esc 結束
 
 bindStb(store, stbArea, (flash) => { if (flash !== undefined) pendingFlash = flash; }, expanded);
+// 觸控多選的就地加選/取消：只刷新底欄計數，不整頁重繪（stbView 發出）
+document.addEventListener("stb:selchange", () => renderInspector());
 stbArea.addEventListener("click", (e) => {
   const thumb = (e.target as HTMLElement).closest("[data-thumb]") as HTMLElement | null;
   if (thumb) pickImage(thumb.dataset.thumb!);

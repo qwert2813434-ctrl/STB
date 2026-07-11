@@ -138,10 +138,18 @@ export function bindStb(
     // stopImmediatePropagation：模式中點縮圖不能觸發換圖（main 的 thumb handler）。
     // 點空白「不」結束模式——結束只有一個出口：底欄「完成」
     //（Armin 拍板：避免多選到一半誤點空白全部消失）。
+    // 加選/取消＝就地換妝（silent toggle＋classList），不整頁重繪——
+    // 黑框與計數由同一份資料同步驅動，不可能分家（黑框殘影 bug 的正解）
     if (store.touchSelect) {
       e.preventDefault();
       e.stopImmediatePropagation();
-      if (cut) store.toggleSelect(cut.dataset.id!);
+      if (cut) {
+        const id = cut.dataset.id!;
+        store.toggleSelect(id, true);
+        if (!store.touchSelect) { store.select(null); return; } // 全取消＝結束模式（整頁重繪）
+        cut.classList.toggle("sel", store.isSelected(id));
+        document.dispatchEvent(new Event("stb:selchange")); // 底欄計數跟上
+      }
       return;
     }
     // ⌘點擊＝加選/取消、Shift 點擊＝連選（多選群組用），可編輯區也吃

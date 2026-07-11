@@ -688,14 +688,16 @@ export class Store {
     this.emit();
   }
 
-  // ⌘點擊：加選/取消（多選群組用）；觸控多選模式的「點卡片」也走這裡
-  toggleSelect(id: string) {
+  // ⌘點擊：加選/取消（多選群組用）；觸控多選模式的「點卡片」也走這裡。
+  // silent＝不整頁重繪（觸控模式就地換妝：iPad zoom 下 WKWebView 整頁
+  // 重繪會偷懶留殘影，且每點一下重建全頁也傷捲動位置）
+  toggleSelect(id: string, silent = false) {
     const i = this.selectedIds.indexOf(id);
     if (i >= 0) this.selectedIds.splice(i, 1);
     else this.selectedIds.push(id);
     this.selectedId = this.selectedIds[this.selectedIds.length - 1] ?? null;
     if (!this.selectedIds.length) this.touchSelect = false; // 全取消＝自動離開模式
-    this.emit();
+    if (!silent) this.emit();
   }
 
   // Shift 點擊：從上一次選取連選到這顆（依分鏡順序）
