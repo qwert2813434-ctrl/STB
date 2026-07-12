@@ -108,10 +108,18 @@ export async function listMobileProjects(): Promise<RecentEntry[]> {
   return rows.map((r) => ({ dir: r.dir, title: r.title, at: r.mtime, packed: r.packed }));
 }
 
+// tauri dialog 在 iOS 回傳 file:// URL（中文百分比編碼）；Rust fs 要純路徑
+// （Armin 實測：匯入失敗 No such file or directory 的病根）
+function asFsPath(p: string): string {
+  if (!p.startsWith("file://")) return p;
+  try { return decodeURIComponent(p.slice(7)); } catch { return p.slice(7); }
+}
+
 // 解開 .stb 打包案子：建「檔名」資料夾（撞名自動加 2、3…），回傳新資料夾。
 // destParent 不給＝解在 .stb 同層（Mac）；給＝解進指定的家
 // （iPad 從 iCloud 選檔：來源唯讀，要解進 Documents 案子家）
-export async function unpackPacked(path: string, destParent?: string): Promise<string> {
+export async function unpackPacked(rawPath: string, destParent?: string): Promise<string> {
+  const path = asFsPath(rawPath);
   const parent = destParent ?? path.replace(/\/[^/]*$/, "");
   const stem = (path.split("/").pop() ?? "案子").replace(/\.stb$/i, "").trim() || "案子";
   for (let i = 0; i < 50; i++) {
