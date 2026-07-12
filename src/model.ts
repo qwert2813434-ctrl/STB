@@ -268,6 +268,7 @@ export function normalizeProject(raw: unknown): Project {
       vo: c?.vo ?? "",
       sup: c?.sup ?? "",
       imageRef: c?.imageRef ?? null,
+      sketch: c?.sketch ?? null, // 塗鴉筆跡——漏了這行＝重開 App 筆跡全滅（上架前抓到的資料毀損 bug）
       prompt: c?.prompt ?? "",
       props: c?.props ?? "",
       note: c?.note ?? "",

@@ -281,11 +281,21 @@ export async function chooseVideoImport(): Promise<VideoImport | null> {
 
 // 「＋ 加入檔案」：一顆按鈕圖片影片都吃。
 // 影片 → 複製進 assets ＋ 裁切 ＋ 抽首圖；圖片 → 讀 bytes 轉 Blob URL 給裁切器。
+// iPad：影片管線未接（轉檔 sidecar 是 Mac 專屬）——只開圖片、走原生 PHPicker，
+// 不留會壞的按鈕（App Store 2.1 完成度雷）；影片需求回 Mac 做，案子雙邊通用。
 export async function chooseMediaImport(): Promise<
   | ({ kind: "video" } & VideoImport)
   | { kind: "image"; url: string }
   | null
 > {
+  if (isMobile()) {
+    const { pickFiles, fileToWorkingImage } = await import("./cutPicker"); // 避免循環引用，用時才載
+    const [f] = await pickFiles("image/*", false);
+    if (!f) return null;
+    const url = await fileToWorkingImage(f); // 先縮再進裁切器（iPad 解碼預算）
+    if (!url) { alert("這張照片讀不進來——等幾秒再試一次。"); return null; }
+    return { kind: "image", url };
+  }
   const src = await open({
     title: "選擇圖片或影片",
     filters: [{ name: "圖片或影片", extensions: [...IMG_EXTS, ...VID_EXTS] }],

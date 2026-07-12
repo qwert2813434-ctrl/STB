@@ -1,11 +1,22 @@
 // 版本與更新紀錄——每次發版在最上面加一段（慣例同 ALIGNED 設定頁：
 // 版本號、日期、使用者看得懂的變更點；工程細節留在 進度與下一步.md）。
 
-export const APP_VERSION = "1.2.0";
+export const APP_VERSION = "1.3.0";
 
 export interface ReleaseNote { version: string; date: string; items: string[]; }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.3.0",
+    date: "2026-07-12",
+    items: [
+      "塗鴉分鏡：直接畫在分鏡格裡——筆／麥克筆／橡皮擦（擦到哪消到哪）＋復原重做；場景/人物雙層，複製 cut 只重畫表演；勘景照半透明墊底沿描。Mac 滑鼠可畫；iPad 版 Apple Pencil 點縮圖即進（壓感筆鋒＋防手掌）",
+      "打包案子（.stb）：匯出中心一鍵把整個案子（含影片素材）壓成單一檔案，另一台 Mac／iPad 的 STB 直接開啟——案子交接、跨機備份一個檔搞定",
+      "拖曳手感升級：分鏡卡／Rundown 列／通告大組列拖動時跟著游標走，放空自動彈回原位",
+      "專案頁：目前開啟的案子掛「目前」標籤；開啟其他案子支援 .stb 打包檔",
+      "iPad 版（App Store 同步上架）：檔案 App 案子管理、原生照片選擇器、長按多選、雙指輕點復原／三指重做、匯出走分享面板",
+    ],
+  },
   {
     version: "1.2.0",
     date: "2026-07-11",

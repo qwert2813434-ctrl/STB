@@ -2,7 +2,7 @@ import { bindEditKeys } from "./editKeys";
 import type { Store } from "./store";
 import { CHAPTERS, PORTRAIT_CHAPTERS, computeCutNumbers } from "./model";
 import { openCropper } from "./cropper";
-import { openExternal, chooseVideoImport, chooseMediaImport, mountInlineVideo, isTauri } from "./persistence";
+import { openExternal, chooseVideoImport, chooseMediaImport, mountInlineVideo, isTauri, isMobile } from "./persistence";
 import { openCutPicker, cutRefLabel, fileToWorkingImage, pickFiles } from "./cutPicker";
 
 // 通用圖文參考頁：一個組件覆蓋 TONE / REFERENCE RHYTHM / REFERENCES /
@@ -60,7 +60,7 @@ export function renderRefPage(store: Store, root: HTMLElement, chapterId: string
         ${showVideo ? `<div class="ref-video"><span class="tag">${badge}</span><span class="cut-edit" contenteditable draggable="false" data-ritem="${it.id}" data-rf="videoUrl" data-ph="${VIDEO_CHAPTERS.has(chapterId) ? "影片連結（YouTube／Vimeo／雲端）" : "連結（地圖／網頁／雲端）"}">${esc(it.videoUrl ?? "")}</span></div>` : ""}
         <div class="ref-actions">
           ${!showVideo ? `<button class="ref-mini" data-refvideo="${it.id}">${VIDEO_CHAPTERS.has(chapterId) ? "＋ 影片連結" : "＋ 連結"}</button>` : ""}
-          ${chapterId === "actor" ? `<button class="ref-mini" data-refvidfile="${it.id}">＋ 本機影片</button>` : ""}
+          ${chapterId === "actor" && !isMobile() ? `<button class="ref-mini" data-refvidfile="${it.id}">＋ 本機影片</button>` : ""}
         </div>`;
     if (side) {
       html += `
