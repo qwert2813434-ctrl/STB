@@ -49,7 +49,7 @@ export async function loadFromDir(dir: string): Promise<Project | null> {
 }
 
 // ---- 最近案子（專案管理頁的條列來源；只是清單，不動案子本體）----
-export interface RecentEntry { dir: string; title: string; at: number; }
+export interface RecentEntry { dir: string; title: string; at: number; packed?: boolean; }
 
 export function recentProjects(): RecentEntry[] {
   try { return JSON.parse(localStorage.getItem("recentProjects") || "[]") as RecentEntry[]; }
@@ -100,11 +100,29 @@ export async function migrateMobileHome(): Promise<void> {
   } catch { /* 沒得搬或搬不動：不擋啟動 */ }
 }
 
-// iPad 專案清單：掃 Documents 的真實資料夾（在檔案 App 增刪的案子即時反映）
+// iPad 專案清單：掃 Documents 的真實資料夾（在檔案 App 增刪的案子即時反映）；
+// .stb 打包案子也列出（packed），點了由 unpackPacked 解開
 export async function listMobileProjects(): Promise<RecentEntry[]> {
   const parent = await mobileBase();
-  const rows = await invoke<{ dir: string; title: string; mtime: number }[]>("list_projects", { parent });
-  return rows.map((r) => ({ dir: r.dir, title: r.title, at: r.mtime }));
+  const rows = await invoke<{ dir: string; title: string; mtime: number; packed: boolean }[]>("list_projects", { parent });
+  return rows.map((r) => ({ dir: r.dir, title: r.title, at: r.mtime, packed: r.packed }));
+}
+
+// 解開 .stb 打包案子：在同層建「檔名」資料夾（撞名自動加 2、3…），回傳新資料夾
+export async function unpackPacked(path: string): Promise<string> {
+  const parent = path.replace(/\/[^/]*$/, "");
+  const stem = (path.split("/").pop() ?? "案子").replace(/\.stb$/i, "");
+  for (let i = 0; i < 50; i++) {
+    const dst = `${parent}/${stem}${i ? ` ${i + 1}` : ""}`;
+    try {
+      await invoke("unpack_project", { src: path, dstDir: dst });
+      return dst;
+    } catch (err) {
+      if (String(err).includes("已有案子")) continue; // 撞名：下一個序號
+      throw err;
+    }
+  }
+  throw new Error("同名資料夾太多，清一下再解");
 }
 
 // iPad 建案／另存共用：App 內輸入案名 → Documents/{案名}；
@@ -132,10 +150,15 @@ async function createInDocuments(srcDir: string | null, contents: string, title:
 // 只亮 .json、選到什麼一目瞭然，再從檔案位置推回案子資料夾。
 export async function chooseFolderAndLoad(): Promise<Project | null> {
   const path = await open({
-    title: "開啟案子：選擇案子資料夾裡的 project.json",
-    filters: [{ name: "STB 案子（project.json）", extensions: ["json"] }],
+    title: "開啟案子：選 project.json 或打包案子（.stb）",
+    filters: [{ name: "STB 案子（project.json／.stb）", extensions: ["json", "stb"] }],
   });
   if (typeof path !== "string") return null;
+  // 打包案子：先在同層解開成資料夾再載入
+  if (/\.stb$/i.test(path)) {
+    const dir = await unpackPacked(path);
+    return loadFromDir(dir);
+  }
   const dir = path.replace(/\/[^/]*$/, "");
   return loadFromDir(dir);
 }

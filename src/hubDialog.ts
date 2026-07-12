@@ -13,6 +13,7 @@ export interface HubActions {
   onOpenOther: () => Promise<boolean>; // 選 project.json 開其他案子（桌面限定）
   onOpenSample: () => boolean;        // 看內建示範案（不落地、不影響真案子）
   list?: () => Promise<RecentEntry[]>; // iPad：掃真實資料夾當清單來源
+  onOpenPacked?: (path: string) => Promise<boolean>; // .stb 打包案子：解開＋載入
 }
 
 export function openHub(actions: HubActions) {
@@ -25,10 +26,10 @@ export function openHub(actions: HubActions) {
   function rowsHtml(entries: RecentEntry[]): string {
     const cur = currentDir();
     return entries.map((r) => `
-      <div class="hub-row" data-dir="${esc(r.dir)}">
+      <div class="hub-row" data-dir="${esc(r.dir)}"${r.packed ? ` data-packed="1"` : ""}>
         <div class="hub-rmain">
-          <div class="hub-rtitle">${esc(r.title || "未命名案子")}${r.dir === cur ? `<span class="hub-rnow">目前</span>` : ""}</div>
-          <div class="hub-rpath">${esc(mobile ? `檔案 App ▸ STB ▸ ${r.dir.split("/").pop() || ""}` : r.dir)}</div>
+          <div class="hub-rtitle">${esc(r.title || "未命名案子")}${r.packed ? `<span class="hub-rpack">打包</span>` : ""}${r.dir === cur ? `<span class="hub-rnow">目前</span>` : ""}</div>
+          <div class="hub-rpath">${r.packed ? "打包案子——點一下解開成資料夾並開啟" : esc(mobile ? `檔案 App ▸ STB ▸ ${r.dir.split("/").pop() || ""}` : r.dir)}</div>
         </div>
         <span class="hub-rdate">${fmtDate(r.at)}</span>
         ${mobile ? "" : `<button class="hub-rx" data-forget="${esc(r.dir)}" title="從清單移除（不會刪除案子本身）">✕</button>`}
@@ -52,8 +53,8 @@ export function openHub(actions: HubActions) {
           <div class="hub-empty">載入中…</div>
         </div>
         <div class="hub-foot">${mobile
-          ? `案子放在「檔案」App ▸ 我的 iPad ▸ <b>STB</b>，一案一資料夾。備份／改名／刪除請在檔案 App 對<b>整個資料夾</b>操作，勿單獨動資料夾內的檔案。`
-          : `案子＝一個資料夾（project.json＋assets 影片素材）。<b>請勿單獨移動或刪除資料夾內的檔案</b>，影片是用連結掛進案子的；備份＝複製整個資料夾。`}</div>
+          ? `案子放在「檔案」App ▸ 我的 iPad ▸ <b>STB</b>，一案一資料夾。備份／改名／刪除請在檔案 App 對<b>整個資料夾</b>操作。收到別人傳的 <b>.stb 打包案子</b>：存進同一個 STB 資料夾，回這裡點一下即解開。`
+          : `案子＝一個資料夾（project.json＋assets 影片素材）。<b>請勿單獨移動或刪除資料夾內的檔案</b>；備份＝複製整個資料夾。要傳給別人＝「匯出…」→ 打包案子（.stb 單檔）。`}</div>
       </div>`;
     void fillRows();
   }
@@ -86,6 +87,13 @@ export function openHub(actions: HubActions) {
     const forget = t.closest("[data-forget]") as HTMLElement | null;
     if (forget) { removeRecent(forget.dataset.forget!); void fillRows(); return; }
     const row = t.closest(".hub-row") as HTMLElement | null;
+    if (row?.dataset.packed && actions.onOpenPacked) {
+      void actions.onOpenPacked(row.dataset.dir!).then((ok) => {
+        if (ok) { close(); return; }
+        void fillRows();
+      });
+      return;
+    }
     if (row) {
       void actions.onOpenDir(row.dataset.dir!).then((ok) => {
         if (ok) { close(); return; }

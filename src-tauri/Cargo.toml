@@ -26,6 +26,8 @@ tauri-plugin-log = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 base64 = "0.22"
+# 打包案子（.stb＝zip）：整案含素材壓成單檔，跨機交換
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 # iOS 分享面板（UIActivityViewController）＋原生照片選擇器（PHPicker）：
 # objc2 動態呼叫、block2 給 ObjC 回呼用

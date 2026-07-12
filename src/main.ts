@@ -12,7 +12,7 @@ import { openPreview } from "./previewMode";
 import { openExportDialog } from "./exportDialog";
 import { openCropper } from "./cropper";
 import { CHAPTERS, computeCutNumbers, pageCount, chainRundown, hhmmToMin, minToHHMM, normalizeProject } from "./model";
-import { isTauri, isMobile, currentDir, dirName, chooseFolderAndLoad, createProjectFolder, chooseFolderAndSaveAs, saveToCurrent, loadFromDir, lastProjectDir, upsertRecent, detachDir, migrateMobileHome, listMobileProjects, extractPosterFor } from "./persistence";
+import { isTauri, isMobile, currentDir, dirName, chooseFolderAndLoad, createProjectFolder, chooseFolderAndSaveAs, saveToCurrent, loadFromDir, lastProjectDir, upsertRecent, detachDir, migrateMobileHome, listMobileProjects, unpackPacked, extractPosterFor } from "./persistence";
 import { projectLogo } from "./logoAsset";
 import { openHelp } from "./helpDialog";
 import { openHub } from "./hubDialog";
@@ -469,6 +469,25 @@ async function hubCreate(mode: "ppm" | "schedule"): Promise<boolean> {
   return true;
 }
 
+// .stb 打包案子：解開成同層資料夾 → 載入（iPad 專案頁清單／收 AirDrop 用）
+async function hubOpenPacked(path: string): Promise<boolean> {
+  try {
+    if (!confirmLeave()) return false;
+    const dir = await unpackPacked(path);
+    const raw = await loadFromDir(dir);
+    if (!raw) return false;
+    store.replaceProject(normalizeProject(raw));
+    dirty = false;
+    updateSaveState();
+    void healPosters();
+    void syncMtime();
+    return true;
+  } catch (err) {
+    alert(`解不開這個打包案子：${err}`);
+    return false;
+  }
+}
+
 async function hubOpenDir(dir: string): Promise<boolean> {
   try {
     if (!confirmLeave()) return false;
@@ -534,6 +553,7 @@ const hubActions = {
   onOpenDir: hubOpenDir,
   onOpenOther: doOpen,
   onOpenSample: hubOpenSample,
+  onOpenPacked: hubOpenPacked,
   list: isMobile() ? listMobileProjects : undefined,
 };
 

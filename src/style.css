@@ -902,6 +902,11 @@ body.sel-mode .cut [contenteditable] { pointer-events: none; }
   color: var(--bg); background: var(--ink); border-radius: 4px;
   padding: 2px 6px; margin-left: 8px; vertical-align: 2px;
 }
+.hub-rpack {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .1em;
+  color: var(--ink); border: 1px solid var(--border-strong); border-radius: 4px;
+  padding: 1px 6px; margin-left: 8px; vertical-align: 2px;
+}
 
 /* 取名對話框（iPad 建案／另存：iOS 沒有存檔對話框，案名在 App 內輸入） */
 .nd-overlay {

@@ -1,7 +1,8 @@
 import type { Store } from "./store";
 import { collectChapters, coverSlideHtml, titleSlideHtml, logoSlideHtml } from "./pages";
 import { rasterLogo } from "./logoAsset";
-import { isTauri, isMobile } from "./persistence";
+import { isTauri, isMobile, currentDir } from "./persistence";
+import { appCacheDir } from "@tauri-apps/api/path";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import { buildEditablePptx } from "./pptxNative";
@@ -31,9 +32,10 @@ export async function openExportDialog(store: Store) {
         <span class="spacer"></span>
         <button class="ex-go" data-exgo="pdf">匯出 PDF</button>
         <button class="ex-go" data-exgo="pptx">匯出 PPTX（可編輯）</button>
+        <button class="ex-go" data-expack title="整個案子（含影片素材）壓成一個 .stb 檔——對方的 STB 開啟即還原完整案子">打包案子</button>
         <button class="ex-close" aria-label="關閉">✕</button>
       </div>
-      <div class="ex-hint">勾選要匯出的章節。PDF＝與縮圖完全一致的成品；PPTX＝可編輯重排版——文字可改、圖片可換、本機影片嵌入（Keynote／PowerPoint 可播）、影片連結可點，版面與縮圖略有差異。</div>
+      <div class="ex-hint">勾選要匯出的章節。PDF＝與縮圖完全一致的成品；PPTX＝可編輯重排版——文字可改、圖片可換、本機影片嵌入（Keynote／PowerPoint 可播）、影片連結可點。打包案子＝整案（含素材）壓成一個 .stb 檔，傳給另一台 Mac／iPad 的 STB 直接開。</div>
       <div class="ex-body"><div class="ex-status">擷取頁面中…</div></div>
     </div>`;
   document.body.appendChild(overlay);
@@ -213,9 +215,34 @@ export async function openExportDialog(store: Store) {
   }
   document.addEventListener("keydown", onKey, true);
 
+  // 打包案子：不走截圖管線——整個案子資料夾壓成 .stb 單檔
+  // （Mac：存檔對話框＋Finder 顯示；iPad：寫進快取→分享面板）
+  async function doPack() {
+    const dir = currentDir();
+    if (!dir) { alert("案子還沒儲存——先按「儲存案子」，打包才有東西可包。"); return; }
+    const name = (store.get().meta.title || "案子").replace(/[\/:*?"<>|]/g, "-");
+    try {
+      if (isMobile()) {
+        const dst = `${(await appCacheDir()).replace(/\/+$/, "")}/${name}.stb`;
+        await invoke("pack_project", { dir, dst });
+        await invoke("share_path", { path: dst });
+        close();
+        return;
+      }
+      const path = await save({ defaultPath: `${name}.stb`, filters: [{ name: "STB 打包案子", extensions: ["stb"] }] });
+      if (!path) return;
+      await invoke("pack_project", { dir, dst: path });
+      close();
+      try { await invoke("share_path", { path }); } catch { /* 檔已打好，顯示失敗不吵 */ }
+    } catch (err) {
+      alert(`打包失敗：${err}`);
+    }
+  }
+
   overlay.addEventListener("click", (e) => {
     const t = e.target as HTMLElement;
     if (t.closest(".ex-close")) { close(); return; }
+    if (t.closest("[data-expack]")) { void doPack(); return; }
     const go = t.closest("[data-exgo]") as HTMLElement | null;
     if (go) void doExport(go.dataset.exgo as "pdf" | "pptx");
   });

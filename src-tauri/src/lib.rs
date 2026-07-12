@@ -169,13 +169,110 @@ fn project_mtime(dir: String) -> Result<u64, String> {
   Ok(mtime)
 }
 
+// 打包案子（.stb＝zip 換皮）：project.json＋assets 整包壓成單一檔案——
+// 資料夾沒辦法用 LINE/信件傳，一個檔案才是「把案子交給別人」的正解
+#[tauri::command]
+fn pack_project(dir: String, dst: String) -> Result<(), String> {
+  let src = Path::new(&dir);
+  if !src.join("project.json").exists() {
+    return Err("這個資料夾不是案子（沒有 project.json）".into());
+  }
+  if let Some(par) = Path::new(&dst).parent() {
+    fs::create_dir_all(par).ok();
+  }
+  let file = fs::File::create(&dst).map_err(|e| format!("建立 {} 失敗：{}", dst, e))?;
+  let mut zip = zip::ZipWriter::new(file);
+  let opts = zip::write::SimpleFileOptions::default()
+    .compression_method(zip::CompressionMethod::Deflated);
+  fn add_dir(
+    zip: &mut zip::ZipWriter<fs::File>,
+    root: &Path,
+    cur: &Path,
+    opts: &zip::write::SimpleFileOptions,
+  ) -> Result<(), String> {
+    for entry in fs::read_dir(cur).map_err(|e| e.to_string())?.flatten() {
+      let p = entry.path();
+      let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+      if name.starts_with('.') { continue; } // .DS_Store 之類不進包
+      if p.is_dir() {
+        add_dir(zip, root, &p, opts)?;
+      } else {
+        let rel = p.strip_prefix(root).map_err(|e| e.to_string())?.to_string_lossy().replace('\\', "/");
+        use std::io::Write;
+        zip.start_file(rel, *opts).map_err(|e| e.to_string())?;
+        let bytes = fs::read(&p).map_err(|e| e.to_string())?;
+        zip.write_all(&bytes).map_err(|e| e.to_string())?;
+      }
+    }
+    Ok(())
+  }
+  add_dir(&mut zip, src, src, &opts)?;
+  zip.finish().map_err(|e| e.to_string())?;
+  Ok(())
+}
+
+// 解開打包案子到指定資料夾；防呆：目標已有案子擋下、zip-slip 路徑防護
+#[tauri::command]
+fn unpack_project(src: String, dst_dir: String) -> Result<(), String> {
+  let dst = Path::new(&dst_dir);
+  if dst.join("project.json").exists() {
+    return Err("目標資料夾已有案子（project.json）".into());
+  }
+  let file = fs::File::open(&src).map_err(|e| format!("開啟 {} 失敗：{}", src, e))?;
+  let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("不是有效的打包案子：{}", e))?;
+  if archive.by_name("project.json").is_err() {
+    return Err("這個檔案裡沒有 project.json——不是 STB 打包案子".into());
+  }
+  fs::create_dir_all(dst).map_err(|e| e.to_string())?;
+  for i in 0..archive.len() {
+    let mut f = archive.by_index(i).map_err(|e| e.to_string())?;
+    let Some(rel) = f.enclosed_name() else { continue }; // 越界路徑直接略過
+    let out = dst.join(rel);
+    if f.is_dir() {
+      fs::create_dir_all(&out).ok();
+      continue;
+    }
+    if let Some(par) = out.parent() {
+      fs::create_dir_all(par).ok();
+    }
+    let mut w = fs::File::create(&out).map_err(|e| e.to_string())?;
+    std::io::copy(&mut f, &mut w).map_err(|e| e.to_string())?;
+  }
+  Ok(())
+}
+
+// 把「既有檔案」交給系統：iOS 分享面板／macOS Finder 顯示（打包案子的出口）
+#[tauri::command]
+fn share_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
+  #[cfg(target_os = "ios")]
+  {
+    let p = path.clone();
+    app
+      .run_on_main_thread(move || unsafe { ios_share::present(&p) })
+      .map_err(|e| e.to_string())?;
+  }
+  #[cfg(not(target_os = "ios"))]
+  {
+    let _ = &app;
+    std::process::Command::new("open")
+      .arg("-R")
+      .arg(&path)
+      .spawn()
+      .map(|_| ())
+      .map_err(|e| format!("顯示 {} 失敗：{}", path, e))?;
+  }
+  Ok(())
+}
+
 // 列出資料夾下的所有案子（iPad 專案管理頁的來源：掃真實檔案，
-// 在「檔案」App 裡增刪的案子清單即時反映，不靠 localStorage 記憶）
+// 在「檔案」App 裡增刪的案子清單即時反映，不靠 localStorage 記憶）。
+// packed＝.stb 打包案子（AirDrop 存進 STB 資料夾 → 清單點一下解開）
 #[derive(serde::Serialize)]
 struct ProjectEntry {
   dir: String,
   title: String,
   mtime: u64,
+  packed: bool,
 }
 
 #[tauri::command]
@@ -187,6 +284,18 @@ fn list_projects(parent: String) -> Result<Vec<ProjectEntry>, String> {
   };
   for entry in rd.flatten() {
     let p = entry.path();
+    // .stb 打包案子直接列（點了由前端解開）
+    if p.is_file() && p.extension().and_then(|e| e.to_str()).map(|e| e.eq_ignore_ascii_case("stb")).unwrap_or(false) {
+      let title = p.file_stem().and_then(|n| n.to_str()).unwrap_or("打包案子").to_string();
+      let mtime = fs::metadata(&p)
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+      out.push(ProjectEntry { dir: p.to_string_lossy().to_string(), title, mtime, packed: true });
+      continue;
+    }
     let pj = p.join("project.json");
     if !pj.is_file() {
       continue;
@@ -213,7 +322,7 @@ fn list_projects(parent: String) -> Result<Vec<ProjectEntry>, String> {
       .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
       .map(|d| d.as_millis() as u64)
       .unwrap_or(0);
-    out.push(ProjectEntry { dir: p.to_string_lossy().to_string(), title, mtime });
+    out.push(ProjectEntry { dir: p.to_string_lossy().to_string(), title, mtime, packed: false });
   }
   out.sort_by(|a, b| b.mtime.cmp(&a.mtime));
   Ok(out)
@@ -549,12 +658,45 @@ fn open_path(path: String) -> Result<(), String> {
     .map_err(|e| format!("開啟 {} 失敗：{}", path, e))
 }
 
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn pack_unpack_roundtrip() {
+    let tmp = std::env::temp_dir().join(format!("stb_test_{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    let src = tmp.join("案子A");
+    fs::create_dir_all(src.join("assets")).unwrap();
+    fs::write(src.join("project.json"), r#"{"meta":{"title":"t"}}"#).unwrap();
+    fs::write(src.join("assets/v.mp4"), vec![7u8; 1024]).unwrap();
+    fs::write(src.join(".DS_Store"), b"junk").unwrap(); // 不該進包
+
+    let stb = tmp.join("案子A.stb");
+    pack_project(src.to_string_lossy().into(), stb.to_string_lossy().into()).unwrap();
+
+    let dst = tmp.join("解開");
+    unpack_project(stb.to_string_lossy().into(), dst.to_string_lossy().into()).unwrap();
+    assert_eq!(fs::read_to_string(dst.join("project.json")).unwrap(), r#"{"meta":{"title":"t"}}"#);
+    assert_eq!(fs::read(dst.join("assets/v.mp4")).unwrap().len(), 1024);
+    assert!(!dst.join(".DS_Store").exists());
+    // 同資料夾再解一次要被防蓋守門擋下
+    assert!(unpack_project(stb.to_string_lossy().into(), dst.to_string_lossy().into()).is_err());
+    // 不是案子包（沒 project.json 的 zip）要被擋
+    let junk_dir = tmp.join("junk");
+    fs::create_dir_all(&junk_dir).unwrap();
+    fs::write(junk_dir.join("readme.txt"), b"x").unwrap();
+    assert!(pack_project(junk_dir.to_string_lossy().into(), tmp.join("j.stb").to_string_lossy().into()).is_err());
+    let _ = fs::remove_dir_all(&tmp);
+  }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_opener::init())
-    .invoke_handler(tauri::generate_handler![save_project, load_project, import_asset, read_asset, read_file, save_file, open_path, video_for_embed, save_as, project_mtime, share_export, list_projects, move_dir, pick_photos])
+    .invoke_handler(tauri::generate_handler![save_project, load_project, import_asset, read_asset, read_file, save_file, open_path, video_for_embed, save_as, project_mtime, share_export, list_projects, move_dir, pick_photos, pack_project, unpack_project, share_path])
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
