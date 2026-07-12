@@ -108,10 +108,12 @@ export async function listMobileProjects(): Promise<RecentEntry[]> {
   return rows.map((r) => ({ dir: r.dir, title: r.title, at: r.mtime, packed: r.packed }));
 }
 
-// 解開 .stb 打包案子：在同層建「檔名」資料夾（撞名自動加 2、3…），回傳新資料夾
-export async function unpackPacked(path: string): Promise<string> {
-  const parent = path.replace(/\/[^/]*$/, "");
-  const stem = (path.split("/").pop() ?? "案子").replace(/\.stb$/i, "");
+// 解開 .stb 打包案子：建「檔名」資料夾（撞名自動加 2、3…），回傳新資料夾。
+// destParent 不給＝解在 .stb 同層（Mac）；給＝解進指定的家
+// （iPad 從 iCloud 選檔：來源唯讀，要解進 Documents 案子家）
+export async function unpackPacked(path: string, destParent?: string): Promise<string> {
+  const parent = destParent ?? path.replace(/\/[^/]*$/, "");
+  const stem = (path.split("/").pop() ?? "案子").replace(/\.stb$/i, "").trim() || "案子";
   for (let i = 0; i < 50; i++) {
     const dst = `${parent}/${stem}${i ? ` ${i + 1}` : ""}`;
     try {

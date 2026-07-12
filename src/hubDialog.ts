@@ -14,6 +14,9 @@ export interface HubActions {
   onOpenSample: () => boolean;        // 看內建示範案（不落地、不影響真案子）
   list?: () => Promise<RecentEntry[]>; // iPad：掃真實資料夾當清單來源
   onOpenPacked?: (path: string) => Promise<boolean>; // .stb 打包案子：解開＋載入
+  // iPad：從 iCloud 雲碟／檔案 App 任何位置選 .stb 匯入（Armin：拉檔進
+  // STB 資料夾太麻煩，工作流是去 iCloud 找檔案）
+  onImportPacked?: () => Promise<boolean>;
 }
 
 export function openHub(actions: HubActions) {
@@ -43,7 +46,9 @@ export function openHub(actions: HubActions) {
           <span class="hub-title">專案</span>
           <button class="hub-act" data-hubnew="ppm">＋ 新增案子</button>
           <button class="hub-act" data-hubnew="schedule" title="製片版：分鏡整理＋甘特／通告單／Rundown 的輕量排表案；隨時可展開成完整 PPM">＋ 通告排表</button>
-          ${mobile ? "" : `<button class="hub-act" data-hubopen>開啟其他案子…</button>`}
+          ${mobile
+            ? `<button class="hub-act" data-hubimport title="從 iCloud 雲碟／檔案 App 選打包案子（.stb），複製進來解開">匯入案子…</button>`
+            : `<button class="hub-act" data-hubopen>開啟其他案子…</button>`}
           <button class="hub-act" data-hubsample title="內建示範案，看版面與玩法用；不會動到你的案子">示範案</button>
           <span class="spacer"></span>
           <button class="hub-close" aria-label="關閉">✕</button>
@@ -83,6 +88,7 @@ export function openHub(actions: HubActions) {
     const nw = t.closest("[data-hubnew]") as HTMLElement | null;
     if (nw) { void actions.onCreate(nw.dataset.hubnew as "ppm" | "schedule").then((ok) => { if (ok) close(); }); return; }
     if (t.closest("[data-hubopen]")) { void actions.onOpenOther().then((ok) => { if (ok) close(); }); return; }
+    if (t.closest("[data-hubimport]")) { void actions.onImportPacked?.().then((ok) => { if (ok) close(); else void fillRows(); }); return; }
     if (t.closest("[data-hubsample]")) { if (actions.onOpenSample()) close(); return; }
     const forget = t.closest("[data-forget]") as HTMLElement | null;
     if (forget) { removeRecent(forget.dataset.forget!); void fillRows(); return; }

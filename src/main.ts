@@ -1,6 +1,7 @@
 import { bindEditKeys } from "./editKeys";
 import "./style.css";
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import { Store } from "./store";
 import { sampleProject, emptyProject } from "./sampleData";
 import { renderStb, bindStb } from "./stbView";
@@ -12,7 +13,7 @@ import { openPreview } from "./previewMode";
 import { openExportDialog } from "./exportDialog";
 import { openCropper } from "./cropper";
 import { CHAPTERS, computeCutNumbers, pageCount, chainRundown, hhmmToMin, minToHHMM, normalizeProject } from "./model";
-import { isTauri, isMobile, currentDir, dirName, chooseFolderAndLoad, createProjectFolder, chooseFolderAndSaveAs, saveToCurrent, loadFromDir, lastProjectDir, upsertRecent, detachDir, migrateMobileHome, listMobileProjects, unpackPacked, extractPosterFor } from "./persistence";
+import { isTauri, isMobile, currentDir, dirName, chooseFolderAndLoad, createProjectFolder, chooseFolderAndSaveAs, saveToCurrent, loadFromDir, lastProjectDir, upsertRecent, detachDir, migrateMobileHome, listMobileProjects, unpackPacked, mobileBase, extractPosterFor } from "./persistence";
 import { projectLogo } from "./logoAsset";
 import { openHelp } from "./helpDialog";
 import { openHub } from "./hubDialog";
@@ -469,6 +470,32 @@ async function hubCreate(mode: "ppm" | "schedule"): Promise<boolean> {
   return true;
 }
 
+// iPad「匯入案子…」：iOS 文件選擇器（可瀏覽 iCloud 雲碟）選 .stb →
+// 複製解開進 Documents 案子家 → 開啟。來源在 iCloud 是唯讀的，所以
+// 一律解進自己的家，不動原檔。
+async function hubImportPacked(): Promise<boolean> {
+  try {
+    if (!confirmLeave()) return false;
+    const path = await open({
+      title: "選擇打包案子（.stb）",
+      filters: [{ name: "STB 打包案子", extensions: ["stb"] }],
+    });
+    if (typeof path !== "string") return false;
+    const dir = await unpackPacked(path, await mobileBase());
+    const raw = await loadFromDir(dir);
+    if (!raw) return false;
+    store.replaceProject(normalizeProject(raw));
+    dirty = false;
+    updateSaveState();
+    void healPosters();
+    void syncMtime();
+    return true;
+  } catch (err) {
+    alert(`匯入失敗：${err}\n（備援路線：把 .stb 存進 檔案 App ▸ 我的 iPad ▸ STB，回專案頁點一下即可解開）`);
+    return false;
+  }
+}
+
 // .stb 打包案子：解開成同層資料夾 → 載入（iPad 專案頁清單／收 AirDrop 用）
 async function hubOpenPacked(path: string): Promise<boolean> {
   try {
@@ -554,6 +581,7 @@ const hubActions = {
   onOpenOther: doOpen,
   onOpenSample: hubOpenSample,
   onOpenPacked: hubOpenPacked,
+  onImportPacked: isMobile() ? hubImportPacked : undefined,
   list: isMobile() ? listMobileProjects : undefined,
 };
 
