@@ -1,6 +1,6 @@
 # STB - STORYBOARD
 
-**為腳本與前製會議（PPM）而生的 Mac App。**
+**為腳本與前製會議（PPM）而生的 Mac／iPad App。**
 由台灣廣告導演 [Armin Kao（錄人影像）](https://passerstudio.com) 依自己的工作流打造。
 
 一份 PPM 十個章節一次到位：目錄、調性、參考節奏、分鏡、REFERENCES、演員、服裝、美術、場景、製作時程。做完直接簡報，開完會直接匯出。
@@ -11,7 +11,9 @@
 
 👉 **[下載 STB for Mac（DMG）](https://raw.githubusercontent.com/qwert2813434-ctrl/STB/main/release/STB_1.0.0_aarch64.dmg)**（檔名固定，內容永遠是最新版）
 
-**系統需求**：Apple Silicon（M1 或更新）、macOS 13 Ventura 或更新。
+📱 **[STB for iPad — App Store](https://apps.apple.com/tw/app/stb-storyboard-to-shoot/id6790075928)**（NT$350 買斷，支援 Apple Pencil 塗鴉分鏡）
+
+**系統需求**：Mac 版需 Apple Silicon（M1 或更新）、macOS 13 Ventura 或更新；iPad 版需 iPadOS 14+。
 
 第一次開啟若跳「無法驗證開發者」（本 App 未購買 Apple 簽章）：
 - macOS 15 以上：系統設定 → 隱私權與安全性 → 最下方「強制打開」
@@ -36,6 +38,12 @@
 ![甘特圖拖曳](docs/screenshots/gantt.gif)
 
 拖曳條子改期程、可選色，製作時程和通告單同一章搞定。
+
+### iPad 版：Apple Pencil 塗鴉分鏡
+
+筆、麥克筆、橡皮擦，場景／人物雙層——複製 cut 只重畫表演；勘景照半透明墊底沿描。
+案子走檔案 App 管理，`.stb` 打包檔可在 Mac／iPad 之間直接接手。
+👉 [App Store 下載](https://apps.apple.com/tw/app/stb-storyboard-to-shoot/id6790075928)
 
 ### 其他
 
