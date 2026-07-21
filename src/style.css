@@ -97,6 +97,17 @@ button:active { transform: scale(.98); }
   grid-auto-rows: minmax(150px, auto);
   gap: 14px;
 }
+/* 直式分鏡：卡片站起來（縮圖 9:16），一排 6 格（橫式版面/欄位/卡片結構全不變） */
+.page.portrait { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.page.portrait .cut-thumb { aspect-ratio: 9 / 16; }
+/* 直式「大」密度：4 欄（閱讀舒服，4 格一頁） */
+.page.portrait.comfy { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+/* 分鏡格密度切換（大／密）——僅直式顯示 */
+.board-density { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; }
+.board-density .bd-label { font-family: var(--mono); font-size: 10px; color: var(--faint); letter-spacing: .12em; text-transform: uppercase; margin-right: 2px; }
+.board-density button { font-size: 12px; padding: 4px 12px; border-radius: 8px; }
+.board-density button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 
 /* cut 格 */
 .cut {
@@ -267,6 +278,7 @@ button:active { transform: scale(.98); }
 }
 .rd-cuts { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
 .rd-cut { width: 96px; }
+.rd-cut.portrait { width: 64px; } /* 直式分鏡：縮窄，避免站立縮圖過高 */
 
 /* Rundown 二分法（Armin 定版）：標題橫跨在上；
    左＝分鏡縮圖（＋工具列）、右＝地點→停車→道具直排＋停車示意圖在下 */
@@ -301,6 +313,7 @@ button:active { transform: scale(.98); }
   color: var(--faint);
   font-size: 10px;
 }
+.rd-cut-box.portrait { aspect-ratio: 9 / 16; }
 .rd-cut-no {
   display: block;
   font-family: var(--mono);
@@ -460,9 +473,13 @@ body.dragging-any { user-select: none; cursor: grabbing; }
 .ref-addrow { margin-top: 14px; }
 .ref-addrow button { font-size: 12px; color: var(--muted); }
 
-/* 直式章節（演員/服裝）：9:16 人像卡 */
+/* 直式章節（演員/服裝／直式案的 Tone）：9:16 人像卡，4 欄密排 */
 .ref-grid.portrait { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .ref-thumb.portrait { aspect-ratio: 9 / 16; }
+/* 大版型（節奏 cols1/cols2、參考 max）裡的直式縮圖：限寬置中，單張不爆高 */
+.ref-grid.cols2 .ref-thumb.portrait,
+.ref-grid.cols1 .ref-thumb.portrait,
+.ref-grid.max .ref-thumb.portrait { max-width: 232px; margin-inline: auto; }
 
 /* 章節版型分流（16:9 不變，只改格數）：
    TONE＝2×2；RHYTHM＝1 個最大（單項）或 2 個最大；REFERENCES＝單項最大化 */
@@ -804,6 +821,12 @@ body.sel-mode .cut [contenteditable] { pointer-events: none; }
   background: #fff; border: 1px solid var(--line); border-radius: 8px;
   touch-action: none; cursor: crosshair;
 }
+/* 直式畫布：改由高度驅動（9:16 站立），寬度隨比例、上限不超出面板 */
+.sk-canvas.portrait {
+  width: auto; max-width: 100%;
+  height: calc(94vh - 130px); max-height: none;
+  aspect-ratio: 9 / 16;
+}
 .sk-hint { font-size: 12px; color: var(--muted); padding: 8px 14px 12px; line-height: 1.6; }
 
 /* 拖曳「抓取確認感」（Armin iPad 回饋：不知道有沒有抓到）——
@@ -932,6 +955,25 @@ body.sel-mode .cut [contenteditable] { pointer-events: none; }
 .nd-actions button { font-size: 13px; padding: 7px 16px; border-radius: 9px; }
 .nd-ok { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 
+/* 新建案分鏡比例選擇（橫式／直式） */
+.nd-sub { font-size: 12px; color: var(--muted); line-height: 1.5; margin-top: -6px; }
+.asp-choices { display: flex; gap: 12px; }
+.asp-choice {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 14px 10px 16px; border: 1px solid var(--border-strong); border-radius: 12px;
+  background: var(--card); cursor: pointer; transition: border-color .12s, background .12s;
+}
+@media (hover: hover) { .asp-choice:hover { border-color: var(--ink); background: var(--hover); } }
+.asp-frame { display: flex; align-items: center; justify-content: center; width: 64px; height: 64px; }
+.asp-frame::before {
+  content: ""; background: var(--placeholder);
+  border: 1px solid var(--border-strong); border-radius: 3px;
+}
+.asp-frame.land::before { width: 60px; height: 34px; }
+.asp-frame.port::before { width: 34px; height: 60px; }
+.asp-label { font-size: 13px; font-weight: 500; color: var(--ink); }
+.asp-hint { font-size: 11px; color: var(--muted); }
+
 /* 說明視窗（工具列 ?）：使用說明 iframe＋關於與更新 */
 .help-overlay {
   position: fixed; inset: 0; z-index: 3600;
@@ -984,17 +1026,23 @@ body.sel-mode .cut [contenteditable] { pointer-events: none; }
 .rc-strip { display: flex; gap: 4px; margin-top: 3px; flex-wrap: wrap; }
 .rc-thumb { position: relative; width: 40px; aspect-ratio: 16/9; background: var(--placeholder); border-radius: 3px; overflow: hidden; display: inline-flex; align-items: flex-end; }
 .rc-thumb img { width: 100%; height: 100%; object-fit: cover; }
+/* 直式對照 cut：縮圖站立 9:16，統一大小 */
+.rc-thumb.portrait { aspect-ratio: 9/16; }
+/* 側欄（參考資料）的直式對照 cut：小片橫向 wrap，不要 200px 直條疊高 */
+.ref-item.side .rc-strip.portrait { flex-direction: row; flex-wrap: wrap; }
+.ref-item.side .rc-thumb.portrait { width: 52px; }
 .rc-no { position: absolute; left: 0; bottom: 0; right: 0; font-family: var(--mono); font-size: 8px; color: var(--card); background: rgba(0,0,0,.5); text-align: center; }
 
 /* cut 對照選擇器 */
 .cutpick-overlay { position: fixed; inset: 0; z-index: 250; background: rgba(24,24,24,.5); display: flex; align-items: center; justify-content: center; }
 .cutpick-card { background: var(--card); border-radius: 12px; padding: 16px; width: min(760px, 92vw); max-height: 84vh; display: flex; flex-direction: column; }
 .cp-head { font-size: 13px; color: var(--ink); margin-bottom: 12px; }
-.cp-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; overflow: auto; }
-.cp-cell { border: 2px solid var(--line); border-radius: 8px; padding: 6px; background: var(--card); text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 4px; }
+.cp-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; overflow: auto; }
+.cp-cell { min-width: 0; border: 2px solid var(--line); border-radius: 8px; padding: 6px; background: var(--card); text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 4px; }
 .cp-cell.on { border-color: var(--ink); background: var(--hover); }
 .cp-no { font-family: var(--mono); font-size: 11px; color: var(--muted); }
 .cp-thumb { aspect-ratio: 16/9; background: var(--placeholder); border-radius: 4px; overflow: hidden; display: flex; align-items: center; justify-content: center; color: var(--faint); font-size: 10px; }
+.cp-thumb.portrait { aspect-ratio: 9/16; }
 .cp-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .cp-desc { font-size: 11px; color: var(--ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cp-bar { display: flex; align-items: center; gap: 10px; margin-top: 12px; }

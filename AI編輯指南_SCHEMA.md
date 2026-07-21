@@ -29,7 +29,9 @@ STB：自動重載，畫面更新 ✓
   "milestones": [ /* 甘特圖事項，見下 */ ],
   "refPages": { /* 圖文參考章，見下 */ },
   "hiddenChapters": [],  // 這次簡報不給客戶看的章 id，例 ["actor"]
-  "mode": "ppm"          // ppm＝完整十章；schedule＝通告排表（製片版）
+  "mode": "ppm",         // ppm＝完整十章；schedule＝通告排表（製片版）
+  "aspect": "9:16"       // 分鏡比例：直式廣告用 "9:16"。⚠️ 省略＝橫式 16:9（預設）。
+                         // 整片一次定案；影響分鏡格方向、匯入裁切、塗鴉畫布。
 }
 ```
 
@@ -95,10 +97,15 @@ key＝章節 id：`tone` 調性｜`rhythm` 參考節奏｜`references` 參考資
     "imageRef": null,        // ⚠️ AI 不要動
     "videoUrl": "",          // 外部影片連結可以填
     "videoFile": null,       // ⚠️ AI 不要動（assets/ 檔案連結）
-    "cutRefs": ["c3"]        // 對照的分鏡 cut id
+    "cutRefs": ["c3"],       // 對照的分鏡 cut id
+    "portrait": true         // 直式縮圖（rhythm/references 章匯圖時自動判定）。
+                             // ⚠️ AI 不要動：由 App 依素材方向設定。
   }
 ]
 ```
+
+> 章節方向：`actor`/`wardrobe` 恆直式；`tone` 跟隨整片 `aspect`；
+> `rhythm`/`references` 逐項依素材方向（`portrait` 旗標）；其餘橫式。
 
 ## AI 必守規則
 

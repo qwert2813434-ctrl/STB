@@ -1,11 +1,21 @@
 // 版本與更新紀錄——每次發版在最上面加一段（慣例同 ALIGNED 設定頁：
 // 版本號、日期、使用者看得懂的變更點；工程細節留在 進度與下一步.md）。
 
-export const APP_VERSION = "1.3.0";
+export const APP_VERSION = "1.4.0";
 
 export interface ReleaseNote { version: string; date: string; items: string[]; }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.4.0",
+    date: "2026-07-21",
+    items: [
+      "直式 9:16 支援：新建案時選「橫式／直式」——直式案的分鏡格站起來，一排放更多；頂端可切「大／密」兩種格子大小",
+      "各章跟著直：Rundown 指派的分鏡、Tone 調性跟隨整片比例；參考資料／參考節奏依你丟進來的素材方向自動直橫混排",
+      "匯出也直了：PDF／PPTX 頁面維持 16:9，但分鏡格與照片改成直式呈現——直式廣告提案不再被壓成橫的",
+      "橫式舊案完全不受影響（沒選直式就跟以前一模一樣）",
+    ],
+  },
   {
     version: "1.3.0",
     date: "2026-07-12",

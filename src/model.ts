@@ -1,6 +1,9 @@
 // 資料模型 + 連鎖引擎。schema 是唯一介面（紅線）。
 // 這裡只放「真相結構」與「衍生機器欄」；渲染/操作在別處。
 
+// 分鏡比例：橫式 16:9（預設）／直式 9:16（直式廣告用）。整片層級一次定案。
+export type Aspect = "16:9" | "9:16";
+
 export interface Meta {
   title: string;
   client: string;
@@ -14,7 +17,7 @@ export interface Film { id: string; name: string; }
 
 // 塗鴉分鏡（04 企劃⑤）：筆跡存資料、可再編輯；imageRef 存壓平 PNG
 // （簡報/匯出走既有圖片管線，零改動）。pts＝[x, y, 壓力] 序列（1280×720 座標）。
-export interface SketchStroke { tool: "pen" | "marker"; pts: number[][]; }
+export interface SketchStroke { tool: "pen" | "marker"; pts: number[][]; } // pts＝[x,y,壓力]（分鏡底圖座標，見 boardDims）
 // 兩層固定圖層：場景（構圖，複製後通常不動）＋人物（表演/運鏡，擦掉重畫）。
 // underlay＝勘景照描圖墊底（半透明顯示沿描；輸出壓平「不含」墊底）。
 export interface CutSketch { scene: SketchStroke[]; figure: SketchStroke[]; underlay?: string | null; }
@@ -47,6 +50,8 @@ export interface Project {
   // 案子類型：ppm＝完整十章；schedule＝通告排表（製片版——側欄只剩
   // 甘特/通告單/Rundown）。同一種檔案，隨時可切換＝「整合回 STB」天然成立。
   mode?: "ppm" | "schedule";
+  // 分鏡比例：橫式 16:9（預設）／直式 9:16。缺欄＝16:9（舊案不動、序列化零改動）。
+  aspect?: Aspect;
 }
 
 export interface Contact { role: string; name: string; phone: string; }
@@ -78,6 +83,7 @@ export interface RefItem {
   trimStart?: number;   // 首尾裁切（秒）：不重新編碼，播放時從起點播、到終點停
   trimEnd?: number;
   cutRefs?: string[];   // 對照的分鏡 cut id（表明此參考的招式／動態對應哪幾顆 cut）
+  portrait?: boolean;   // 直式縮圖（參考/節奏章：依匯入素材方向自動判定；缺＝橫式）
 }
 
 // 人是直立的：這兩章的參考圖用 9:16 直式
@@ -149,7 +155,17 @@ export interface CutNumber {
   groupSize: number;     // 所屬群組成員數
 }
 
-export const PER_PAGE = 8; // 4×2，檔位制可調
+export const PER_PAGE = 8; // 橫式 4×2（匯出 pptxNative 仍走此值；直式用 perPage()）
+
+// 分鏡底圖尺寸（匯入裁切、塗鴉畫布共用）：直式＝橫式轉 90°。
+export function boardDims(aspect?: Aspect): { w: number; h: number } {
+  return aspect === "9:16" ? { w: 720, h: 1280 } : { w: 1280, h: 720 };
+}
+
+// 分鏡章每頁格數：橫式 4欄×2列＝8（原值不變）；直式 6欄×2列＝12。
+export function perPage(aspect?: Aspect): number {
+  return aspect === "9:16" ? 12 : 8;
+}
 
 // 依出現順序給群組主號；群組成員 >1 則加子號。
 // 多路（films.length>1）：每路獨立從 01 編，label 加路前綴（A-05、B-01…）
@@ -194,8 +210,8 @@ export function pageOf(seqIndex: number): { page: number; slot: number } {
   return { page: Math.floor(seqIndex / PER_PAGE), slot: seqIndex % PER_PAGE };
 }
 
-export function pageCount(cutCount: number): number {
-  return Math.max(1, Math.ceil(cutCount / PER_PAGE));
+export function pageCount(cutCount: number, aspect?: Aspect): number {
+  return Math.max(1, Math.ceil(cutCount / perPage(aspect)));
 }
 
 // ---- 不變式：同群組的 cut 必須在陣列中相鄰（連續鏡不可被拆散）----
@@ -306,5 +322,7 @@ export function normalizeProject(raw: unknown): Project {
       ? (r.hiddenChapters as unknown[]).filter((x): x is string => typeof x === "string")
       : [],
     mode: r.mode === "schedule" ? "schedule" : "ppm",
+    // 只有直式才寫入欄位：橫式回 undefined＝舊檔序列化後 byte-identical（不平白多欄）
+    ...(r.aspect === "9:16" ? { aspect: "9:16" as const } : {}),
   };
 }

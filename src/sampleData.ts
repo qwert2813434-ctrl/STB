@@ -1,9 +1,10 @@
-import type { Project } from "./model";
+import type { Project, Aspect } from "./model";
 import { normalizeProject, newId } from "./model";
 
 // 全新空白案子（「新增案子」用）：結構齊全、內容全空——
 // 十章從零開始，一個拍攝日待填，聯絡人只留職位框。
-export function emptyProject(name = "未命名案子"): Project {
+// aspect＝分鏡比例（新建時問一次；"9:16"＝直式，其餘＝橫式）。
+export function emptyProject(name = "未命名案子", aspect?: Aspect): Project {
   return normalizeProject({
     meta: { title: name, client: "", version: 1 },
     contacts: [
@@ -15,6 +16,7 @@ export function emptyProject(name = "未命名案子"): Project {
     days: [{ id: newId("d"), date: "", callTime: "08:00", callGroups: [], rundown: [] }],
     milestones: [],
     refPages: {},
+    aspect,
   });
 }
 

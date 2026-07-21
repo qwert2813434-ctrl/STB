@@ -1,6 +1,7 @@
 import { getStroke } from "perfect-freehand";
 import type { Store } from "./store";
 import type { CutSketch, SketchStroke } from "./model";
+import { boardDims } from "./model";
 import { pickFiles, fileToWorkingImage } from "./cutPicker";
 import { bindUndoGestures } from "./touchUndo";
 
@@ -12,12 +13,14 @@ import { bindUndoGestures } from "./touchUndo";
 // 管線（簡報/匯出零改動）。Apple Pencil＝pointerType "pen"（手指不作畫＝
 // 防手掌誤觸）；Mac 滑鼠同一條路，桌面也能畫能測。
 
-const W = 1280, H = 720;
-
 export function openSketchEditor(store: Store, cutId: string) {
   const cut = store.get().cuts.find((c) => c.id === cutId);
   if (!cut) return;
   if (document.querySelector(".sk-overlay")) return;
+  // 畫布尺寸隨分鏡比例：橫式 1280×720／直式 720×1280。筆跡座標存在此空間，
+  // 整片比例一次定案不變動＝同案的筆跡座標永遠一致。
+  const { w: W, h: H } = boardDims(store.get().aspect);
+  const portrait = H > W;
   // 已有照片、還沒有筆跡：照片自動變半透明「墊底」沿描（不會消失，
   // 收在筆跡資料裡；輸出＝純塗鴉。不想描就取消，照片原封不動）
   if (cut.imageRef && !cut.sketch) {
@@ -57,7 +60,7 @@ export function openSketchEditor(store: Store, cutId: string) {
         <button class="sk-cancel">取消</button>
         <button class="sk-ok">完成</button>
       </div>
-      <div class="sk-stage"><canvas class="sk-canvas" width="${W}" height="${H}"></canvas></div>
+      <div class="sk-stage"><canvas class="sk-canvas${portrait ? " portrait" : ""}" width="${W}" height="${H}"></canvas></div>
       <div class="sk-hint">Apple Pencil／滑鼠作畫，手指不會誤觸 · <b>雙指輕點＝復原、三指輕點＝重做</b> · 橡皮擦＝擦到哪消到哪（只擦目前圖層） · 完成＝存進分鏡格，之後點縮圖可回來繼續改</div>
     </div>`;
   document.body.appendChild(overlay);

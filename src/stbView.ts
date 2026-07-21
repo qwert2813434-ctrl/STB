@@ -1,7 +1,7 @@
 import { bindEditKeys } from "./editKeys";
 import { bindPointerDrag } from "./pointerDrag";
 import type { Store } from "./store";
-import { computeCutNumbers, pageCount, PER_PAGE } from "./model";
+import { computeCutNumbers, perPage } from "./model";
 
 // 渲染 STB 頁式版面。inline 編輯不觸發整頁重繪（避免游標跳）。
 // expanded：暫時展開但還沒填字的 VO/Super 行（key = `${cutId}:vo`／`:sup`）。
@@ -12,8 +12,12 @@ export function renderStb(store: Store, root: HTMLElement, flashFromSeq = -1, ex
   const film = p.films.find((f) => f.id === filmId);
   const cuts = p.cuts.filter((c) => c.filmId === filmId);
   const multi = p.films.length > 1;
+  const portrait = p.aspect === "9:16";
+  // 直式分鏡格密度（僅直式有意義）：密＝6 欄 12／頁；大＝4 欄 4／頁（閱讀舒服）
+  const comfy = portrait && !store.portraitDense;
+  const pp = portrait ? (store.portraitDense ? 12 : 4) : perPage(p.aspect);
   const numbers = computeCutNumbers(p.cuts, p.films);
-  const pages = pageCount(cuts.length);
+  const pages = Math.max(1, Math.ceil(cuts.length / pp));
   let html = "";
 
   // 路分頁（同 Day 分頁互動）：點切換；點「當前路」的名字＝直接改名；✕ 刪路
@@ -33,11 +37,18 @@ export function renderStb(store: Store, root: HTMLElement, flashFromSeq = -1, ex
     html += `<button class="daytab-add" data-addfilm title="一份 PPM 多支片：每路獨立 CUT 01 起跳">＋ 一路</button></div>`;
   }
 
+  // 直式：分鏡格密度切換（大／密）——純檢視偏好
+  if (portrait && !filmOverride) {
+    html += `<div class="board-density"><span class="bd-label">分鏡格</span>
+      <button data-density="comfy" class="${!store.portraitDense ? "on" : ""}" title="4 欄・4 格一頁，閱讀舒服">大</button>
+      <button data-density="dense" class="${store.portraitDense ? "on" : ""}" title="6 欄・12 格一頁，一次看更多">密</button></div>`;
+  }
+
   for (let pg = 0; pg < pages; pg++) {
-    html += `<p class="page-label">STB${multi ? ` · ${esc(film?.name ?? "")}` : ""} · 頁 ${pg + 1} / ${pages} · A5 橫</p>`;
-    html += `<div class="page">`;
-    for (let slot = 0; slot < PER_PAGE; slot++) {
-      const seq = pg * PER_PAGE + slot;
+    html += `<p class="page-label">STB${multi ? ` · ${esc(film?.name ?? "")}` : ""} · 頁 ${pg + 1} / ${pages} · ${portrait ? "直式 9:16" : "A5 橫"}</p>`;
+    html += `<div class="page${portrait ? " portrait" : ""}${comfy ? " comfy" : ""}">`;
+    for (let slot = 0; slot < pp; slot++) {
+      const seq = pg * pp + slot;
       const cut = cuts[seq];
       if (!cut) {
         html += `<div class="cut-empty"></div>`;
@@ -118,6 +129,9 @@ export function bindStb(
     // 長按剛成立：吞掉隨後那一下 click（否則立刻又 toggle 回去）
     if (lpFired) { lpFired = false; e.preventDefault(); e.stopImmediatePropagation(); return; }
     const t0 = e.target as HTMLElement;
+    // 分鏡格密度切換（大／密）——純檢視偏好，不動資料
+    const dens = t0.closest("[data-density]") as HTMLElement | null;
+    if (dens) { store.setPortraitDense(dens.dataset.density === "dense"); return; }
     // 路分頁：切換／新增／刪除（當前路的名字是可編輯區，會走下面的早退不切換）
     if (t0.closest("[data-addfilm]")) { store.addFilm(); return; }
     const delFilm = t0.closest("[data-delfilm]") as HTMLElement | null;

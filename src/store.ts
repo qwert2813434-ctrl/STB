@@ -28,6 +28,7 @@ export class Store {
   touchSelect = false; // iPad 長按進入的多選模式：點卡片＝加選/取消（觸控沒有 ⌘ 鍵）
   currentDayId: string;
   currentChapter = "storyboard"; // PPM 章節 id（預設進分鏡）
+  portraitDense = true; // 直式分鏡格密度：true＝6 欄 12／頁（密）、false＝4 欄 4／頁（大）。純檢視偏好，不存檔。
 
   constructor(initial: Project) {
     this.project = initial;
@@ -552,6 +553,13 @@ export class Store {
     this.emit();
   }
 
+  // 直式分鏡格密度切換（純檢視偏好，不動資料、不記 undo）
+  setPortraitDense(dense: boolean) {
+    if (this.portraitDense === dense) return;
+    this.portraitDense = dense;
+    this.emit();
+  }
+
   addRefItem(chapterId: string) {
     this.commit((p) => {
       if (!p.refPages[chapterId]) p.refPages[chapterId] = [];
@@ -568,10 +576,13 @@ export class Store {
     });
   }
 
-  setRefImage(chapterId: string, itemId: string, url: string | null) {
+  // portrait＝參考/節奏章依匯入素材方向判定的直式旗標（undefined＝不改動既有值）
+  setRefImage(chapterId: string, itemId: string, url: string | null, portrait?: boolean) {
     this.commit((p) => {
       const it = p.refPages[chapterId]?.find((x) => x.id === itemId);
-      if (it) it.imageRef = url;
+      if (!it) return;
+      it.imageRef = url;
+      if (portrait !== undefined) it.portrait = portrait;
     });
   }
 
@@ -582,7 +593,7 @@ export class Store {
     });
   }
 
-  setRefVideoFile(chapterId: string, itemId: string, path: string, poster: string | null, trimStart?: number, trimEnd?: number) {
+  setRefVideoFile(chapterId: string, itemId: string, path: string, poster: string | null, trimStart?: number, trimEnd?: number, portrait?: boolean) {
     this.commit((p) => {
       const it = p.refPages[chapterId]?.find((x) => x.id === itemId);
       if (!it) return;
@@ -590,6 +601,7 @@ export class Store {
       if (poster) it.imageRef = poster; // 抽出的首圖當封面
       it.trimStart = trimStart;         // undefined＝整段（JSON 序列化時自動略去）
       it.trimEnd = trimEnd;
+      if (portrait !== undefined) it.portrait = portrait; // 參考/節奏章依首圖方向判定
     });
   }
 

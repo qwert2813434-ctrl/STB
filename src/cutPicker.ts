@@ -1,5 +1,5 @@
 import type { Store } from "./store";
-import { computeCutNumbers } from "./model";
+import { computeCutNumbers, boardDims, type Aspect } from "./model";
 import { invoke } from "@tauri-apps/api/core";
 import { isMobile } from "./persistence";
 
@@ -32,12 +32,13 @@ export function openCutPicker(store: Store, selected: string[]): Promise<string[
       const p = store.get();
       const numbers = computeCutNumbers(p.cuts, p.films);
       const multi = p.films.length > 1;
+      const portrait = p.aspect === "9:16";
       const cell = (c: (typeof p.cuts)[number]) => {
         const n = numbers.get(c.id)!;
         const on = chosen.has(c.id) ? " on" : "";
         return `<button class="cp-cell${on}" data-cp="${c.id}">
           <span class="cp-no">CUT ${n.label}</span>
-          <span class="cp-thumb">${c.imageRef ? `<img src="${c.imageRef}" alt="">` : "16:9"}</span>
+          <span class="cp-thumb${portrait ? " portrait" : ""}">${c.imageRef ? `<img src="${c.imageRef}" alt="">` : "▢"}</span>
           <span class="cp-desc">${esc(c.desc || "")}</span>
         </button>`;
       };
@@ -60,7 +61,7 @@ export function openCutPicker(store: Store, selected: string[]): Promise<string[
 
     const close = (result: string[] | null) => { overlay.remove(); resolve(result); };
     (overlay.querySelector(".cp-import") as HTMLElement).addEventListener("click", () => {
-      void pickBoardImages().then((imgs) => {
+      void pickBoardImages(store.get().aspect).then((imgs) => {
         if (!imgs.length) return;
         const ids = store.addCutsFromImages(imgs);
         ids.forEach((id) => chosen.add(id)); // 剛匯入的通常就是要指派的：自動勾選
@@ -82,9 +83,10 @@ export function openCutPicker(store: Store, selected: string[]): Promise<string[
 }
 
 // 批次選外部分鏡圖：依檔名排序（分鏡通常命名 01、02…），
-// 自動置中裁 16:9（1280×720；之後點縮圖可用既有圖片編輯器微調）。
+// 依 aspect 自動置中裁（橫式 1280×720／直式 720×1280；之後點縮圖可用既有圖片編輯器微調）。
 // 分鏡章 inspector 的「＋ 匯入分鏡圖」也用這條。
-export function pickBoardImages(): Promise<string[]> {
+export function pickBoardImages(aspect?: Aspect): Promise<string[]> {
+  const dims = boardDims(aspect);
   return new Promise((resolve) => {
     void pickFiles("image/*", true).then(async (picked) => {
       const files = picked.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
@@ -93,7 +95,7 @@ export function pickBoardImages(): Promise<string[]> {
       const failed: string[] = [];  // 真正解碼失敗（附尺寸與原因，遠端除錯用）
       for (const f of files) {
         if (f.size === 0) { cloudy.push(f.name); continue; }
-        const r = await fileToBoard(f);
+        const r = await fileToBoard(f, dims);
         if (typeof r === "string") out.push(r);
         else failed.push(`${f.name}（${(f.size / 1048576).toFixed(1)}MB${r.dims ? `・${r.dims}` : ""}・${r.why}）`);
         // 呼吸間隔：讓 iOS 有空回收上一張的解碼緩衝（批次 10 張連轟會耗盡）
@@ -208,15 +210,16 @@ async function decodePhoto(f: File): Promise<{ src: CanvasImageSource; w: number
   return { why: `無法解碼（${lastErr || "格式不支援"}）` };
 }
 
-async function fileToBoard(f: File): Promise<string | { why: string; dims?: string }> {
+async function fileToBoard(f: File, dims: { w: number; h: number }): Promise<string | { why: string; dims?: string }> {
+  const { w: BW, h: BH } = dims;
   const d = await decodePhoto(f);
   if ("why" in d) return d;
   try {
-    const { ctx } = getWorkCanvas(1280, 720);
-    const k = Math.max(1280 / d.w, 720 / d.h); // cover 置中
-    ctx.drawImage(d.src, (1280 - d.w * k) / 2, (720 - d.h * k) / 2, d.w * k, d.h * k);
+    const { ctx } = getWorkCanvas(BW, BH);
+    const k = Math.max(BW / d.w, BH / d.h); // cover 置中
+    ctx.drawImage(d.src, (BW - d.w * k) / 2, (BH - d.h * k) / 2, d.w * k, d.h * k);
     // iOS 超限來源會「無聲畫成空白」：抽樣中心像素驗證真的有畫上去
-    const px = ctx.getImageData(600, 340, 80, 40).data;
+    const px = ctx.getImageData(Math.floor(BW / 2) - 40, Math.floor(BH / 2) - 20, 80, 40).data;
     let sum = 0;
     for (let i = 3; i < px.length; i += 4) sum += px[i];
     if (sum === 0) return { why: "超過繪圖上限（畫布為空）", dims: `${d.w}×${d.h}` };

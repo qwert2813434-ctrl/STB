@@ -12,7 +12,8 @@ import { renderGantt, bindGantt } from "./ganttView";
 import { openPreview } from "./previewMode";
 import { openExportDialog } from "./exportDialog";
 import { openCropper } from "./cropper";
-import { CHAPTERS, computeCutNumbers, pageCount, chainRundown, hhmmToMin, minToHHMM, normalizeProject } from "./model";
+import { CHAPTERS, computeCutNumbers, pageCount, chainRundown, hhmmToMin, minToHHMM, normalizeProject, type Aspect } from "./model";
+import { askAspect } from "./nameDialog";
 import { isTauri, isMobile, currentDir, dirName, chooseFolderAndLoad, createProjectFolder, chooseFolderAndSaveAs, saveToCurrent, loadFromDir, lastProjectDir, upsertRecent, detachDir, migrateMobileHome, listMobileProjects, unpackPacked, mobileBase, extractPosterFor } from "./persistence";
 import { projectLogo } from "./logoAsset";
 import { openHelp } from "./helpDialog";
@@ -115,7 +116,7 @@ function renderAll() {
     const filmTag = p.films.length > 1 ? `${store.currentFilm()?.name ?? ""} ` : "";
     statusbar.innerHTML = `
       <span class="k">分鏡</span><span class="v">${filmTag}${filmCuts.length} 顆 cut</span>
-      <span class="k" style="margin-left:8px">頁數</span><span class="v">${pageCount(filmCuts.length)}</span>
+      <span class="k" style="margin-left:8px">頁數</span><span class="v">${pageCount(filmCuts.length, store.get().aspect)}</span>
       <span class="spacer"></span><span class="hint">${isMobile()
         ? "把手 ⠿ 拖曳重排 · 點文字直接編輯 · 長按卡片＝多選 · 雙指輕點＝上一步"
         : "把手 ⠿ 拖曳重排 · 點文字直接編輯 · ⌘/Shift 點擊多選"}</span>`;
@@ -248,10 +249,11 @@ function addCut() {
 
 async function pickImage(cutId: string) {
   // 已有分鏡圖 → 直接進編輯器（裁切／區塊內縮放／一鍵黑白／換一張）；
-  // 沒有 → 選檔後進裁切器。
+  // 沒有 → 選檔後進裁切器。裁切比例跟著整片分鏡比例（直式＝9:16）。
+  const ar = store.get().aspect === "9:16" ? 9 / 16 : 16 / 9;
   const cut = store.get().cuts.find((c) => c.id === cutId);
   if (cut?.imageRef) {
-    const out = await openCropper(cut.imageRef, 16 / 9, { allowReplace: true });
+    const out = await openCropper(cut.imageRef, ar, { allowReplace: true });
     if (out) store.setImage(cutId, out);
     return;
   }
@@ -260,7 +262,7 @@ async function pickImage(cutId: string) {
   // 先縮成工作圖再進裁切器（原檔 48MP 直餵會耗盡 iPad 解碼資源）
   const url = await fileToWorkingImage(file);
   if (!url) { alert("這張照片讀不進來——若原檔還在 iCloud，等幾秒再試一次；全景/超大圖請先裁切。"); return; }
-  const cropped = await openCropper(url, 16 / 9, { allowReplace: true });
+  const cropped = await openCropper(url, ar, { allowReplace: true });
   if (cropped) store.setImage(cutId, cropped);
 }
 
@@ -345,7 +347,7 @@ inspector.addEventListener("click", (e) => {
   if (!btn) return;
   // 匯入分鏡圖：不需要選取（空案子也能按）
   if (btn.dataset.a === "importboards") {
-    void pickBoardImages().then((imgs) => { if (imgs.length) store.addCutsFromImages(imgs); });
+    void pickBoardImages(store.get().aspect).then((imgs) => { if (imgs.length) store.addCutsFromImages(imgs); });
     return;
   }
   if (!store.selectedId) return;
@@ -456,7 +458,14 @@ function hubOpenSample(): boolean {
 // ／開最近案子／開其他案子
 async function hubCreate(mode: "ppm" | "schedule"): Promise<boolean> {
   if (!confirmLeave()) return false;
-  const proj = emptyProject();
+  // 完整 PPM 才問分鏡比例（橫式／直式）；通告排表輕量走橫式預設。取消＝中止新建。
+  let aspect: Aspect | undefined;
+  if (mode === "ppm") {
+    const a = await askAspect();
+    if (a === null) return false;
+    aspect = a;
+  }
+  const proj = emptyProject("未命名案子", aspect);
   proj.mode = mode;
   const dir = await createProjectFolder(JSON.stringify(proj, null, 2), mode === "schedule" ? "未命名通告" : "未命名案子");
   if (!dir) return false;

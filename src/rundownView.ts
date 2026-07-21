@@ -13,6 +13,7 @@ export function renderRundown(store: Store, root: HTMLElement, dayOverride?: imp
   if (!day) { root.innerHTML = ""; return; }
   const times = chainRundown(day.rundown, hhmmToMin(day.callTime));
 
+  const portrait = p.aspect === "9:16"; // 指派的分鏡縮圖跟隨整片比例（停車照另計，維持橫式）
   let html = `<p class="page-label">Rundown · 拍攝日程 · A5 橫</p><div class="page rundown">`;
   day.rundown.forEach((b, i) => {
     const t = times[i];
@@ -21,8 +22,8 @@ export function renderRundown(store: Store, root: HTMLElement, dayOverride?: imp
       const n = numbers.get(cid);
       if (!n) continue;
       const cut = p.cuts.find((c) => c.id === cid);
-      const box = cut?.imageRef ? `<img src="${cut.imageRef}" alt="" draggable="false">` : "16:9";
-      cutsHtml += `<span class="rd-cut"><span class="rd-cut-box">${box}</span><span class="rd-cut-no">${n.label}</span></span>`;
+      const box = cut?.imageRef ? `<img src="${cut.imageRef}" alt="" draggable="false">` : "▢";
+      cutsHtml += `<span class="rd-cut${portrait ? " portrait" : ""}"><span class="rd-cut-box${portrait ? " portrait" : ""}">${box}</span><span class="rd-cut-no">${n.label}</span></span>`;
     }
     html += `
       <div class="rd-row" data-block="${b.id}">

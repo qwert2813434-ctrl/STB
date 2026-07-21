@@ -49,7 +49,7 @@ export async function buildEditablePptx(store: Store, opts: PptxOptions): Promis
     if (opts.withTitles) titleSlide(pptx, ch.en, ch.label, i + 1);
     opts.onProgress?.(`組裝 PPTX…${ch.label}`);
     if (ch.kind === "storyboard") {
-      stbSlides(pptx, p, ch.en, ch.label);
+      stbSlides(pptx, p, ch.en, ch.label, store.portraitDense);
     } else if (ch.kind === "schedule") {
       ganttSlide(pptx, p, ch.en, ch.label);
       for (let d = 0; d < p.days.length; d++) {
@@ -160,24 +160,36 @@ function itemTexts(sl: Slide, store: Store, it: RefItem, x: number, y: number, w
 async function refSlides(pptx: PptxGenJS, p: Project, chId: string, en: string, zh: string, onProgress?: (m: string) => void) {
   const store = fakeStore(p);
   const items = p.refPages[chId] || [];
-  const portrait = PORTRAIT_CHAPTERS.has(chId);
+  // actor/wardrobe 恆直式；tone 跟隨整片比例（直式案＝直式）
+  const portrait = PORTRAIT_CHAPTERS.has(chId) || (chId === "tone" && p.aspect === "9:16");
+  const autoAspect = chId === "rhythm" || chId === "references"; // 逐項依素材方向（RefItem.portrait）
   const maxOne = chId === "references" || (chId === "rhythm" && items.length <= 1);
 
   if (maxOne) {
     // 單項最大化，一項一頁；references 右側放對照 cut 縮圖欄
+    const numbers = computeCutNumbers(p.cuts, p.films);
+    const cutTall = p.aspect === "9:16"; // 對照 cut 縮圖跟隨整片比例
     for (const it of items) {
       const sl = pptx.addSlide();
       header(sl, en, zh);
       const side = chId === "references";
-      const imgW = side ? 5.9 : 6.6, imgH = imgW * 9 / 16;
-      await mediaOrImage(sl, it, MX, TOP, imgW, imgH, onProgress);
-      itemTexts(sl, store, it, MX, TOP + imgH + 0.12, imgW, true);
+      const itPortrait = autoAspect && !!it.portrait; // 直式素材：圖靠左限高、文字放右
+      if (itPortrait) {
+        const imgH = 3.9, imgW = imgH * 9 / 16;
+        await mediaOrImage(sl, it, MX, TOP, imgW, imgH, onProgress);
+        const tx = MX + imgW + 0.4;
+        const tw = (side ? MX + 5.9 : W - MX) - tx; // references 保留右側對照欄空間
+        itemTexts(sl, store, it, tx, TOP, Math.max(2.2, tw), true);
+      } else {
+        const imgW = side ? 5.9 : 6.6, imgH = imgW * 9 / 16;
+        await mediaOrImage(sl, it, MX, TOP, imgW, imgH, onProgress);
+        itemTexts(sl, store, it, MX, TOP + imgH + 0.12, imgW, true);
+      }
       if (side && it.cutRefs?.length) {
-        const sx = MX + imgW + 0.35, sw = W - sx - MX;
+        const sx = MX + 5.9 + 0.35, sw = W - sx - MX;
         sl.addText("對照 CUT", { x: sx, y: TOP, w: sw, h: 0.26, fontFace: FONT, fontSize: 9, color: MUTED, charSpacing: 2 });
-        const numbers = computeCutNumbers(p.cuts, p.films);
         const thumbs = p.cuts.filter((c) => it.cutRefs!.includes(c.id));
-        const tw = 1.35, th = tw * 9 / 16;
+        const tw = cutTall ? 0.8 : 1.35, th = cutTall ? tw * 16 / 9 : tw * 9 / 16;
         thumbs.forEach((c, i) => {
           const tx = sx + (i % 2) * (tw + 0.15);
           const ty = TOP + 0.32 + Math.floor(i / 2) * (th + 0.34);
@@ -214,22 +226,74 @@ async function refSlides(pptx: PptxGenJS, p: Project, chId: string, en: string, 
     const cw = (W - MX * 2 - 0.35) / 2;
     const chh = (H - TOP - 0.25 - 0.2) / 2;
     for (let i = 0; i < batch.length; i++) {
+      const it = batch[i];
       const x = MX + (i % 2) * (cw + 0.35);
       const y = TOP + Math.floor(i / 2) * (chh + 0.2);
-      const ih = 1.42, iw = ih * 16 / 9; // 圖上、文字下（同 App 版面）
-      await mediaOrImage(sl, batch[i], x, y, iw, ih, onProgress);
-      itemTexts(sl, store, batch[i], x, y + ih + 0.08, cw);
+      if (autoAspect && it.portrait) {
+        // 直式素材：格內直式縮圖靠左（限高），文字放右
+        const ih = 1.75, iw = ih * 9 / 16;
+        await mediaOrImage(sl, it, x, y, iw, ih, onProgress);
+        itemTexts(sl, store, it, x + iw + 0.2, y, cw - iw - 0.2);
+      } else {
+        const ih = 1.42, iw = ih * 16 / 9; // 圖上、文字下（同 App 版面）
+        await mediaOrImage(sl, it, x, y, iw, ih, onProgress);
+        itemTexts(sl, store, it, x, y + ih + 0.08, cw);
+      }
     }
   }
 }
 
-// ---- 分鏡（STORYBOARD）：4×2，8 顆一頁 ----
+// ---- 分鏡（STORYBOARD）：橫式 4×2 八顆一頁；直式一排 N 格站立框（頁維持 16:9）----
 
-function stbSlides(pptx: PptxGenJS, p: Project, en: string, zh: string) {
+function stbSlides(pptx: PptxGenJS, p: Project, en: string, zh: string, dense = true) {
   const numbers = computeCutNumbers(p.cuts, p.films);
+  const multi = p.films.length > 1;
+
+  // 直式：頁還是 16:9，但分鏡格站立（9:16），一排放滿＝一頁（密 6／大 4）
+  if (p.aspect === "9:16") {
+    const cols = dense ? 6 : 4;
+    const gap = 0.16;
+    const cw = (W - MX * 2 - (cols - 1) * gap) / cols;
+    const ih = Math.min(cw * 16 / 9, 3.3);   // 直式縮圖高度上限，留說明空間
+    const iw = ih * 9 / 16;                   // 依高回推寬，格內置中
+    const bottom = H - 0.12;
+    for (const f of p.films) {
+      const cuts = p.cuts.filter((c) => c.filmId === f.id);
+      if (!cuts.length) continue;
+      const pages = Math.max(1, Math.ceil(cuts.length / cols));
+      for (let pg = 0; pg < pages; pg++) {
+        const sl = pptx.addSlide();
+        header(sl, en, `${zh}${multi ? ` · ${f.name}` : ""} · 頁 ${pg + 1}/${pages}`);
+        for (let slot = 0; slot < cols; slot++) {
+          const cut = cuts[pg * cols + slot];
+          if (!cut) continue;
+          const n = numbers.get(cut.id)!;
+          const cx = MX + slot * (cw + gap);
+          const ix = cx + (cw - iw) / 2;
+          sl.addText(`CUT ${n.label}`, { x: cx, y: TOP, w: cw, h: 0.19, fontFace: "Courier New", fontSize: 8.5, bold: true, color: INK2, margin: 0, valign: "top" });
+          const iy = TOP + 0.21;
+          if (cut.imageRef) sl.addImage({ data: cut.imageRef, x: ix, y: iy, w: iw, h: ih });
+          else sl.addShape("rect", { x: ix, y: iy, w: iw, h: ih, fill: { color: "f4f3ee" }, line: { color: LINE, width: 0.75 } });
+          let cy = iy + ih + 0.06;
+          if (cut.desc) {
+            sl.addText(cut.desc, { x: cx, y: cy, w: cw, h: 0.5, fontFace: FONT, fontSize: 8, color: INK, valign: "top", margin: 0, lineSpacingMultiple: 0.95 });
+            cy += 0.52;
+          }
+          if (cut.vo && cy + 0.2 <= bottom) {
+            sl.addText([{ text: "VO ", options: { fontSize: 7, bold: true, color: BLUE } }, { text: cut.vo, options: { fontSize: 8, color: BLUE } }], { x: cx, y: cy, w: cw, h: 0.2, fontFace: FONT, valign: "top", margin: 0, lineSpacingMultiple: 0.95 });
+            cy += 0.22;
+          }
+          if (cut.sup && cy + 0.2 <= bottom) {
+            sl.addText([{ text: "SUPER ", options: { fontSize: 7, bold: true, color: GREEN } }, { text: cut.sup, options: { fontSize: 8, color: GREEN } }], { x: cx, y: cy, w: cw, h: 0.2, fontFace: FONT, valign: "top", margin: 0, lineSpacingMultiple: 0.95 });
+          }
+        }
+      }
+    }
+    return;
+  }
+
   const cw = (W - MX * 2 - 3 * 0.22) / 4;
   const rh = (H - TOP - 0.25) / 2;
-  const multi = p.films.length > 1;
   for (const f of p.films) { // 多路：逐路出頁，頁標帶路名
     const cuts = p.cuts.filter((c) => c.filmId === f.id);
     if (!cuts.length) continue;
@@ -378,8 +442,11 @@ function rundownSlides(pptx: PptxGenJS, p: Project, day: ShootDay, dayIdx: numbe
       // 中：標題＋cut 縮圖列
       sl.addText(b.title, { x: 2.05, y, w: 3.95, h: 0.3, fontFace: FONT, fontSize: 12, bold: true, color: INK });
       const thumbs = b.cutIds.map((cid) => p.cuts.find((c) => c.id === cid)).filter(Boolean).slice(0, 5);
+      // 直式案：分鏡縮圖站立（縮小以塞進 1.2" 列高）；橫式維持 16:9
+      const tall = p.aspect === "9:16";
+      const tw = tall ? 0.35 : 0.78, th = tall ? tw * 16 / 9 : tw * 9 / 16, step = tall ? 0.44 : 0.86;
       thumbs.forEach((c, i) => {
-        const tx = 2.05 + i * 0.86, tw = 0.78, th = tw * 9 / 16;
+        const tx = 2.05 + i * step;
         if (c!.imageRef) sl.addImage({ data: c!.imageRef, x: tx, y: y + 0.36, w: tw, h: th });
         sl.addText(numbers.get(c!.id)?.label ?? "", { x: tx, y: y + 0.36 + th, w: tw, h: 0.17, fontFace: "Courier New", fontSize: 6.5, color: MUTED, align: "center" });
       });
