@@ -1,11 +1,20 @@
 // 版本與更新紀錄——每次發版在最上面加一段（慣例同 ALIGNED 設定頁：
 // 版本號、日期、使用者看得懂的變更點；工程細節留在 進度與下一步.md）。
 
-export const APP_VERSION = "1.4.0";
+export const APP_VERSION = "1.4.1";
 
 export interface ReleaseNote { version: string; date: string; items: string[]; }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.4.1",
+    date: "2026-07-22",
+    items: [
+      "修正 iPad 塗鴉分鏡的筆觸偏移：筆尖與墨跡對不上，離畫布左上角越遠偏越多（直式最嚴重）——現在筆畫會準確落在筆尖下",
+      "起因是 iPadOS 更新後改變了畫面縮放的計算方式，App 原本的換算多修了一次；已改成每次下筆自動校準，新舊 iPadOS 都正確",
+      "Mac 版不受此問題影響，行為完全不變",
+    ],
+  },
   {
     version: "1.4.0",
     date: "2026-07-21",

@@ -154,18 +154,52 @@ export function openSketchEditor(store: Store, cutId: string) {
   const doRedo = () => applySnapshot(redoStack, undoStack);
 
   // ---- 指標 → 畫布座標 ----
-  // 十字靶診斷（2026-07-12 Armin 截圖）定案：WKWebView 在整頁 zoom 下，
-  // 指標事件的 clientX 是「視覺 px」＝版面 px × zoom，而 getBoundingClientRect
-  // 是「版面 px」——兩邊差一個 zoom 倍率（右下角偏最多；橡皮擦殺錯筆同源）。
-  // 修法：clientX 先除以 zoom 回到版面座標。Mac zoom=1 不受影響。
+  // 2026-07-22 真機十字靶＋雙引擎回歸測試定案。getBoundingClientRect() 有兩個
+  // 獨立的雷，都只在 iPad（整頁 zoom）發作，Mac（z=1）不受影響：
+  //  ① CSS zoom 語意各版 WebKit 不同——舊行為 rect 回「版面 px」（不含 zoom），
+  //     標準化後回「視覺 px」（已含 zoom）。實測 macOS 26.3 是舊的、
+  //     iPadOS 26.5.2 是新的。2026-07-12 那版寫死 ÷zoom，在新行為上等於修兩次。
+  //  ② 舊行為下 rect.top 還會被捲動量污染 scrollY×(1/z−1)——捲到第 20 卡再開
+  //     塗鴉就歪，捲得越深偏越多。這條從第一版就在，只是沒人測過捲動。
+  // 所以原點完全不碰 rect：改由引擎自己的 offsetX/Y 反推（offset 與 clientX 同
+  // 一個座標空間，兩種語意下都一樣，也不受捲動影響）。rect 只用來取「尺寸」
+  // ——尺寸不受捲動污染——再乘上實測倍率 k 補掉語意差異。
   const rootZoom = (): number =>
     parseFloat((document.documentElement.style as unknown as { zoom?: string }).zoom || "1") || 1;
-  const toPt = (ev: PointerEvent): number[] => {
+  // 原點：由引擎自己的 offsetX/Y 反推。offset 與 clientX 同一座標空間、
+  // 不受捲動污染、也跟 rect 的 zoom 語意無關——是唯一兩種行為下都乾淨的量。
+  // 只吃「真事件」（down/move）：getCoalescedEvents() 的子點 offset 在各引擎
+  // 不可靠，那正是 2026-07-12 放棄 offset 路線的原因。每顆真事件都重校，
+  // 所以畫到一半捲動／轉向／視窗變形都會自己修回來。
+  let ox = 0, oy = 0, calibrated = false;
+  const calibrate = (ev: PointerEvent): void => {
+    if (ev.target !== canvas) return;                 // offset 是相對 target 算的
+    if (!Number.isFinite(ev.offsetX) || !Number.isFinite(ev.offsetY)) return;
+    ox = ev.clientX - ev.offsetX;                     // 畫布左上角（client 空間）
+    oy = ev.clientY - ev.offsetY;
+    calibrated = true;
+  };
+  // 尺寸用 rect（尺寸不受捲動污染），再乘實測倍率 k 補掉 zoom 語意差異。
+  // 不用 clientWidth：它是整數，四捨五入會帶進 2～4 畫布px 的尺度誤差，
+  // rect.width 是小數（實測誤差只剩 1.6～2.5px＝量測粒度）。
+  const measureK = (): number => {
     const z = rootZoom();
+    if (z === 1) return 1;                            // 沒 zoom 就沒這問題，省一次 layout
+    const p = document.createElement("div");
+    p.style.cssText = "position:fixed;top:0;left:0;width:100px;height:1px;visibility:hidden;pointer-events:none";
+    document.body.appendChild(p);
+    const m = p.getBoundingClientRect().width;        // 舊行為量到 100、標準化後量到 100×z
+    p.remove();
+    return m ? (100 * z) / m : z;
+  };
+  let rectK = measureK();                             // 只在起筆時量（每點都量會卡死 240Hz）
+  const toPt = (ev: PointerEvent): number[] => {
     const r = canvas.getBoundingClientRect();
+    const px = calibrated ? ox : r.left * rectK;      // 沒校正過就退回 rect，保底不 NaN
+    const py = calibrated ? oy : r.top * rectK;
     return [
-      (ev.clientX / z - r.left) * (W / r.width),
-      (ev.clientY / z - r.top) * (H / r.height),
+      (ev.clientX - px) * (W / (r.width * rectK)),
+      (ev.clientY - py) * (H / (r.height * rectK)),
       ev.pressure || 0.5,
     ];
   };
@@ -199,6 +233,8 @@ export function openSketchEditor(store: Store, cutId: string) {
   canvas.addEventListener("pointerdown", (e) => {
     if (e.pointerType === "touch") return; // 手掌/手指不作畫（Pencil 防誤觸）
     e.preventDefault();
+    rectK = measureK(); // 起筆時量一次倍率
+    calibrate(e);       // 起筆時定原點
     try { canvas.setPointerCapture(e.pointerId); } catch { /* 合成事件 */ }
     if (tool === "eraser") {
       pushUndo();
@@ -212,6 +248,7 @@ export function openSketchEditor(store: Store, cutId: string) {
   });
   canvas.addEventListener("pointermove", (e) => {
     if (e.pointerType === "touch") return;
+    calibrate(e); // 每顆真事件重校原點＝畫到一半捲動／轉向也會自己修回來
     if (erasing) { eraseAt(e); return; }
     if (!drawing) return;
     // getCoalescedEvents：Pencil 240Hz 的中間點全收，線才順

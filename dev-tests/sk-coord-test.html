@@ -1,0 +1,158 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>sketchEditor 座標回歸測試</title></head>
+<body>
+<pre id="out" style="position:fixed;left:0;top:0;z-index:0;max-height:100vh;overflow:hidden;font:11px monospace">running…</pre>
+<script type="module">
+import "/src/style.css";           // ← 少了它 .sk-overlay 就沒有 fixed／尺寸，整個測試無效
+import { Store } from "/src/store.ts";
+import { sampleProject } from "/src/sampleData.ts";
+import { openSketchEditor } from "/src/sketchEditor.ts";
+
+// 真值：用 elementFromPoint 二分搜尋出畫布在「指標 client 空間」的實際邊界。
+// 這條路完全不經過 sketchEditor 的任何公式，所以能拿來當獨立裁判。
+function trueBox(el) {
+  const hit = (x, y) => document.elementFromPoint(x, y) === el;
+  const r = el.getBoundingClientRect();
+  let seed = null;
+  for (const k of [1, parseFloat(document.documentElement.style.zoom) || 1]) {
+    const cx = (r.left + r.width / 2) * k, cy = (r.top + r.height / 2) * k;
+    if (hit(cx, cy)) { seed = [cx, cy]; break; }
+  }
+  if (!seed) {                       // rect 被捲動量污染時上面會落空 → 掃網格
+    outer: for (let fy = 0.05; fy < 1; fy += 0.05)
+      for (let fx = 0.05; fx < 1; fx += 0.05) {
+        const cx = innerWidth * fx, cy = innerHeight * fy;
+        if (hit(cx, cy)) { seed = [cx, cy]; break outer; }
+      }
+  }
+  if (!seed) throw new Error("elementFromPoint 打不到畫布");
+  const [sx, sy] = seed;
+  const edge = (from, to, axis) => {
+    let a = from, b = to;
+    for (let i = 0; i < 44; i++) {
+      const m = (a + b) / 2;
+      if (axis === "x" ? hit(m, sy) : hit(sx, m)) a = m; else b = m;
+    }
+    return a;
+  };
+  const L = edge(sx, -5, "x"), R = edge(sx, innerWidth + 5, "x");
+  const T = edge(sy, -5, "y"), B = edge(sy, innerHeight + 5, "y");
+  return { left: L, top: T, width: R - L, height: B - T };
+}
+
+// 合成事件的 getCoalescedEvents() 在 WebKit 回傳空陣列（真事件至少回自己一顆），
+// 會讓 pointermove 一個點都收不到。這是測試工具的坑，不是 App 的行為——墊掉。
+const _gce = PointerEvent.prototype.getCoalescedEvents;
+PointerEvent.prototype.getCoalescedEvents = function () {
+  const r = _gce ? _gce.call(this) : [];
+  return r && r.length ? r : [this];
+};
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const lines = [];
+const say = (s) => { lines.push(s); document.getElementById("out").textContent = lines.join("\n"); };
+
+// 畫布座標空間的取樣點——四角內縮＋中央，角落最能放大倍率錯誤
+const PTS = [[80, 60], [1200, 60], [640, 360], [80, 660], [1200, 660]];
+
+// 背後墊高＝真實情境（捲到第 20 卡才點畫筆）。不捲動就測不到 legacy 的 rect 污染。
+const filler = document.createElement("div");
+filler.style.cssText = "height:4000px";
+document.body.appendChild(filler);
+
+async function runCase(zoom, scroll) {
+  document.querySelectorAll(".sk-overlay").forEach((n) => n.remove()); // 每輪從乾淨開始
+  document.documentElement.style.zoom = String(zoom);
+  window.scrollTo(0, scroll);
+  await sleep(200);   // iOS 有 scrollTo 後立刻讀 rect 拿到舊值的老 bug，等一下再量
+
+  const store = new Store(sampleProject());
+  const cut = store.get().cuts.find((c) => !c.imageRef && !c.sketch) || store.get().cuts[0];
+  window.confirm = () => true;                       // 有照片時的沿描確認
+  openSketchEditor(store, cut.id);
+  await sleep(160);
+
+  const canvas = document.querySelector(".sk-canvas");
+  const W = canvas.width, H = canvas.height;
+  const box = trueBox(canvas);                        // ← 獨立真值
+  const r0 = canvas.getBoundingClientRect();
+  if (0) say(`  [diag] rect  L=${r0.left.toFixed(1)} T=${r0.top.toFixed(1)} W=${r0.width.toFixed(1)} H=${r0.height.toFixed(1)}  比例=${(r0.width / r0.height).toFixed(3)}`);
+  if (0) say(`  [diag] 真值  L=${box.left.toFixed(1)} T=${box.top.toFixed(1)} W=${box.width.toFixed(1)} H=${box.height.toFixed(1)}  比例=${(box.width / box.height).toFixed(3)}  bitmap比例=${(W / H).toFixed(3)}`);
+  say(`  [diag] 真值borderW=${box.width.toFixed(1)}  rect.width×k=${(r0.width * ((() => {
+    const z = zoom; if (z === 1) return 1;
+    const pp = document.createElement("div");
+    pp.style.cssText = "position:fixed;top:0;left:0;width:100px;height:1px;visibility:hidden";
+    document.body.appendChild(pp); const mm = pp.getBoundingClientRect().width; pp.remove();
+    return mm ? (100 * z) / mm : z; })())).toFixed(1)}  clientWidth×z=${(canvas.clientWidth * zoom).toFixed(1)}  clientWidth=${canvas.clientWidth}`);
+  if (0) say(`  [diag] viewport=${innerWidth}×${innerHeight}  rectW/真W=${(r0.width / box.width).toFixed(4)}  rectH/真H=${(r0.height / box.height).toFixed(4)}`);
+  const toClient = ([cx, cy]) => [
+    box.left + (cx / W) * box.width,
+    box.top + (cy / H) * box.height,
+  ];
+
+  // 合成一筆通過所有取樣點的筆畫
+  const bw = parseFloat(getComputedStyle(canvas).borderLeftWidth) || 0;
+  const padL = box.left + bw * zoom, padT = box.top + bw * zoom;  // padding box 左上（client空間）
+  const mk = (type, x, y) => {
+    const ev = new PointerEvent(type, {
+      clientX: x, clientY: y, pointerType: "pen", pressure: 0.5,
+      bubbles: true, cancelable: true, pointerId: 1,
+    });
+    Object.defineProperty(ev, "offsetX", { value: x - padL });
+    Object.defineProperty(ev, "offsetY", { value: y - padT });
+    return ev;
+  };
+  const first = toClient(PTS[0]);
+  canvas.dispatchEvent(mk("pointerdown", first[0], first[1]));
+  for (const p of PTS.slice(1)) { const c = toClient(p); canvas.dispatchEvent(mk("pointermove", c[0], c[1])); }
+  canvas.dispatchEvent(mk("pointerup", ...toClient(PTS[PTS.length - 1])));
+  await sleep(60);
+
+  document.querySelector(".sk-ok").click();           // 完成＝存進 store
+  await sleep(120);
+
+  const saved = store.get().cuts.find((c) => c.id === cut.id)?.sketch;
+  const layer = saved && (saved.scene.length ? saved.scene : saved.figure);
+  if (!layer || !layer.length) { say(`  ❌ zoom=${zoom} 沒有存下任何筆跡`); return false; }
+  const pts = layer[0].pts;
+
+  let worst = 0;
+  const rows = [];
+  PTS.forEach((want, i) => {
+    const got = pts[i];
+    if (!got) { rows.push(`    取樣${i + 1} 缺點`); worst = 1e9; return; }
+    const d = Math.hypot(got[0] - want[0], got[1] - want[1]);
+    worst = Math.max(worst, d);
+    rows.push(`    取樣${i + 1} 想要(${want[0]},${want[1]}) 實得(${got[0].toFixed(1)},${got[1].toFixed(1)}) 偏移 ${d.toFixed(2)}`);
+  });
+  const ok = worst < 2.5;                             // 2.5 畫布px＝二分搜尋粒度＋1px 邊框
+  say(`  zoom=${String(zoom).padEnd(6)} scrollY=${String(window.scrollY).padEnd(5)} 最大偏移 ${worst.toFixed(2)} px  ${ok ? "✅ PASS" : "❌ FAIL"}`);
+  rows.forEach((r) => say(r));
+  document.querySelectorAll(".sk-overlay").forEach((n) => n.remove());
+  return ok;
+}
+
+const probe = (() => {
+  const z = 0.826;
+  document.documentElement.style.zoom = String(z);
+  const p = document.createElement("div");
+  p.style.cssText = "position:fixed;top:0;left:0;width:100px;height:1px;visibility:hidden";
+  document.body.appendChild(p);
+  const m = p.getBoundingClientRect().width;
+  p.remove();
+  document.documentElement.style.zoom = "1";
+  return Math.abs(m - 100) < 0.5 ? "LEGACY" : "STANDARD";
+})();
+
+say(`引擎：${navigator.userAgent.slice(0, 70)}`);
+say(`CSS zoom 語意：${probe}`);
+let allOk = true;
+for (const sc of [0, 1500])
+  for (const z of [1, 0.9758, 0.826, 0.653]) allOk = (await runCase(z, sc)) && allOk;
+say(`\n${allOk ? "✅ 全部通過" : "❌ 有失敗"}`);
+window.__done = allOk ? "PASS" : "FAIL";
+document.title = window.__done;
+</script>
+</body>
+</html>
