@@ -567,6 +567,22 @@ export class Store {
     });
   }
 
+  // 參考頁區塊排序（場景／演員／服裝…都要能調順序，同分鏡的拖曳邏輯）
+  moveRefItem(chapterId: string, srcId: string, dstId: string) {
+    if (srcId === dstId) return;
+    this.commit((p) => {
+      const arr = p.refPages[chapterId];
+      if (!arr) return;
+      const from = arr.findIndex((x) => x.id === srcId);
+      const dstOrig = arr.findIndex((x) => x.id === dstId);
+      if (from < 0 || dstOrig < 0) return;
+      const after = from < dstOrig; // 向後拖→落在目標之後
+      const [moved] = arr.splice(from, 1);
+      const to = arr.findIndex((x) => x.id === dstId);
+      arr.splice(after ? to + 1 : to, 0, moved);
+    });
+  }
+
   deleteRefItem(chapterId: string, itemId: string) {
     this.commit((p) => {
       const arr = p.refPages[chapterId];

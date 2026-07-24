@@ -4,6 +4,7 @@ import type { Store } from "./store";
 import { computeCutNumbers, chainRundown, hhmmToMin, minToHHMM } from "./model";
 import { openCutPicker, fileToWorkingImage, pickFiles } from "./cutPicker";
 import { openCropper } from "./cropper";
+import { saveImageAs } from "./persistence";
 
 // 渲染 Rundown 拍攝日程頁：真實時間區塊、地點/停車/道具、指派的 cut（顯示編號）。
 export function renderRundown(store: Store, root: HTMLElement, dayOverride?: import("./model").ShootDay) {
@@ -52,7 +53,7 @@ export function renderRundown(store: Store, root: HTMLElement, dayOverride?: imp
               <div class="rd-sub">
                 <span class="rd-pair"><span class="rd-k">道具</span><span class="cut-edit" contenteditable draggable="false" data-bitem="${b.id}" data-bf="props" data-ph="道具準備">${esc(b.props)}</span></span>
               </div>
-              ${b.parkImage ? `<div class="rd-parkrow"><span class="rd-park"><img src="${b.parkImage}" alt="停車位置" data-parkedit="${b.id}" draggable="false"><span class="rd-park-tag">停車</span><button class="rd-park-x" data-parkdel="${b.id}" aria-label="移除停車圖">✕</button></span></div>` : ""}
+              ${b.parkImage ? `<div class="rd-parkrow"><span class="rd-park"><img src="${b.parkImage}" alt="停車位置" data-parkedit="${b.id}" draggable="false"><span class="rd-park-tag">停車</span><button class="rd-park-save" data-parksave="${b.id}" title="把停車圖存成檔案">⬇</button><button class="rd-park-x" data-parkdel="${b.id}" aria-label="移除停車圖">✕</button></span></div>` : ""}
             </div>
           </div>
         </div>
@@ -92,6 +93,14 @@ export function bindRundown(store: Store, root: HTMLElement) {
     if (pi) { pickParkImage(store, pi.dataset.parkimg!); return; }
     const pd = t.closest("[data-parkdel]") as HTMLElement | null;
     if (pd) { store.setBlockParkImage(pd.dataset.parkdel!, null); return; }
+    // ⬇＝把停車圖存成檔案（現場常要單獨傳給司機／製片）
+    const ps = t.closest("[data-parksave]") as HTMLElement | null;
+    if (ps) {
+      const p2 = store.get();
+      const blk = p2.days.flatMap((d) => d.rundown).find((x) => x.id === ps.dataset.parksave);
+      if (blk?.parkImage) void saveImageAs(blk.parkImage, `${p2.meta.title || "案子"}_停車_${blk.title || blk.id}`);
+      return;
+    }
     // 點既有停車圖 → 編輯器（裁切／縮放／黑白／換圖）
     const pe = t.closest("[data-parkedit]") as HTMLElement | null;
     if (pe) { editParkImage(store, pe.dataset.parkedit!); return; }

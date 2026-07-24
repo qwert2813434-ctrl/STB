@@ -123,6 +123,41 @@ export function pickBoardImages(aspect?: Aspect): Promise<string[]> {
 // 首選 createImageBitmap＋resize：WebKit 邊解碼邊縮圖——手機原檔（HEIC、
 // 48MP）不會撐爆 WebView 記憶體/解碼上限（iPad 實測「部分照片永遠失敗」的根因）；
 // 舊環境退回 FileReader＋<img> 路徑。
+// 拖曳入圖：把檔案直接拖到某個圖片區塊＝套進那一塊（分鏡格／參考頁共用）。
+// 前提：tauri.conf 的 dragDropEnabled 為 false，Tauri 才不會攔截、webview
+// 收得到 HTML5 的 dataTransfer.files（若哪天改成 true，這裡會整組失效）。
+// dragover 一定要 preventDefault，否則瀏覽器不會發 drop。
+export function bindDropImage(
+  area: HTMLElement,
+  targetSel: string,
+  onFile: (el: HTMLElement, f: File) => void,
+) {
+  let hot: HTMLElement | null = null;
+  const mark = (el: HTMLElement | null) => {
+    if (hot === el) return;
+    hot?.classList.remove("drop-hot");
+    hot = el;
+    hot?.classList.add("drop-hot");
+  };
+  area.addEventListener("dragover", (e) => {
+    const el = (e.target as HTMLElement).closest(targetSel) as HTMLElement | null;
+    if (!el) { mark(null); return; }
+    e.preventDefault();
+    mark(el);
+  });
+  area.addEventListener("dragleave", (e) => {
+    if (!area.contains((e as DragEvent).relatedTarget as Node | null)) mark(null);
+  });
+  area.addEventListener("drop", (e) => {
+    const el = (e.target as HTMLElement).closest(targetSel) as HTMLElement | null;
+    mark(null);
+    if (!el) return;
+    e.preventDefault();
+    const f = Array.from((e as DragEvent).dataTransfer?.files ?? []).find((x) => x.type.startsWith("image/"));
+    if (f) onFile(el, f);
+  });
+}
+
 // 統一選檔器：input 要「掛進 DOM＋保持模組引用」——iOS 上懸空的 input
 // 會在原生選擇器開著時被 GC 回收 → onchange 永遠不回來（無聲失敗）。
 // iPad 實測指紋：逐顆加圖前兩張成功、之後全滅（session 越久 GC 越勤）。
