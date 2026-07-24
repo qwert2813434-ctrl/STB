@@ -1,9 +1,10 @@
 import { bindEditKeys } from "./editKeys";
+import { bindPointerDrag } from "./pointerDrag";
 import type { Store } from "./store";
 import { CHAPTERS, PORTRAIT_CHAPTERS, computeCutNumbers, type Aspect } from "./model";
 import { openCropper } from "./cropper";
-import { openExternal, chooseVideoImport, chooseMediaImport, mountInlineVideo, isTauri, isMobile } from "./persistence";
-import { openCutPicker, cutRefLabel, fileToWorkingImage, pickFiles } from "./cutPicker";
+import { openExternal, chooseVideoImport, chooseMediaImport, mountInlineVideo, isTauri, isMobile, saveImageAs } from "./persistence";
+import { openCutPicker, cutRefLabel, fileToWorkingImage, pickFiles, bindDropImage } from "./cutPicker";
 
 // 通用圖文參考頁：一個組件覆蓋 TONE / REFERENCE RHYTHM / REFERENCES /
 // ACTOR / WARDROBE / SETTING / LOCATION 七章。
@@ -77,6 +78,7 @@ export function renderRefPage(store: Store, root: HTMLElement, chapterId: string
         <div class="ref-thumb${itPortrait ? " portrait" : ""}${dark ? " dark" : ""}" data-refimg="${it.id}">
           ${it.imageRef ? `<img src="${it.imageRef}" alt="" draggable="false">` : `<span class="thumb-add">${dark ? "影片" : addLabel}</span>`}
           ${hasVideo ? `<button class="ref-play" data-refplay="${it.id}" aria-label="播放／開啟">${badge}</button>` : ""}
+          ${it.imageRef ? `<button class="ref-save" data-refsave="${it.id}" title="把這張圖存成檔案">⬇</button>` : ""}
         </div>
         <div class="ref-title cut-line" contenteditable draggable="false" data-ritem="${it.id}" data-rf="title" data-ph="標題">${esc(it.title)}</div>
         <div class="ref-note cut-line" contenteditable draggable="false" data-ritem="${it.id}" data-rf="note" data-ph="說明／備註">${esc(it.note)}</div>
@@ -94,11 +96,13 @@ export function renderRefPage(store: Store, root: HTMLElement, chapterId: string
           <div class="ref-side-h">對照 CUT</div>
           ${renderCutRefs(store, it.id, it.cutRefs ?? [])}
         </div>
+        <button class="ref-grip" data-grip="${it.id}" aria-label="拖曳調整順序" title="拖曳調整順序">⠿</button>
         <button class="ref-del" data-refdel="${it.id}" aria-label="刪除項目">✕</button>
       </div>`;
     } else {
       html += `
       <div class="ref-item" data-item="${it.id}">${main}
+        <button class="ref-grip" data-grip="${it.id}" aria-label="拖曳調整順序" title="拖曳調整順序">⠿</button>
         <button class="ref-del" data-refdel="${it.id}" aria-label="刪除項目">✕</button>
       </div>`;
     }
@@ -157,6 +161,15 @@ export function bindRefPage(store: Store, root: HTMLElement, getChapter: () => s
       el?.focus();
       return;
     }
+    // ⬇＝把這個區塊的圖存成檔案（場景／演員／服裝／道具…都要能存）
+    const sv = t.closest("[data-refsave]") as HTMLElement | null;
+    if (sv) {
+      const ch = getChapter();
+      const it = store.get().refPages[ch]?.find((x) => x.id === sv.dataset.refsave);
+      const chLabel = CHAPTERS.find((c) => c.id === ch)?.label ?? ch;
+      if (it?.imageRef) void saveImageAs(it.imageRef, `${store.get().meta.title || "案子"}_${chLabel}_${it.title || it.id}`);
+      return;
+    }
     const img = t.closest("[data-refimg]") as HTMLElement | null;
     if (img) {
       if (img.classList.contains("playing")) return; // 播放中不開選檔
@@ -173,7 +186,8 @@ export function bindRefPage(store: Store, root: HTMLElement, getChapter: () => s
     const el = e.target as HTMLElement;
     if (!el.isContentEditable || !el.dataset.ritem) return;
     const field = el.dataset.rf as "title" | "note" | "videoUrl";
-    const text = (el.textContent || "").trim();
+    // innerText 而非 textContent：保住 shift+enter 的換行（同 stbView）
+    const text = (el.innerText || "").trim();
     store.editRefField(getChapter(), el.dataset.ritem!, field, text);
     if (field === "videoUrl" && text === "") {
       expandedVideo.delete(el.dataset.ritem!);
@@ -184,6 +198,16 @@ export function bindRefPage(store: Store, root: HTMLElement, getChapter: () => s
   }, true);
   // 輸入框鍵盤規則：Enter 留在框內（中文選字友善）、Esc 結束；附註欄可換行
   bindEditKeys(root, (el) => el.dataset.rf === "note");
+  // 拖曳入圖：檔案拖到參考區塊（場景／演員／服裝／道具…）＝直接套進那一塊
+  bindDropImage(root, "[data-refimg]", (el, f) => void applyRefImageFile(store, getChapter(), el.dataset.refimg!, f));
+  // 區塊排序（抓 ⠿）：跟分鏡卡同一套指標拖曳，場景/演員頁也能自由調順序
+  bindPointerDrag({
+    root,
+    handleSel: ".ref-grip",
+    itemSel: ".ref-item",
+    idOf: (el) => el.dataset.item,
+    onDrop: (from, to) => store.moveRefItem(getChapter(), from, to),
+  });
 }
 
 async function pickVideoFile(store: Store, chapterId: string, itemId: string, rerender: () => void) {
@@ -229,9 +253,13 @@ async function pickRefMedia(store: Store, chapterId: string, itemId: string, rer
 }
 
 async function pickRefImage(store: Store, chapterId: string, itemId: string) {
-  const auto = AUTO_ASPECT_CHAPTERS.has(chapterId);
   const [f] = await pickFiles("image/*", false);
-  if (!f) return;
+  if (f) await applyRefImageFile(store, chapterId, itemId, f);
+}
+
+// 把一個檔案套進某個參考區塊——選檔與「拖曳入圖」共用同一條管線
+async function applyRefImageFile(store: Store, chapterId: string, itemId: string, f: File) {
+  const auto = AUTO_ASPECT_CHAPTERS.has(chapterId);
   // 先縮成工作圖再裁（iPad：原檔直餵會耗盡解碼資源）
   const url = await fileToWorkingImage(f);
   if (!url) { alert("這張照片讀不進來——若原檔還在 iCloud，等幾秒再試一次。"); return; }

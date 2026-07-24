@@ -3,12 +3,14 @@
 // 踢出輸入框、要滑鼠點回來（Armin 實測回報）。
 // 規則：Enter＝吞掉、游標留在框內繼續打；Esc＝結束輸入（blur→commit）；
 // 要離開也可以直接點別處。allowNewline 的欄位（多行附註）Enter 照常換行。
+// shift+Enter＝手動換行（使用者回報要能分段）——原本這裡把 Enter 全擋，
+// 連 shift+Enter 也一起吞掉，所以換行永遠插不進去。
 export function bindEditKeys(root: HTMLElement, allowNewline?: (el: HTMLElement) => boolean) {
   root.addEventListener("keydown", (e) => {
     const el = e.target as HTMLElement;
     if (!el.isContentEditable) return;
     if (e.key === "Enter" && !e.isComposing) {
-      if (allowNewline?.(el)) return;
+      if (e.shiftKey || allowNewline?.(el)) return; // 放行＝瀏覽器插入換行
       e.preventDefault(); // 不換行、不離開——繼續打
     } else if (e.key === "Escape" && !e.isComposing) {
       e.preventDefault();

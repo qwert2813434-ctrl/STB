@@ -174,7 +174,8 @@ button:active { transform: scale(.98); }
   position: relative; /* ✏️ 塗鴉鈕釘右下角 */
 }
 
-.cut-line { font-size: 13px; line-height: 1.55; outline: none; min-height: 1.55em; }
+/* pre-wrap：讓 shift+enter 的換行真的顯示出來（存檔端用 innerText 保住 \n） */
+.cut-line { font-size: 13px; line-height: 1.55; outline: none; min-height: 1.55em; white-space: pre-wrap; }
 .cut-desc { color: var(--ink); flex: 1; }
 /* 點卡片空白處＝直接打字（游標自動進畫面描述），游標樣式給暗示 */
 .cut { cursor: text; }
@@ -200,7 +201,7 @@ button:active { transform: scale(.98); }
   flex: none;
   padding-top: 1px;
 }
-.cut-edit { outline: none; flex: 1; min-width: 0; color: inherit; }
+.cut-edit { outline: none; flex: 1; min-width: 0; color: inherit; white-space: pre-wrap; }
 .cut-edit:empty::before { content: attr(data-ph); color: var(--faint); opacity: .8; }
 .cut-edit:focus { background: var(--hover); border-radius: 4px; }
 
@@ -416,12 +417,30 @@ button:active { transform: scale(.98); }
 .cs-grow.drop-target { box-shadow: 0 -2px 0 var(--ink); }
 
 /* 拖曳手感 + 分鏡圖 */
+/* 更新提醒橫幅：右下角浮一條，不擋工作區、不強制互動 */
+.upd-bar {
+  position: fixed; right: 16px; bottom: 16px; z-index: 60;
+  display: flex; align-items: center; gap: 8px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+  padding: 8px 10px; font-size: 12px; color: var(--ink);
+  box-shadow: 0 6px 24px rgba(0,0,0,.12);
+}
+.upd-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--vo); flex: none; }
+.upd-txt { margin-right: 4px; }
+.upd-bar button { border: 1px solid var(--line); background: transparent; border-radius: 7px; padding: 4px 9px; font-size: 12px; color: var(--ink); }
+.upd-bar .upd-go { background: var(--ink); color: var(--card); border-color: var(--ink); }
+.upd-bar .upd-skip, .upd-bar .upd-x { color: var(--muted); }
+.upd-bar button:hover { background: var(--hover); }
+.upd-bar .upd-go:hover { opacity: .88; background: var(--ink); }
+
 body.dragging-any { user-select: none; cursor: grabbing; }
 .cut-head { cursor: grab; padding: 2px 2px 4px; border-radius: 6px; touch-action: none; }
 .rd-grip { touch-action: none; }
 .cut-head:hover { background: var(--hover); }
 .cut-head:active { cursor: grabbing; }
 .cut.drop-target { border-color: var(--ink); box-shadow: -3px 0 0 var(--ink); }
+/* 拖曳入圖：滑到哪一格就亮那一格，落點不會猜錯 */
+.drop-hot { outline: 2px solid var(--vo); outline-offset: -2px; }
 .cut-thumb { cursor: pointer; overflow: hidden; }
 .cut-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .thumb-add { font-size: 11px; color: var(--faint); }
@@ -465,9 +484,25 @@ body.dragging-any { user-select: none; cursor: grabbing; }
 .ref-item { position: relative; border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
 .ref-thumb { aspect-ratio: 16 / 9; background: var(--placeholder); border-radius: 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden; margin-bottom: 7px; }
 .ref-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.ref-title { font-size: 13px; color: var(--ink); outline: none; }
-.ref-note { font-size: 12px; color: var(--ink2); outline: none; margin-top: 3px; line-height: 1.5; }
+.ref-title { font-size: 13px; color: var(--ink); outline: none; white-space: pre-wrap; }
+.ref-note { font-size: 12px; color: var(--ink2); outline: none; margin-top: 3px; line-height: 1.5; white-space: pre-wrap; }
 .ref-title:empty::before, .ref-note:empty::before { content: attr(data-ph); color: var(--faint); }
+/* 圖片區塊四角統一慣例：⠿排序＝左上｜⬇存圖＝左下｜✕刪除＝右上。 */
+.ref-grip { position: absolute; top: 6px; left: 6px; border: none; color: var(--faint); padding: 2px 6px; font-size: 12px; background: transparent; cursor: grab; user-select: none; }
+.ref-grip:hover { color: var(--ink); background: var(--hover); border-radius: 4px; }
+.ref-grip:active { cursor: grabbing; }
+.ref-save { display: none; }
+@media (hover: hover) {
+  .ref-save {
+    display: block;
+    position: absolute; left: 6px; bottom: 6px;
+    font-size: 11px; line-height: 1; padding: 5px 8px;
+    background: rgba(255,255,255,.92); border: 1px solid var(--line); border-radius: 8px;
+    color: var(--ink2);
+    opacity: 0;
+  }
+  .ref-item:hover .ref-save { opacity: 1; }
+}
 .ref-del { position: absolute; top: 6px; right: 6px; border: none; color: var(--faint); padding: 2px 6px; font-size: 12px; background: transparent; }
 .ref-del:hover { color: var(--ink); background: var(--hover); }
 .ref-addrow { margin-top: 14px; }
@@ -759,7 +794,7 @@ body.dragging-any { user-select: none; cursor: grabbing; }
 /* 拿掉 iOS 的 ~350ms 點擊延遲（等雙擊縮放的判斷期）＝「每按一下慢一拍」的元凶 */
 * { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 /* 拖曳把手要完整接管觸控（不然瀏覽器把手勢當捲動，拖不動＝「按了沒反應」） */
-.rd-grip, .rd-time, .cut-head, .cs-grip, .gt-bar, .gt-resize, .gt-resize-l { touch-action: none; }
+.rd-grip, .rd-time, .cut-head, .cs-grip, .ref-grip, .gt-bar, .gt-resize, .gt-resize-l { touch-action: none; }
 .rd-time { cursor: grab; }
 
 /* App 感：非編輯文字一律不可選取（iOS 長按不再跳選字放大鏡）——
@@ -779,6 +814,25 @@ body.sel-mode .cut [contenteditable] { pointer-events: none; }
 /* ---- 塗鴉分鏡（✏️ 入口＋編輯器）---- */
 /* ✏️ 只給有滑鼠的桌面（hover 才現身）；iPad 不放常駐鈕（Armin：醜）——
    入口＝Apple Pencil 直接點縮圖，或選卡後底欄「塗鴉」 */
+/* 存圖鈕：釘左下（四角慣例），hover 才浮出；有圖才渲染。 */
+.thumb-save { display: none; }
+@media (hover: hover) {
+  .thumb-save {
+    display: block;
+    position: absolute; left: 4px; bottom: 4px;
+    font-size: 11px; line-height: 1; padding: 5px 8px;
+    background: rgba(255,255,255,.92); border: 1px solid var(--line); border-radius: 8px;
+    color: var(--ink2);
+    opacity: 0;
+  }
+  .cut-thumb:hover .thumb-save { opacity: 1; }
+}
+.rd-park-save {
+  position: absolute; top: -6px; left: -6px;
+  width: 18px; height: 18px; border-radius: 50%; border: none;
+  background: rgba(0, 0, 0, .6); color: #fff;
+  font-size: 9px; line-height: 18px; padding: 0; text-align: center;
+}
 .thumb-sketch { display: none; }
 @media (hover: hover) {
   .thumb-sketch {

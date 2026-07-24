@@ -212,6 +212,21 @@ export async function chooseFolderAndSaveAs(contents: string, suggestedName: str
   return path;
 }
 
+// 把單張圖另存成檔案：imageRef 是 data URL，拆出 base64 交給 Rust save_file。
+// 分鏡格／參考頁（場景・演員・服裝・道具…）／停車照共用這一顆。
+// 桌面限定（行動版沒有存檔對話框，走系統分享，見進度文件待辦）。
+export async function saveImageAs(dataUrl: string, suggestedName: string): Promise<boolean> {
+  const m = /^data:image\/([a-z]+);base64,(.+)$/is.exec(dataUrl);
+  if (!m) return false;
+  const ext = m[1].toLowerCase() === "jpeg" ? "jpg" : m[1].toLowerCase();
+  // 標題可能含換行／斜線（欄位現在允許 shift+Enter 換行），不能直接當檔名
+  const name = (suggestedName.replace(/[\\/:*?"<>|\r\n]+/g, "_").trim() || "圖片").slice(0, 60);
+  const path = await save({ defaultPath: `${name}.${ext}`, title: "存圖片" });
+  if (!path) return false;
+  await invoke("save_file", { path, b64: m[2] });
+  return true;
+}
+
 // 用系統預設瀏覽器開外部連結（參考影片用）；瀏覽器預覽時退回 window.open
 export function openExternal(url: string) {
   const u = /^https?:\/\//i.test(url) ? url : "https://" + url;

@@ -14,13 +14,14 @@ import { openExportDialog } from "./exportDialog";
 import { openCropper } from "./cropper";
 import { CHAPTERS, computeCutNumbers, pageCount, chainRundown, hhmmToMin, minToHHMM, normalizeProject, type Aspect } from "./model";
 import { askAspect } from "./nameDialog";
-import { isTauri, isMobile, currentDir, dirName, chooseFolderAndLoad, createProjectFolder, chooseFolderAndSaveAs, saveToCurrent, loadFromDir, lastProjectDir, upsertRecent, detachDir, migrateMobileHome, listMobileProjects, unpackPacked, mobileBase, extractPosterFor } from "./persistence";
+import { isTauri, isMobile, currentDir, dirName, chooseFolderAndLoad, createProjectFolder, chooseFolderAndSaveAs, saveToCurrent, loadFromDir, lastProjectDir, upsertRecent, detachDir, migrateMobileHome, listMobileProjects, unpackPacked, mobileBase, extractPosterFor, saveImageAs } from "./persistence";
 import { projectLogo } from "./logoAsset";
 import { openHelp } from "./helpDialog";
+import { checkUpdate } from "./updateCheck";
 import { openHub } from "./hubDialog";
 import { openSketchEditor } from "./sketchEditor";
 import { bindUndoGestures } from "./touchUndo";
-import { pickBoardImages, fileToWorkingImage, pickFiles } from "./cutPicker";
+import { pickBoardImages, fileToWorkingImage, pickFiles, bindDropImage } from "./cutPicker";
 import { openBlockPicker } from "./assignDialog";
 
 // iPad／觸控裝置：桌面版型用 zoom 等比縮到螢幕寬——zoom 以裝置原生解析度
@@ -258,7 +259,12 @@ async function pickImage(cutId: string) {
     return;
   }
   const [file] = await pickFiles("image/*", false);
-  if (!file) return;
+  if (file) await applyImageFile(cutId, file);
+}
+
+// 把一個檔案套進某格——選檔與「拖曳入圖」共用同一條管線（縮工作圖 → 裁切 → 存）
+async function applyImageFile(cutId: string, file: File) {
+  const ar = store.get().aspect === "9:16" ? 9 / 16 : 16 / 9;
   // 先縮成工作圖再進裁切器（原檔 48MP 直餵會耗盡 iPad 解碼資源）
   const url = await fileToWorkingImage(file);
   if (!url) { alert("這張照片讀不進來——若原檔還在 iCloud，等幾秒再試一次；全景/超大圖請先裁切。"); return; }
@@ -699,6 +705,17 @@ document.addEventListener("stb:selchange", () => renderInspector());
 let lastPtrType = "";
 stbArea.addEventListener("pointerdown", (e) => { lastPtrType = (e as PointerEvent).pointerType; }, true);
 stbArea.addEventListener("click", (e) => {
+  // ⬇＝把這格的分鏡圖另存成檔案
+  const si = (e.target as HTMLElement).closest("[data-saveimg]") as HTMLElement | null;
+  if (si) {
+    const p = store.get();
+    const c = p.cuts.find((x) => x.id === si.dataset.saveimg);
+    if (c?.imageRef) {
+      const label = computeCutNumbers(p.cuts, p.films).get(c.id)?.label ?? c.id;
+      void saveImageAs(c.imageRef, `${p.meta.title || "分鏡"}_CUT${label}`);
+    }
+    return;
+  }
   // ✏️（桌面 hover 鈕）＝塗鴉分鏡；已是塗鴉的格點縮圖也直接回編輯器（筆跡可再編輯）
   const sk = (e.target as HTMLElement).closest("[data-sketch]") as HTMLElement | null;
   if (sk) { openSketchEditor(store, sk.dataset.sketch!); return; }
@@ -734,5 +751,10 @@ bindUndoGestures(document, {
     !(document.activeElement as HTMLElement | null)?.isContentEditable,
 });
 
+// 拖曳入圖：檔案拖到分鏡格＝直接套進那一格（參考頁的綁在 refPageView 內）
+bindDropImage(stbArea, "[data-thumb]", (el, f) => void applyImageFile(el.dataset.thumb!, f));
+
 store.subscribe(renderAll);
 renderAll();
+// 更新提醒：延後幾秒再查，不跟開檔搶資源；離線就安靜跳過
+setTimeout(() => void checkUpdate(), 4000);

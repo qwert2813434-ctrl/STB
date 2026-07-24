@@ -68,7 +68,7 @@ export function renderStb(store: Store, root: HTMLElement, flashFromSeq = -1, ex
             <span class="cut-grip">⠿</span>
             <span class="cut-no${flash}">CUT ${n.label}</span>
           </div>
-          <div class="cut-thumb" data-thumb="${cut.id}">${cut.imageRef ? `<img src="${cut.imageRef}" alt="分鏡" draggable="false">` : `<span class="thumb-add">＋ 分鏡圖</span>`}<button class="thumb-sketch" data-sketch="${cut.id}" title="塗鴉分鏡（Apple Pencil／滑鼠）">✏️</button></div>
+          <div class="cut-thumb" data-thumb="${cut.id}">${cut.imageRef ? `<img src="${cut.imageRef}" alt="分鏡" draggable="false">` : `<span class="thumb-add">＋ 分鏡圖</span>`}<button class="thumb-sketch" data-sketch="${cut.id}" title="塗鴉分鏡（Apple Pencil／滑鼠）">✏️</button>${cut.imageRef ? `<button class="thumb-save" data-saveimg="${cut.id}" title="把這張分鏡圖存成檔案">⬇</button>` : ""}</div>
           <div class="cut-line cut-desc" contenteditable draggable="false" data-id="${cut.id}" data-f="desc" data-ph="畫面描述">${esc(cut.desc)}</div>
           ${showVo ? `<div class="cut-line-row cut-vo"><span class="tag">VO</span><span class="cut-edit" contenteditable draggable="false" data-id="${cut.id}" data-f="vo" data-ph="旁白 / 台詞">${esc(cut.vo)}</span></div>` : ""}
           ${showSup ? `<div class="cut-line-row cut-sup"><span class="tag">SUPER</span><span class="cut-edit" contenteditable draggable="false" data-id="${cut.id}" data-f="sup" data-ph="疊印字卡">${esc(cut.sup)}</span></div>` : ""}
@@ -204,8 +204,10 @@ export function bindStb(
       }
       const id = el.dataset.id!;
       const field = el.dataset.f as "desc" | "vo" | "sup" | "shot";
-      // tag 已移出可編輯區，直接取純文字
-      const text = (el.textContent || "").trim();
+      // tag 已移出可編輯區，直接取純文字。
+      // 用 innerText 不用 textContent：shift+enter 產生的 <br> 在 textContent 會被吃掉
+      // （兩段還會黏成一行），innerText 才會還原成 \n。搭配 CSS white-space: pre-wrap 顯示。
+      const text = (el.innerText || "").trim();
       store.editField(id, field, text);
       // 展開後沒填字 → 收回（下次重繪隱藏），維持「VO/Super 不長存」
       if ((field === "vo" || field === "sup") && text === "") {
