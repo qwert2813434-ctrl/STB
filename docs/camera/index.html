@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>STB Camera</title>
+<style>
+  :root{
+    --bg:#0F0E12; --panel:#1B1920; --panel2:#26232C; --ink:#F2F0EC; --ink2:#9B96A2;
+    --line:#2B2833; --amber:#F0B441; --green:#7FD79A;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--ink);
+    font-family:"Inter","PingFang TC","Noto Sans TC",sans-serif;font-weight:400;
+    -webkit-user-select:none;user-select:none;}
+  button{font-family:inherit;cursor:pointer;color:inherit;}
+  .scr{position:fixed;inset:0;display:none;}
+  .scr.on{display:block;}
+
+  /* ── 載入頁 ── */
+  #s-load{display:none;align-items:center;justify-content:center;flex-direction:column;padding:32px;text-align:center;}
+  #s-load.on{display:flex;}
+  .brand{font-size:12px;letter-spacing:.3em;color:var(--ink2);text-transform:uppercase;}
+  #s-load h1{font-size:44px;font-weight:800;margin:10px 0 6px;letter-spacing:-.01em;}
+  #s-load p{color:var(--ink2);font-size:15px;max-width:30em;line-height:1.6;margin-bottom:28px;}
+  .bigbtn{background:var(--amber);color:#231a06;border:none;border-radius:16px;
+    font-size:17px;font-weight:800;padding:16px 34px;letter-spacing:.02em;}
+  .ghostbtn{background:var(--panel);color:var(--ink);border:1px solid var(--line);
+    border-radius:14px;font-size:14px;font-weight:700;padding:12px 22px;}
+  .loadmeta{margin-top:22px;font-size:13px;color:var(--ink2);line-height:1.7;}
+  .loadmeta b{color:var(--ink);}
+  .rotate-hint{margin-top:30px;font-size:12px;color:var(--ink2);letter-spacing:.08em;}
+
+  /* ── 逐 cut 瀏覽 ── */
+  #s-browse{display:none;}
+  #s-browse.on{display:block;}
+  .cutpage{position:absolute;inset:0;display:flex;}
+  .cut-main{flex:1;position:relative;background:#17151C;overflow:hidden;}
+  .cut-main img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;}
+  .cut-noimg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--ink2);font-size:15px;}
+  .cut-cap{position:absolute;left:0;right:0;bottom:0;padding:16px 26px 20px;
+    background:linear-gradient(transparent,rgba(10,9,13,.92) 45%);}
+  .cut-cap .row{display:flex;align-items:baseline;gap:14px;}
+  .cut-cap .cn{font-size:19px;font-weight:800;letter-spacing:.08em;color:var(--amber);flex:none;}
+  .cut-cap .shot{font-size:12px;font-weight:700;color:var(--ink2);border:1px solid var(--line);border-radius:6px;padding:2px 8px;}
+  .cut-cap .desc{font-size:14px;color:var(--ink);margin-top:8px;line-height:1.55;max-width:60ch;}
+  .cut-cap .vo{font-size:12.5px;color:var(--ink2);margin-top:4px;}
+  .topbar{position:absolute;top:0;left:0;right:96px;padding:12px 26px;z-index:20;display:flex;align-items:center;gap:14px;
+    background:linear-gradient(rgba(10,9,13,.8),transparent);}
+  .topbar .ptitle{font-size:13px;font-weight:700;color:var(--ink);letter-spacing:.02em;}
+  .topbar .pgnum{font-size:12px;letter-spacing:.16em;color:var(--ink2);}
+  .topbar .scoutdot{font-size:11px;color:var(--green);letter-spacing:.1em;margin-left:auto;}
+  .cut-rail{width:96px;flex:none;background:var(--bg);border-left:1px solid var(--line);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;}
+  .railbtn{width:60px;height:60px;border-radius:50%;border:1px solid var(--line);background:var(--panel);
+    font-size:22px;display:flex;align-items:center;justify-content:center;}
+  .railbtn.main{background:var(--amber);color:#231a06;border-color:var(--amber);}
+  .raillabel{font-size:10px;letter-spacing:.1em;color:var(--ink2);margin-bottom:8px;}
+  .pager{position:absolute;right:112px;top:12px;display:flex;flex-direction:column;gap:8px;z-index:20;}
+  .pgbtn{width:38px;height:38px;border-radius:11px;border:1px solid var(--line);background:rgba(20,18,25,.72);font-size:15px;}
+  .exportbar{position:absolute;left:26px;bottom:20px;z-index:20;}
+  .exportbtn{background:var(--panel);border:1px solid var(--amber);color:var(--amber);
+    border-radius:12px;font-size:13px;font-weight:700;padding:10px 18px;letter-spacing:.04em;}
+
+  /* ── 取景 ── */
+  #s-cam{display:none;background:#000;}
+  #s-cam.on{display:block;}
+  .vf{position:absolute;inset:0;overflow:hidden;background:#000;}
+  #vfVideo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform .12s ease-out;transform-origin:center;}
+  .vf-overlay{position:absolute;inset:0;pointer-events:none;object-fit:contain;width:100%;height:100%;opacity:.4;}
+  .vf-top{position:absolute;top:0;left:0;right:0;padding:12px 26px;display:flex;align-items:center;gap:12px;z-index:20;
+    background:linear-gradient(rgba(0,0,0,.7),transparent);}
+  .seg{display:flex;background:rgba(40,37,46,.85);border-radius:10px;padding:3px;}
+  .seg button{border:none;background:transparent;color:var(--ink2);font-size:12px;font-weight:700;letter-spacing:.06em;padding:6px 14px;border-radius:8px;}
+  .seg button.on{background:#4a4552;color:var(--ink);}
+  .focal-read{margin-left:auto;text-align:right;}
+  .focal-read .fnum{font-size:24px;font-weight:800;color:var(--amber);}
+  .focal-read .feq{font-size:11px;color:var(--ink2);letter-spacing:.06em;}
+  .vf-close{position:absolute;top:12px;right:20px;z-index:30;width:40px;height:40px;border-radius:50%;
+    background:rgba(20,18,25,.8);border:1px solid var(--line);font-size:18px;}
+  .warn{position:absolute;left:26px;z-index:25;font-size:11px;letter-spacing:.06em;color:var(--amber);
+    background:rgba(30,24,10,.85);border:1px solid rgba(240,180,65,.4);border-radius:8px;padding:5px 12px;display:none;}
+  .warn.show{display:block;}
+  #warnWide{bottom:96px;} #warnTele{bottom:130px;}
+  /* 焦距刻度尺 */
+  .dial{position:absolute;bottom:74px;left:0;right:96px;height:56px;overflow:hidden;z-index:20;
+    touch-action:none;background:linear-gradient(transparent,rgba(0,0,0,.5));}
+  .ticks{position:absolute;top:8px;bottom:16px;left:0;will-change:transform;}
+  .tick{position:absolute;bottom:16px;width:1px;height:10px;background:rgba(242,240,236,.3);}
+  .tick.major{height:18px;width:1.5px;background:rgba(242,240,236,.7);}
+  .tick-lab{position:absolute;bottom:0;transform:translateX(-50%);font-size:10px;color:var(--ink2);}
+  .pin{position:absolute;left:50%;top:4px;bottom:14px;width:2px;margin-left:-1px;background:var(--amber);border-radius:2px;box-shadow:0 0 8px rgba(240,180,65,.6);}
+  .dial-fade{position:absolute;top:0;bottom:0;width:60px;pointer-events:none;z-index:2;}
+  .dial-fade.l{left:0;background:linear-gradient(90deg,rgba(0,0,0,.7),transparent);}
+  .dial-fade.r{right:96px;background:linear-gradient(270deg,rgba(0,0,0,.7),transparent);}
+  .cam-rail{position:absolute;top:0;bottom:0;right:0;width:96px;border-left:1px solid var(--line);
+    background:rgba(10,9,13,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;z-index:20;}
+  .cam-rail .ov{font-size:10px;letter-spacing:.08em;color:var(--ink2);text-align:center;}
+  .shutter{width:66px;height:66px;border-radius:50%;background:#fff;border:4px solid #c9c5ce;}
+  .cutlabel{font-size:11px;color:var(--amber);font-weight:700;letter-spacing:.06em;}
+
+  /* ── 比對 ── */
+  #s-cmp{display:none;background:#000;}
+  #s-cmp.on{display:block;}
+  #s-cmp .layer{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;}
+  .cmp-top{position:absolute;top:0;left:0;right:0;padding:12px 26px;z-index:20;display:flex;align-items:center;
+    background:linear-gradient(rgba(0,0,0,.7),transparent);}
+  .cmp-top .cutlabel{margin-right:auto;}
+  .cmp-presets{display:flex;background:rgba(40,37,46,.85);border-radius:10px;padding:3px;}
+  .cmp-presets button{border:none;background:transparent;color:var(--ink2);font-size:12px;font-weight:700;padding:6px 13px;border-radius:8px;}
+  .cmp-presets button.on{background:#4a4552;color:var(--ink);}
+  .cmp-bar{position:absolute;bottom:26px;left:26px;right:26px;z-index:20;display:flex;align-items:center;gap:16px;}
+  .cmp-bar input{flex:1;accent-color:var(--amber);height:26px;}
+  .cmp-lab{font-size:11px;letter-spacing:.14em;color:var(--ink2);}
+  .cmp-close{position:absolute;top:12px;right:20px;z-index:30;width:40px;height:40px;border-radius:50%;
+    background:rgba(20,18,25,.8);border:1px solid var(--line);font-size:18px;}
+  .cmp-save{position:absolute;bottom:66px;right:26px;z-index:20;background:var(--panel);border:1px solid var(--line);
+    color:var(--ink);border-radius:11px;font-size:12px;font-weight:700;padding:9px 16px;}
+
+  .toast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);z-index:100;
+    background:rgba(20,18,25,.95);border:1px solid var(--line);color:var(--ink);
+    padding:11px 20px;border-radius:12px;font-size:13.5px;letter-spacing:.02em;opacity:0;transition:opacity .2s;pointer-events:none;}
+  .toast.show{opacity:1;}
+  .hidden{display:none!important;}
+</style>
+</head>
+<body>
+
+<!-- 載入頁 -->
+<div id="s-load" class="scr on">
+  <div class="brand">STB · Storyboard to Shoot</div>
+  <h1>STB Camera</h1>
+  <p>攝影師現場勘景工具。開啟導演給的 <b>.stb</b> 分鏡包，逐顆 cut 拍鏡位圖、比對構圖，拍完帶回 STB。</p>
+  <button class="bigbtn" id="btnPick">開啟 .stb 分鏡包</button>
+  <input type="file" id="filePick" class="hidden">
+  <div class="loadmeta" id="loadMeta"></div>
+  <button class="ghostbtn hidden" id="btnEnter" style="margin-top:20px;">開始場勘 →</button>
+  <div class="rotate-hint">建議橫向使用 · 場勘照會綁定每顆 cut</div>
+  <a href="測試片.stb" download class="rotate-hint" style="margin-top:14px;color:var(--amber);text-decoration:none;">↓ 沒有分鏡包？先下載測試片.stb 試玩（手機會存到「檔案」，再回來開啟）</a>
+</div>
+
+<!-- 逐 cut 瀏覽 -->
+<div id="s-browse" class="scr">
+  <div class="cutpage">
+    <div class="cut-main" id="cutMain">
+      <div class="topbar">
+        <span class="ptitle" id="bTitle"></span>
+        <span class="pgnum" id="bPgnum"></span>
+        <span class="scoutdot" id="bScout">● 已拍場勘</span>
+      </div>
+      <div class="pager">
+        <button class="pgbtn" id="bPrev">▲</button>
+        <button class="pgbtn" id="bNext">▼</button>
+      </div>
+      <img id="bImg" alt="分鏡">
+      <div class="cut-noimg hidden" id="bNoImg">（此 cut 無分鏡圖）</div>
+      <div class="cut-cap">
+        <div class="row"><span class="cn" id="bCn"></span><span class="shot" id="bShot"></span></div>
+        <div class="desc" id="bDesc"></div>
+        <div class="vo" id="bVo"></div>
+      </div>
+      <div class="exportbar"><button class="exportbtn" id="btnExport">⬆ 匯出回 STB</button></div>
+    </div>
+    <div class="cut-rail">
+      <button class="railbtn main" id="btnShoot">📷</button><div class="raillabel">拍攝</div>
+      <button class="railbtn" id="btnLib">🖼</button><div class="raillabel">相簿</div>
+      <button class="railbtn" id="btnCmp">👁</button><div class="raillabel">比對</div>
+    </div>
+  </div>
+  <input type="file" id="libPick" accept="image/*" class="hidden">
+</div>
+
+<!-- 取景 -->
+<div id="s-cam" class="scr">
+  <div class="vf">
+    <video id="vfVideo" autoplay playsinline muted></video>
+    <img class="vf-overlay" id="vfOverlay" alt="">
+    <div class="vf-top">
+      <div class="seg" id="sysSeg">
+        <button class="on" data-sys="ff">全幅</button>
+        <button data-sys="s35">S35</button>
+      </div>
+      <div class="seg"><button id="ovBtn" class="on">疊分鏡</button></div>
+      <div class="focal-read"><div class="fnum"><span id="fNum">35</span>mm</div><div class="feq" id="fEq">等效 35mm（全幅）</div></div>
+    </div>
+    <button class="vf-close" id="camClose">✕</button>
+    <div class="warn" id="warnWide">⚠ 超出 iPhone 最廣 13mm — 顯示 13mm 畫面，僅供參考</div>
+    <div class="warn" id="warnTele">ⓘ 77mm 以上為數位裁切</div>
+    <div class="dial" id="dial">
+      <div class="ticks" id="ticks"></div>
+      <div class="pin"></div>
+      <div class="dial-fade l"></div><div class="dial-fade r"></div>
+    </div>
+    <div class="cam-rail">
+      <div class="cutlabel" id="camCut">CUT</div>
+      <button class="shutter" id="shutter"></button>
+      <div class="ov" id="camMsg"></div>
+    </div>
+  </div>
+  <canvas id="capCanvas" class="hidden"></canvas>
+</div>
+
+<!-- 比對 -->
+<div id="s-cmp" class="scr">
+  <img class="layer" id="cmpPhoto" alt="場勘">
+  <img class="layer" id="cmpSketch" alt="分鏡">
+  <div class="cmp-top">
+    <span class="cutlabel" id="cmpCut">CUT</span>
+    <div class="cmp-presets">
+      <button data-v="0">分鏡</button>
+      <button data-v="50" class="on">疊合</button>
+      <button data-v="100">照片</button>
+    </div>
+  </div>
+  <button class="cmp-close" id="cmpClose">✕</button>
+  <button class="cmp-save" id="cmpSave">⬇ 存到相簿</button>
+  <div class="cmp-bar">
+    <span class="cmp-lab">分鏡</span>
+    <input type="range" id="cmpSlider" min="0" max="100" value="50">
+    <span class="cmp-lab">照片</span>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script type="module">
+/* ═══════════ zip 讀寫（已用 Python 交叉驗證）═══════════ */
+const CRC_TABLE=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xedb88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})();
+function crc32(b){let c=0xffffffff;for(let i=0;i<b.length;i++)c=CRC_TABLE[(c^b[i])&0xff]^(c>>>8);return(c^0xffffffff)>>>0;}
+async function inflateRaw(bytes){const ds=new DecompressionStream("deflate-raw");const s=new Response(bytes).body.pipeThrough(ds);return new Uint8Array(await new Response(s).arrayBuffer());}
+async function unzip(buf){
+  const dv=new DataView(buf),bytes=new Uint8Array(buf);let eocd=-1;
+  for(let i=buf.byteLength-22;i>=0;i--){if(dv.getUint32(i,true)===0x06054b50){eocd=i;break;}}
+  if(eocd<0)throw new Error("不是有效的 .stb 分鏡包");
+  const count=dv.getUint16(eocd+10,true);let p=dv.getUint32(eocd+16,true);const out={};
+  for(let i=0;i<count;i++){
+    if(dv.getUint32(p,true)!==0x02014b50)throw new Error("zip 中央目錄損壞");
+    const method=dv.getUint16(p+10,true),compSize=dv.getUint32(p+20,true),nameLen=dv.getUint16(p+28,true),
+      extraLen=dv.getUint16(p+30,true),commentLen=dv.getUint16(p+32,true),localOff=dv.getUint32(p+42,true);
+    const name=new TextDecoder().decode(bytes.subarray(p+46,p+46+nameLen));
+    const lNameLen=dv.getUint16(localOff+26,true),lExtraLen=dv.getUint16(localOff+28,true);
+    const dataStart=localOff+30+lNameLen+lExtraLen,comp=bytes.subarray(dataStart,dataStart+compSize);
+    if(!name.endsWith("/"))out[name]=method===0?comp.slice():await inflateRaw(comp);
+    p+=46+nameLen+extraLen+commentLen;
+  }
+  return out;
+}
+function zip(files){
+  const enc=new TextEncoder(),entries=[],chunks=[];let offset=0;
+  for(const[name,data]of Object.entries(files)){
+    const nameB=enc.encode(name),crc=crc32(data),local=new Uint8Array(30+nameB.length),dv=new DataView(local.buffer);
+    dv.setUint32(0,0x04034b50,true);dv.setUint16(4,20,true);dv.setUint16(6,0x0800,true);dv.setUint16(8,0,true);
+    dv.setUint16(10,0,true);dv.setUint16(12,0,true);dv.setUint32(14,crc,true);dv.setUint32(18,data.length,true);
+    dv.setUint32(22,data.length,true);dv.setUint16(26,nameB.length,true);dv.setUint16(28,0,true);local.set(nameB,30);
+    chunks.push(local,data);entries.push({nameB,crc,size:data.length,offset});offset+=local.length+data.length;
+  }
+  const cdChunks=[];let cdSize=0;
+  for(const e of entries){
+    const cd=new Uint8Array(46+e.nameB.length),dv=new DataView(cd.buffer);
+    dv.setUint32(0,0x02014b50,true);dv.setUint16(4,20,true);dv.setUint16(6,20,true);dv.setUint16(8,0x0800,true);
+    dv.setUint16(10,0,true);dv.setUint16(12,0,true);dv.setUint16(14,0,true);dv.setUint32(16,e.crc,true);
+    dv.setUint32(20,e.size,true);dv.setUint32(24,e.size,true);dv.setUint16(28,e.nameB.length,true);
+    dv.setUint16(30,0,true);dv.setUint16(32,0,true);dv.setUint16(34,0,true);dv.setUint16(36,0,true);
+    dv.setUint32(38,0,true);dv.setUint32(42,e.offset,true);cd.set(e.nameB,46);cdChunks.push(cd);cdSize+=cd.length;
+  }
+  const eocd=new Uint8Array(22),edv=new DataView(eocd.buffer);
+  edv.setUint32(0,0x06054b50,true);edv.setUint16(8,entries.length,true);edv.setUint16(10,entries.length,true);
+  edv.setUint32(12,cdSize,true);edv.setUint32(16,offset,true);
+  const total=offset+cdSize+22,out=new Uint8Array(total);let pos=0;
+  for(const c of[...chunks,...cdChunks,eocd]){out.set(c,pos);pos+=c.length;}
+  return out;
+}
+
+/* ═══════════ App 狀態 ═══════════ */
+const $=s=>document.querySelector(s);
+const state={ rawFiles:null, project:null, cuts:[], idx:0, fileName:"分鏡包", stream:null };
+
+function toast(msg){const t=$("#toast");t.textContent=msg;t.classList.add("show");clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove("show"),1800);}
+function show(id){document.querySelectorAll(".scr").forEach(s=>s.classList.remove("on"));$("#"+id).classList.add("on");}
+
+/* ── 載入 .stb ── */
+$("#btnPick").onclick=()=>$("#filePick").click();
+$("#filePick").onchange=async e=>{
+  const f=e.target.files[0];if(!f)return;
+  try{
+    const buf=await f.arrayBuffer();
+    const files=await unzip(buf);
+    if(!files["project.json"])throw new Error("包裡沒有 project.json");
+    const project=JSON.parse(new TextDecoder().decode(files["project.json"]));
+    state.rawFiles=files;state.project=project;state.fileName=f.name.replace(/\.stb$/i,"")||"分鏡包";
+    // 只取分鏡 cut（多路全收，依原順序）；normalizeProject 在 STB 端已補欄，這裡防呆
+    state.cuts=Array.isArray(project.cuts)?project.cuts:[];
+    const shot=state.cuts.filter(c=>c.scoutRef).length;
+    $("#loadMeta").innerHTML=`<b>${(project.meta&&project.meta.title)||state.fileName}</b><br>${state.cuts.length} 顆分鏡 · 已拍場勘 ${shot}／${state.cuts.length}`;
+    $("#btnEnter").classList.remove("hidden");
+    toast("分鏡包已載入");
+  }catch(err){toast("開啟失敗："+err.message);}
+};
+$("#btnEnter").onclick=()=>{state.idx=0;renderCut();show("s-browse");};
+
+/* ── 逐 cut 瀏覽 ── */
+function curCut(){return state.cuts[state.idx];}
+function renderCut(){
+  const c=curCut();if(!c)return;
+  $("#bTitle").textContent=(state.project.meta&&state.project.meta.title)||state.fileName;
+  $("#bPgnum").textContent=`CUT ${state.idx+1} / ${state.cuts.length}`;
+  $("#bScout").style.display=c.scoutRef?"block":"none";
+  if(c.imageRef){$("#bImg").src=c.imageRef;$("#bImg").classList.remove("hidden");$("#bNoImg").classList.add("hidden");}
+  else{$("#bImg").classList.add("hidden");$("#bNoImg").classList.remove("hidden");}
+  $("#bCn").textContent=`CUT ${String(state.idx+1).padStart(2,"0")}`;
+  $("#bShot").textContent=c.shot||"";$("#bShot").style.display=c.shot?"":"none";
+  $("#bDesc").textContent=c.desc||"";
+  $("#bVo").textContent=c.vo?("VO："+c.vo):"";
+}
+function move(d){state.idx=(state.idx+d+state.cuts.length)%state.cuts.length;renderCut();}
+$("#bPrev").onclick=()=>move(-1);
+$("#bNext").onclick=()=>move(1);
+// 觸控上下滑動換 cut
+let touchY=null;
+$("#cutMain").addEventListener("touchstart",e=>{touchY=e.touches[0].clientY;},{passive:true});
+$("#cutMain").addEventListener("touchend",e=>{
+  if(touchY==null)return;const dy=e.changedTouches[0].clientY-touchY;touchY=null;
+  if(Math.abs(dy)>60)move(dy<0?1:-1);
+});
+
+/* ── 相簿匯入 ── */
+$("#btnLib").onclick=()=>$("#libPick").click();
+$("#libPick").onchange=async e=>{
+  const f=e.target.files[0];if(!f)return;
+  const dataUrl=await shrinkToDataUrl(f);
+  curCut().scoutRef=dataUrl;
+  curCut().scoutMeta={system:"ff",focal:0,takenAt:new Date().toISOString()};
+  renderCut();toast("已從相簿指派場勘照");
+};
+// 縮圖：長邊 1600，jpeg 0.85（控制 project.json 肥大）
+function shrinkToDataUrl(fileOrUrl){
+  return new Promise((res,rej)=>{
+    const img=new Image();
+    img.onload=()=>{
+      const max=1600,sc=Math.min(1,max/Math.max(img.width,img.height));
+      const w=Math.round(img.width*sc),h=Math.round(img.height*sc);
+      const c=document.createElement("canvas");c.width=w;c.height=h;
+      c.getContext("2d").drawImage(img,0,0,w,h);
+      res(c.toDataURL("image/jpeg",0.85));
+    };
+    img.onerror=()=>rej(new Error("圖片讀取失敗"));
+    img.src=typeof fileOrUrl==="string"?fileOrUrl:URL.createObjectURL(fileOrUrl);
+  });
+}
+
+/* ═══════════ 取景（相機）═══════════ */
+const PXW=1100;
+let focalP=Math.log(35/10)/Math.log(60), sys="ff", ovOn=true;
+const ticksEl=$("#ticks"),dialEl=$("#dial"),vid=$("#vfVideo");
+(function buildTicks(){
+  let h="";
+  for(let i=0;i<=132;i++)h+=`<span class="tick" style="left:${(i/132)*PXW}px"></span>`;
+  for(const f of[10,13,18,24,35,50,85,135,200,300,450,600]){
+    const x=Math.log(f/10)/Math.log(60)*PXW;
+    h+=`<span class="tick major" style="left:${x}px"></span><span class="tick-lab" style="left:${x}px">${f}</span>`;
+  }
+  ticksEl.style.width=PXW+"px";ticksEl.innerHTML=h;
+})();
+function layoutDial(){ticksEl.style.transform=`translateX(${dialEl.clientWidth/2-focalP*PXW}px)`;}
+let dragging=false,lastX=0;
+dialEl.addEventListener("pointerdown",e=>{dragging=true;lastX=e.clientX;dialEl.setPointerCapture(e.pointerId);});
+dialEl.addEventListener("pointermove",e=>{if(!dragging)return;focalP=Math.min(1,Math.max(0,focalP-(e.clientX-lastX)/PXW));lastX=e.clientX;onFocal();});
+dialEl.addEventListener("pointerup",()=>dragging=false);
+dialEl.addEventListener("pointercancel",()=>dragging=false);
+window.addEventListener("resize",layoutDial);
+function onFocal(){
+  const f=10*Math.pow(60,focalP), fEq=sys==="s35"?f*1.5:f;
+  $("#fNum").textContent=Math.round(f);
+  $("#fEq").textContent=sys==="s35"?`等效 ${Math.round(fEq)}mm（S35 ×1.5）`:`等效 ${Math.round(fEq)}mm（全幅）`;
+  const scale=Math.min(Math.max(fEq,13)/13,46);
+  vid.style.transform=`scale(${scale})`;
+  $("#warnWide").classList.toggle("show",fEq<13);
+  $("#warnTele").classList.toggle("show",fEq>77);
+  layoutDial();
+}
+$("#sysSeg").querySelectorAll("button").forEach(b=>b.onclick=()=>{
+  sys=b.dataset.sys;$("#sysSeg").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b));onFocal();
+});
+$("#ovBtn").onclick=()=>{ovOn=!ovOn;$("#vfOverlay").style.opacity=ovOn?.4:0;$("#ovBtn").classList.toggle("on",ovOn);};
+
+async function openCamera(){
+  const c=curCut();
+  $("#camCut").textContent=`CUT ${String(state.idx+1).padStart(2,"0")}`;
+  $("#vfOverlay").src=c.imageRef||"";
+  $("#vfOverlay").style.display=c.imageRef?"":"none";
+  show("s-cam");onFocal();
+  try{
+    state.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}},audio:false});
+    vid.srcObject=state.stream;$("#camMsg").textContent="";
+  }catch(err){
+    $("#camMsg").textContent="相機無法開啟";
+    toast("相機需要 HTTPS 或 localhost（現場請用已部署網址）");
+  }
+}
+function closeCamera(){
+  if(state.stream){state.stream.getTracks().forEach(t=>t.stop());state.stream=null;}
+  vid.srcObject=null;show("s-browse");renderCut();
+}
+$("#btnShoot").onclick=openCamera;
+$("#camClose").onclick=closeCamera;
+$("#shutter").onclick=()=>{
+  if(!state.stream){toast("相機未開啟——可改用「相簿」匯入");return;}
+  const vw=vid.videoWidth,vh=vid.videoHeight;if(!vw){toast("相機尚未就緒");return;}
+  const f=10*Math.pow(60,focalP),fEq=sys==="s35"?f*1.5:f,scale=Math.min(Math.max(fEq,13)/13,46);
+  // object-fit:cover + transform scale → 取畫面中央 1/scale 區塊
+  const cw=vw/scale,ch=vh/scale,cx=(vw-cw)/2,cy=(vh-ch)/2;
+  const out=1600,canvas=$("#capCanvas");canvas.width=out;canvas.height=Math.round(out*ch/cw);
+  canvas.getContext("2d").drawImage(vid,cx,cy,cw,ch,0,0,canvas.width,canvas.height);
+  const dataUrl=canvas.toDataURL("image/jpeg",0.85);
+  const c=curCut();
+  c.scoutRef=dataUrl;
+  c.scoutMeta={system:sys,focal:Math.round(f),takenAt:new Date().toISOString()};
+  // 震動回饋（支援的裝置）
+  if(navigator.vibrate)navigator.vibrate(15);
+  toast(`CUT ${String(state.idx+1).padStart(2,"0")} 場勘已拍 · ${Math.round(f)}mm`);
+  closeCamera();
+};
+
+/* ═══════════ 比對 ═══════════ */
+function openCompare(){
+  const c=curCut();
+  if(!c.scoutRef){toast("這顆 cut 還沒拍場勘");return;}
+  $("#cmpCut").textContent=`CUT ${String(state.idx+1).padStart(2,"0")}`;
+  $("#cmpPhoto").src=c.scoutRef;
+  $("#cmpSketch").src=c.imageRef||"";
+  $("#cmpSlider").value=50;applyCmp(50);
+  show("s-cmp");
+}
+function applyCmp(v){
+  $("#cmpPhoto").style.opacity=v/100;
+  $("#cmpSketch").style.opacity=1-v/100;
+  document.querySelectorAll(".cmp-presets button").forEach(b=>b.classList.toggle("on",+b.dataset.v===+v));
+}
+$("#btnCmp").onclick=openCompare;
+$("#cmpClose").onclick=()=>{show("s-browse");renderCut();};
+$("#cmpSlider").oninput=e=>applyCmp(e.target.value);
+document.querySelectorAll(".cmp-presets button").forEach(b=>b.onclick=()=>{$("#cmpSlider").value=b.dataset.v;applyCmp(+b.dataset.v);});
+$("#cmpSave").onclick=()=>{
+  const c=curCut();if(!c.scoutRef)return;
+  const a=document.createElement("a");a.href=c.scoutRef;
+  a.download=`${state.fileName}_CUT${String(state.idx+1).padStart(2,"0")}_場勘.jpg`;
+  document.body.appendChild(a);a.click();a.remove();
+  toast("已下載（長按可存到相簿）");
+};
+
+/* ═══════════ 匯出回 STB ═══════════ */
+$("#btnExport").onclick=()=>{
+  // project.json 內的 cuts 已就地更新（scoutRef/scoutMeta）；其餘檔案原樣帶回
+  state.project.cuts=state.cuts;
+  const enc=new TextEncoder();
+  const files={};
+  for(const[name,data]of Object.entries(state.rawFiles))files[name]=data; // assets 等原樣
+  files["project.json"]=enc.encode(JSON.stringify(state.project,null,2));
+  const out=zip(files);
+  const blob=new Blob([out],{type:"application/octet-stream"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+  a.download=`${state.fileName}_場勘.stb`;
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  const shot=state.cuts.filter(c=>c.scoutRef).length;
+  toast(`已匯出 ${state.fileName}_場勘.stb（場勘 ${shot} 顆）`);
+};
+</script>
+</body>
+</html>
