@@ -1,11 +1,19 @@
 // 版本與更新紀錄——每次發版在最上面加一段（慣例同 ALIGNED 設定頁：
 // 版本號、日期、使用者看得懂的變更點；工程細節留在 進度與下一步.md）。
 
-export const APP_VERSION = "1.5.0";
+export const APP_VERSION = "1.5.1";
 
 export interface ReleaseNote { version: string; date: string; items: string[]; }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.5.1",
+    date: "2026-07-26",
+    items: [
+      "修正拖曳入圖的意外：把圖片拖進 App 但沒對準分鏡格／參考格時，整個畫面會被那張圖佔滿、又回不去——現在沒對準就單純不動作，腳本完全不受影響",
+      "對準分鏡格／參考格的拖曳入圖行為不變",
+    ],
+  },
   {
     version: "1.5.0",
     date: "2026-07-25",

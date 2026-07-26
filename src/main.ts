@@ -751,6 +751,12 @@ bindUndoGestures(document, {
     !(document.activeElement as HTMLElement | null)?.isContentEditable,
 });
 
+// 全域保險：把圖片拖進 App 但「沒對準」放置區時，webview 預設會導航去開那張圖，
+// 整個介面被圖片佔滿又回不去（Tauri 沒有上一頁）。這裡把所有沒被處理的拖放一律
+// 擋掉預設行為 —— 有對準圖片格的 drop 仍由下面 bindDropImage 先處理（子層先跑）。
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("drop", (e) => e.preventDefault());
+
 // 拖曳入圖：檔案拖到分鏡格＝直接套進那一格（參考頁的綁在 refPageView 內）
 bindDropImage(stbArea, "[data-thumb]", (el, f) => void applyImageFile(el.dataset.thumb!, f));
 
