@@ -24,6 +24,8 @@ export function bindPointerDrag({ root, handleSel, itemSel, idOf, onDrop }: Drag
   };
 
   root.addEventListener("pointerdown", (e) => {
+    // 把手上的按鈕（隱藏等）讓位——setPointerCapture 會把它們的 click 吃掉
+    if ((e.target as HTMLElement).closest("button")) return;
     const handle = (e.target as HTMLElement).closest(handleSel) as HTMLElement | null;
     const item = handle?.closest(itemSel) as HTMLElement | null;
     if (!handle || !item) return;

@@ -1,9 +1,11 @@
 import { fileToWorkingImage, pickFiles } from "./cutPicker";
+import { t } from "./i18n";
+import { saveImageAs } from "./persistence";
 // 共用圖片編輯器：裁切（拖曳定位）＋區塊內縮放（滑桿）＋一鍵黑白＋換一張圖。
 // 固定比例取景框（16:9 或 9:16），套用時用 canvas 輸出。
 // 沿用 ALIGN 教訓：等比例置中起始、位移夾限（圖永遠蓋滿框）、無效值防呆。
 
-interface CropOpts { bw?: boolean; allowReplace?: boolean }
+interface CropOpts { bw?: boolean; allowReplace?: boolean; saveName?: string }
 
 export function openCropper(dataUrl: string, aspect: number, opts?: CropOpts): Promise<string | null> {
   return new Promise((resolve) => {
@@ -38,12 +40,13 @@ function mount(img0: HTMLImageElement, dataUrl0: string, aspect: number, resolve
         <img src="${dataUrl0}" alt="" draggable="false">
       </div>
       <div class="crop-bar">
-        <span class="crop-hint">拖曳定位・滑桿縮放</span>
+        <span class="crop-hint">${t("拖曳定位・滑桿縮放")}</span>
         <input type="range" min="100" max="400" value="100" class="crop-zoom">
-        <button class="crop-bw${bw ? " on" : ""}">黑白</button>
-        ${opts.allowReplace ? `<button class="crop-replace">換一張圖</button>` : ""}
-        <button class="crop-cancel">取消</button>
-        <button class="crop-apply">套用</button>
+        <button class="crop-bw${bw ? " on" : ""}">${t("黑白")}</button>
+        ${opts.allowReplace ? `<button class="crop-replace">${t("換一張圖")}</button>` : ""}
+        <button class="crop-save">${t("存圖")}</button>
+        <button class="crop-cancel">${t("取消")}</button>
+        <button class="crop-apply">${t("套用")}</button>
       </div>
     </div>`;
   document.body.appendChild(overlay);
@@ -100,7 +103,7 @@ function mount(img0: HTMLImageElement, dataUrl0: string, aspect: number, resolve
         if (!f) return;
         // 先縮成工作圖再換上（iPad：原檔直餵會耗盡解碼資源）
         const url = await fileToWorkingImage(f);
-        if (!url) { alert("這張照片讀不進來——若原檔還在 iCloud，等幾秒再試一次。"); return; }
+        if (!url) { alert(t("這張照片讀不進來——若原檔還在 iCloud，等幾秒再試一次。")); return; }
         const nimg = new Image();
         nimg.onload = () => {
           if (!nimg.naturalWidth) return;
@@ -123,7 +126,8 @@ function mount(img0: HTMLImageElement, dataUrl0: string, aspect: number, resolve
     resolve(result);
   }
   (overlay.querySelector(".crop-cancel") as HTMLElement).addEventListener("click", () => close(null));
-  (overlay.querySelector(".crop-apply") as HTMLElement).addEventListener("click", () => {
+  // 目前取景（含黑白）輸出成 data URL——「套用」與「存圖」共用同一條管線
+  function renderOut(): string {
     const s = baseScale * zoom;
     const outW = aspect >= 1 ? 1600 : 900;
     const outH = Math.round(outW / aspect);
@@ -135,7 +139,20 @@ function mount(img0: HTMLImageElement, dataUrl0: string, aspect: number, resolve
     if (bw) toGray(ctx, outW, outH); // 手動灰階（WKWebView 的 ctx.filter 不可靠）
     const out = canvas.toDataURL("image/jpeg", 0.9);
     canvas.width = canvas.height = 0; // iOS：畫布用完立刻歸零釋放（總預算有限，等 GC 會爆）
-    close(out);
+    return out;
+  }
+  (overlay.querySelector(".crop-apply") as HTMLElement).addEventListener("click", () => close(renderOut()));
+  // 存圖＝把目前調整後的畫面存出去（iPad 走分享面板、桌面走存檔框）——
+  // 區塊上不放存圖鈕（Armin 定案：縮圖零遮擋、區塊乾淨），存圖入口就在這裡
+  (overlay.querySelector(".crop-save") as HTMLElement).addEventListener("click", (e) => {
+    const btn = e.currentTarget as HTMLButtonElement;
+    void saveImageAs(renderOut(), opts.saveName ?? t("圖片")).then((ok) => {
+      if (!ok) return;
+      const orig = btn.textContent;
+      btn.textContent = t("已存入相簿");   // iPad＝相簿、Mac＝選的位置；給個確認不然像沒反應
+      btn.disabled = true;
+      setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1600);
+    });
   });
   overlay.addEventListener("click", (e) => { if (e.target === overlay) close(null); });
 }

@@ -1,3 +1,4 @@
+import { t, tf, chapterTitle } from "./i18n"; // 最先載入：偵測語系並設 <html lang>（帶動字型堆疊）
 import { bindEditKeys } from "./editKeys";
 import "./style.css";
 import { invoke } from "@tauri-apps/api/core";
@@ -12,11 +13,12 @@ import { renderGantt, bindGantt } from "./ganttView";
 import { openPreview } from "./previewMode";
 import { openExportDialog } from "./exportDialog";
 import { openCropper } from "./cropper";
-import { CHAPTERS, computeCutNumbers, pageCount, chainRundown, hhmmToMin, minToHHMM, normalizeProject, type Aspect } from "./model";
+import { CHAPTERS, computeCutNumbers, pageCount, chainRundown, hhmmToMin, minToHHMM, normalizeProject, aspectSpec, type Aspect, type Project } from "./model";
 import { askAspect } from "./nameDialog";
 import { isTauri, isMobile, currentDir, dirName, chooseFolderAndLoad, createProjectFolder, chooseFolderAndSaveAs, saveToCurrent, loadFromDir, lastProjectDir, upsertRecent, detachDir, migrateMobileHome, listMobileProjects, unpackPacked, mobileBase, extractPosterFor, saveImageAs } from "./persistence";
 import { projectLogo } from "./logoAsset";
 import { openHelp } from "./helpDialog";
+import { importScoutFlow } from "./scoutImport";
 import { checkUpdate } from "./updateCheck";
 import { openHub } from "./hubDialog";
 import { openSketchEditor } from "./sketchEditor";
@@ -39,20 +41,29 @@ const store = new Store(sampleProject());
 const expanded = new Set<string>(); // 暫時展開的 VO/Super 行
 let pendingFlash = -1;
 
+// 編輯模式日／夜（記住選擇；簡報模式另有自己的開關）
+const THEME_KEY = "stbTheme";
+function applyTheme(dark: boolean) {
+  document.documentElement.dataset.theme = dark ? "dark" : "light";
+  const b = document.getElementById("btn-theme");
+  if (b) b.textContent = dark ? t("淺色") : t("深色");
+}
+applyTheme(localStorage.getItem(THEME_KEY) === "dark");
+
 const app = document.getElementById("app")!;
 app.innerHTML = `
   <div class="topbar">
-    <span class="name cut-edit" id="proj-name" contenteditable draggable="false" title="點擊修改案名" data-ph="案名"></span>
+    <span class="name cut-edit" id="proj-name" contenteditable draggable="false" title="${t("點擊修改案名")}" data-ph="${t("案名")}"></span>
     <span class="tag-ppm">PPM</span>
     <span class="save-state" id="save-state"></span>
     <span class="spacer"></span>
-    <button id="btn-preview">▶ 預覽</button>
-    <button id="btn-print">匯出…</button>
-    <button id="btn-hub">專案…</button>
-    <button id="btn-save">儲存案子</button>
-    <button id="btn-saveas">另存新檔…</button>
-    <button id="btn-add">新增 cut</button>
-    <button id="btn-help" title="使用說明與版本資訊" aria-label="說明">?</button>
+    <button id="btn-preview">${t("▶ 預覽")}</button>
+    <button id="btn-print">${t("匯出…")}</button>
+    <button id="btn-hub">${t("專案…")}</button>
+    <button id="btn-save">${t("儲存專案")}</button>
+    <button id="btn-saveas">${t("另存新檔…")}</button>
+    <button id="btn-theme" title="${t("切換日／夜")}">${t("深色")}</button>
+    <button id="btn-help" title="${t("使用說明與版本資訊")}" aria-label="${t("說明")}">?</button>
   </div>
   <div class="ppm-layout">
     <nav class="sidebar" id="sidebar"></nav>
@@ -63,7 +74,7 @@ app.innerHTML = `
         <div id="stb-area"></div>
         <div id="schedule-view">
           <div id="gantt-area"></div>
-          <p class="page-label" style="margin-top:6px">拍攝日程（通告單＋Rundown）</p>
+          <p class="page-label" style="margin-top:6px">${t("拍攝日程（通告單＋Rundown）")}</p>
           <div class="day-tabs" id="day-tabs"></div>
           <div id="callsheet-area"></div>
           <div id="rundown-area"></div>
@@ -86,13 +97,14 @@ const rundownArea = document.getElementById("rundown-area")!;
 const refpageArea = document.getElementById("refpage-area")!;
 const inspector = document.getElementById("inspector")!;
 const statusbar = document.getElementById("statusbar")!;
-const btnAdd = document.getElementById("btn-add") as HTMLButtonElement;
 
 function kindOf(id: string) {
   return CHAPTERS.find((c) => c.id === id)?.kind ?? "agenda";
 }
 
 function renderAll() {
+  // 分鏡縮圖比例交給 CSS 變數（.cut-thumb / .rd-cut-box / 塗鴉畫布共用）——加新比例不用改 CSS
+  document.documentElement.style.setProperty("--cut-ar", String(aspectSpec(store.get().aspect).ar));
   const p = store.get();
   // 案名正在編輯中就別覆寫（游標會掉）
   const nameEl = document.getElementById("proj-name")!;
@@ -107,20 +119,19 @@ function renderAll() {
   scheduleView.style.display = kind === "schedule" ? "" : "none";
   refpageArea.style.display = kind === "refpage" ? "" : "none";
   inspector.style.display = kind === "storyboard" ? "" : "none";
-  btnAdd.style.display = kind === "storyboard" ? "" : "none";
 
   if (kind === "agenda") {
-    statusbar.innerHTML = `<span class="k">PPM</span><span class="v">${CHAPTERS.length - 1} 章</span><span class="spacer"></span><span class="hint">點左側章節開始，或點目錄項目</span>`;
+    statusbar.innerHTML = `<span class="k">PPM</span><span class="v">${tf("{n} 章", { n: CHAPTERS.length - 1 })}</span><span class="spacer"></span><span class="hint">${t("點左側章節開始，或點目錄項目")}</span>`;
     renderAgenda();
   } else if (kind === "storyboard") {
     const filmCuts = p.cuts.filter((c) => c.filmId === store.currentFilmId);
     const filmTag = p.films.length > 1 ? `${store.currentFilm()?.name ?? ""} ` : "";
     statusbar.innerHTML = `
-      <span class="k">分鏡</span><span class="v">${filmTag}${filmCuts.length} 顆 cut</span>
-      <span class="k" style="margin-left:8px">頁數</span><span class="v">${pageCount(filmCuts.length, store.get().aspect)}</span>
+      <span class="k">${t("分鏡")}</span><span class="v">${filmTag}${tf("{n} 顆 cut", { n: filmCuts.length })}</span>
+      <span class="k" style="margin-left:8px">${t("頁數")}</span><span class="v">${pageCount(filmCuts.length, store.get().aspect)}</span>
       <span class="spacer"></span><span class="hint">${isMobile()
-        ? "把手 ⠿ 拖曳重排 · 點文字直接編輯 · 長按卡片＝多選 · 雙指輕點＝上一步"
-        : "把手 ⠿ 拖曳重排 · 點文字直接編輯 · ⌘/Shift 點擊多選"}</span>`;
+        ? t("把手 ⠿ 拖曳重排 · 點文字直接編輯 · 長按卡片＝多選 · 雙指輕點＝上一步")
+        : t("把手 ⠿ 拖曳重排 · 點文字直接編輯 · ⌘/Shift 點擊多選")}</span>`;
     renderStb(store, stbArea, pendingFlash, expanded);
     pendingFlash = -1;
     renderInspector();
@@ -129,10 +140,10 @@ function renderAll() {
     const times = day ? chainRundown(day.rundown, hhmmToMin(day.callTime)) : [];
     const wrap = times.length ? minToHHMM(times[times.length - 1].end) : "—";
     statusbar.innerHTML = `
-      <span class="k">拍攝日</span><span class="v">${day?.date || "（未定）"}</span>
-      <span class="k" style="margin-left:8px">集合</span><span class="v">${day?.callTime || "—"}</span>
-      <span class="k" style="margin-left:8px">收工</span><span class="v">${wrap}</span>
-      <span class="spacer"></span><span class="hint">通告單在前 · 該日 Rundown 在後</span>`;
+      <span class="k">${t("拍攝日")}</span><span class="v">${day?.date || t("（未定）")}</span>
+      <span class="k" style="margin-left:8px">${t("集合")}</span><span class="v">${day?.callTime || "—"}</span>
+      <span class="k" style="margin-left:8px">${t("收工")}</span><span class="v">${wrap}</span>
+      <span class="spacer"></span><span class="hint">${t("通告單在前 · 該日 Rundown 在後")}</span>`;
     renderGantt(store, ganttArea);
     renderDayTabs();
     renderCallSheet(store, callsheetArea);
@@ -140,7 +151,8 @@ function renderAll() {
   } else {
     const ch = CHAPTERS.find((c) => c.id === chapId)!;
     const n = (p.refPages[chapId] || []).length;
-    statusbar.innerHTML = `<span class="k">${ch.en}</span><span class="v">${ch.label}</span><span class="k" style="margin-left:8px">項目</span><span class="v">${n}</span><span class="spacer"></span><span class="hint">貼參考圖＋說明，向客戶對齊調性</span>`;
+    const ct = chapterTitle(ch);
+    statusbar.innerHTML = `<span class="k">${ct.cap}</span>${ct.sub ? `<span class="v">${ct.sub}</span>` : ""}<span class="k" style="margin-left:8px">${t("項目")}</span><span class="v">${n}</span><span class="spacer"></span><span class="hint">${t("貼參考圖＋說明，向客戶對齊調性")}</span>`;
     renderRefPage(store, refpageArea, chapId);
   }
 }
@@ -153,11 +165,12 @@ function renderSidebar() {
     // ＋ SCHEDULE（甘特/通告單/Rundown）——其餘 PPM 章收起
     if (mode === "schedule" && ch.kind !== "schedule" && ch.kind !== "storyboard") continue;
     const on = ch.id === store.currentChapter ? " on" : "";
-    html += `<button class="chap${on}" data-chap="${ch.id}"><span class="chap-en">${ch.en}</span><span class="chap-zh">${ch.label}</span></button>`;
+    const ct = chapterTitle(ch);
+    html += `<button class="chap${on}" data-chap="${ch.id}"><span class="chap-en">${ct.cap}</span>${ct.sub ? `<span class="chap-zh">${ct.sub}</span>` : ""}</button>`;
   }
   // 模式切換：同一份檔案、只是檢視範圍——導演接手就展開、製片交接就收合
-  html += `<button class="mode-switch" data-modeswitch title="同一個案子檔，隨時可切換">${
-    mode === "schedule" ? "⇱ 展開完整 PPM" : "⇲ 通告排表模式"
+  html += `<button class="mode-switch" data-modeswitch title="${t("同一個案子檔，隨時可切換")}">${
+    mode === "schedule" ? t("⇱ 展開完整 PPM") : t("⇲ 通告排表模式")
   }</button>`;
   sidebar.innerHTML = html;
 }
@@ -165,17 +178,18 @@ function renderSidebar() {
 function renderAgenda() {
   const p = store.get();
   // 首頁（目錄前）：置中 LOGO，點擊替換（透明 PNG 佳，不走裁切器保留透明度）
-  let html = `<p class="page-label">COVER · 首頁</p><div class="page cover-page">
-    <img class="cover-logo" src="${projectLogo(p)}" alt="LOGO" title="點擊替換 LOGO" data-logoreplace draggable="false">
-    <span class="cover-hint">點 LOGO 替換（建議透明 PNG）${p.meta.logo ? `　<button class="cover-reset" data-logoreset>還原預設</button>` : ""}</span>
+  let html = `<p class="page-label">${t("COVER · 首頁")}</p><div class="page cover-page">
+    <img class="cover-logo" src="${projectLogo(p)}" alt="LOGO" title="${t("點擊替換 LOGO")}" data-logoreplace draggable="false">
+    <span class="cover-hint">${t("點 LOGO 替換（建議透明 PNG）")}${p.meta.logo ? `　<button class="cover-reset" data-logoreset>${t("還原預設")}</button>` : ""}</span>
   </div>`;
-  html += `<p class="page-label">AGENDA · 目錄 · A5 橫</p><div class="page agenda">
-    <div class="ag-title cut-edit" contenteditable draggable="false" data-meta="title" data-ph="片名">${esc(p.meta.title)}</div>
-    <div class="ag-sub">PPM ・ 前製會議 ・ <span class="cut-edit" contenteditable draggable="false" data-meta="client" data-ph="製作公司">${esc(p.meta.client)}</span></div>
+  html += `<p class="page-label">${t("AGENDA · 目錄 · A5 橫")}</p><div class="page agenda">
+    <div class="ag-title cut-edit" contenteditable draggable="false" data-meta="title" data-ph="${t("片名")}">${esc(p.meta.title)}</div>
+    <div class="ag-sub">${t("PPM ・ 前製會議")} ・ <span class="cut-edit" contenteditable draggable="false" data-meta="client" data-ph="${t("製作公司")}">${esc(p.meta.client)}</span></div>
     <ol class="ag-list">`;
   for (const ch of CHAPTERS) {
     if (ch.id === "agenda") continue;
-    html += `<li data-chap="${ch.id}"><span class="ag-en">${ch.en}</span><span class="ag-zh">${ch.label}</span></li>`;
+    const ct = chapterTitle(ch);
+    html += `<li data-chap="${ch.id}"><span class="ag-en">${ct.cap}</span>${ct.sub ? `<span class="ag-zh">${ct.sub}</span>` : ""}</li>`;
   }
   html += `</ol></div>`;
   agendaArea.innerHTML = html;
@@ -189,20 +203,21 @@ function renderInspector() {
   // 多選：Mac＝⌘/Shift 點擊；iPad＝長按進入模式（touchSelect，1 顆也算在模式中）
   if (store.touchSelect ? store.selectedIds.length >= 1 : store.selectedIds.length > 1) {
     inspector.innerHTML = `
-      <span class="cur">已選 ${store.selectedIds.length} 顆</span>
-      ${store.selectedIds.length > 1 ? `<button data-a="group">組成連續鏡</button>` : ""}
-      <button data-a="assign">⇒ 指派到時段</button>
-      <button data-a="delmulti">刪除選取</button>
+      <span class="cur">${tf("已選 {n} 顆", { n: store.selectedIds.length })}</span>
+      ${store.selectedIds.length > 1 ? `<button data-a="group">${t("組成連續鏡")}</button>` : ""}
+      <button data-a="assign">${t("⇒ 指派到時段")}</button>
+      ${store.scoutMode ? `<button data-a="delscoutmulti">${t("刪場勘")}</button>` : ""}
+      <button data-a="delmulti">${t("刪除選取")}</button>
       ${store.touchSelect
-        ? `<button data-a="selend">完成</button><span class="hint">點卡片＝加選/取消 · 按「完成」結束</span>`
-        : `<span class="hint">⌘ 點擊加選 · Shift 點擊連選</span>`}`;
+        ? `<button data-a="selend">${t("完成")}</button><span class="hint">${t("點卡片＝加選/取消 · 按「完成」結束")}</span>`
+        : `<span class="hint">${t("⌘ 點擊加選 · Shift 點擊連選")}</span>`}`;
     return;
   }
   const id = store.selectedId;
   if (!id) {
     inspector.innerHTML = `
-      <button data-a="importboards">＋ 匯入分鏡圖</button>
-      <span class="hint">外部軟體做的分鏡：多選圖檔一次帶入，拖曳排序、⌘/Shift 多選組連續鏡或指派到時段</span>`;
+      <button data-a="importboards">${t("＋ 匯入分鏡圖")}</button>
+      <span class="hint">${t("外部軟體做的分鏡：多選圖檔一次帶入，拖曳排序、⌘/Shift 多選組連續鏡或指派到時段")}</span>`;
     return;
   }
   const numbers = computeCutNumbers(p.cuts, p.films);
@@ -213,17 +228,18 @@ function renderInspector() {
   const canVo = cut.vo === "" && !expanded.has(id + ":vo");
   const canSup = cut.sup === "" && !expanded.has(id + ":sup");
   inspector.innerHTML = `
-    <span class="cur">CUT ${n.label}</span>
-    <button data-a="add">新增 cut（插在後面）</button>
-    <button data-a="subshot">＋ 連續鏡</button>
-    ${grouped ? `<button data-a="detach">拆除群組</button>` : ""}
-    ${canVo ? `<button data-a="addvo">+ VO</button>` : ""}
-    ${canSup ? `<button data-a="addsup">+ Super</button>` : ""}
-    <button data-a="sketch" title="Apple Pencil／滑鼠塗鴉分鏡（Pencil 直接點縮圖也可）">✏️ 塗鴉</button>
-    <button data-a="assign">⇒ 指派到時段</button>
-    <button data-a="dup">複製</button>
-    <button data-a="del">刪除</button>
-    ${grouped ? `<span class="hint">連續鏡：拖任一子鏡整組同行 · 拆除＝整組拆散</span>` : ""}
+    <span class="cur">${tf("CUT {label}", { label: n.label })}</span>
+    <button data-a="add">${t("新增 cut（插在後面）")}</button>
+    <button data-a="subshot">${t("＋ 連續鏡")}</button>
+    ${grouped ? `<button data-a="detach">${t("拆除群組")}</button>` : ""}
+    ${canVo ? `<button data-a="addvo">${t("+ VO")}</button>` : ""}
+    ${canSup ? `<button data-a="addsup">${t("+ Super")}</button>` : ""}
+    <button data-a="sketch" title="${t("Apple Pencil／滑鼠塗鴉分鏡（Pencil 直接點縮圖也可）")}">✏️ ${t("塗鴉")}</button>
+    <button data-a="assign">${t("⇒ 指派到時段")}</button>
+    <button data-a="dup">${t("複製")}</button>
+    <button data-a="hide" title="${t("隱藏這顆（預覽/匯出看不見、不佔編號；點灰格顯示回來）")}">${t("隱藏")}</button>
+    <button data-a="del">${t("刪除")}</button>
+    ${grouped ? `<span class="hint">${t("連續鏡：拖任一子鏡整組同行 · 拆除＝整組拆散")}</span>` : ""}
   `;
 }
 
@@ -251,10 +267,10 @@ function addCut() {
 async function pickImage(cutId: string) {
   // 已有分鏡圖 → 直接進編輯器（裁切／區塊內縮放／一鍵黑白／換一張）；
   // 沒有 → 選檔後進裁切器。裁切比例跟著整片分鏡比例（直式＝9:16）。
-  const ar = store.get().aspect === "9:16" ? 9 / 16 : 16 / 9;
+  const ar = aspectSpec(store.get().aspect).ar;
   const cut = store.get().cuts.find((c) => c.id === cutId);
   if (cut?.imageRef) {
-    const out = await openCropper(cut.imageRef, ar, { allowReplace: true });
+    const out = await openCropper(cut.imageRef, ar, { allowReplace: true, saveName: `${store.get().meta.title || "分鏡"}_CUT` });
     if (out) store.setImage(cutId, out);
     return;
   }
@@ -262,12 +278,29 @@ async function pickImage(cutId: string) {
   if (file) await applyImageFile(cutId, file);
 }
 
+// 手動匯入單張場勘圖：選檔 → 裁切成分鏡比例 → 寫入 scoutRef（分鏡圖不動）
+async function pickScoutImage(cutId: string) {
+  const src = await open({
+    title: t("選擇場勘照片"),
+    filters: [{ name: t("圖片"), extensions: ["jpg", "jpeg", "png", "webp", "heic", "gif", "bmp"] }],
+  });
+  if (typeof src !== "string") return;
+  const buf = await invoke<ArrayBuffer>("read_file", { path: src });
+  const ext = src.split(".").pop()?.toLowerCase() ?? "jpg";
+  const mime = ({ jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif", bmp: "image/bmp" } as Record<string, string>)[ext] ?? "image/jpeg";
+  const url = URL.createObjectURL(new Blob([buf], { type: mime }));
+  const ar = aspectSpec(store.get().aspect).ar;
+  const out = await openCropper(url, ar);
+  URL.revokeObjectURL(url);
+  if (out) store.setScoutImage(cutId, out);
+}
+
 // 把一個檔案套進某格——選檔與「拖曳入圖」共用同一條管線（縮工作圖 → 裁切 → 存）
 async function applyImageFile(cutId: string, file: File) {
-  const ar = store.get().aspect === "9:16" ? 9 / 16 : 16 / 9;
+  const ar = aspectSpec(store.get().aspect).ar;
   // 先縮成工作圖再進裁切器（原檔 48MP 直餵會耗盡 iPad 解碼資源）
   const url = await fileToWorkingImage(file);
-  if (!url) { alert("這張照片讀不進來——若原檔還在 iCloud，等幾秒再試一次；全景/超大圖請先裁切。"); return; }
+  if (!url) { alert(t("這張照片讀不進來——若原檔還在 iCloud，等幾秒再試一次；全景/超大圖請先裁切。")); return; }
   const cropped = await openCropper(url, ar, { allowReplace: true });
   if (cropped) store.setImage(cutId, cropped);
 }
@@ -279,11 +312,11 @@ function renderDayTabs() {
   p.days.forEach((d, i) => {
     const on = d.id === store.currentDayId ? " on" : "";
     html += `<span class="daytab-wrap">
-      <button class="daytab${on}" data-day="${d.id}">Day ${i + 1}${d.date ? `<span class="daytab-date">${d.date}</span>` : ""}</button>
-      ${canDel ? `<button class="daytab-del" data-delday="${d.id}" title="刪除此拍攝日">✕</button>` : ""}
+      <button class="daytab${on}" data-day="${d.id}">${tf("Day {n}", { n: i + 1 })}${d.date ? `<span class="daytab-date">${d.date}</span>` : ""}</button>
+      ${canDel ? `<button class="daytab-del" data-delday="${d.id}" title="${t("刪除此拍攝日")}">✕</button>` : ""}
     </span>`;
   });
-  html += `<button class="daytab-add" data-addday>＋ 新增拍攝日</button>`;
+  html += `<button class="daytab-add" data-addday>${t("＋ 新增拍攝日")}</button>`;
   dayTabs.innerHTML = html;
 }
 
@@ -339,7 +372,7 @@ dayTabs.addEventListener("click", (e) => {
   if (del) {
     const p = store.get();
     const idx = p.days.findIndex((d) => d.id === del.dataset.delday);
-    if (confirm(`確定刪除 Day ${idx + 1}${p.days[idx]?.date ? `（${p.days[idx].date}）` : ""}？此拍攝日的通告與 Rundown 會一併刪除。`)) {
+    if (confirm(tf("確定刪除 Day {day}？此拍攝日的通告與 Rundown 會一併刪除。", { day: `${idx + 1}${p.days[idx]?.date ? `（${p.days[idx].date}）` : ""}` }))) {
       store.deleteDay(del.dataset.delday!);
     }
     return;
@@ -371,9 +404,18 @@ inspector.addEventListener("click", (e) => {
   if (a === "sketch") { openSketchEditor(store, id); return; }
   if (a === "add") addCut();
   else if (a === "dup") store.duplicateCut(id);
+  // 隱藏：卡片變成縫間細線（不佔編號），選取要跟著清掉——被選的卡片已經不在了
+  else if (a === "hide") { store.setHidden(id, true); store.select(null); }
   else if (a === "del") store.deleteCut(id);
   else if (a === "group") { store.groupCuts([...store.selectedIds]); pendingFlash = 0; renderAll(); }
-  else if (a === "delmulti") store.deleteCuts([...store.selectedIds]);
+  else if (a === "delscoutmulti") {
+   const ids = store.selectedIds.filter((id) => store.get().cuts.find((c) => c.id === id)?.scoutRef);
+   if (ids.length && confirm(tf("刪除選取的 {n} 張場勘圖？分鏡圖不受影響（可復原）。", { n: ids.length }))) {
+     store.clearScoutMany(ids);
+   }
+   return;
+ }
+ if (a === "delmulti") store.deleteCuts([...store.selectedIds]);
   else if (a === "subshot") {
     store.addSubShot(id);
     const cs = store.get().cuts.filter((c) => c.filmId === store.currentFilmId);
@@ -386,7 +428,6 @@ inspector.addEventListener("click", (e) => {
   else if (a === "addsup") { expanded.add(id + ":sup"); renderAll(); focusLine(id, "sup"); }
 });
 
-btnAdd.addEventListener("click", addCut);
 
 // ---- 存檔（Tauri 原生檔案；瀏覽器預覽時隱藏） ----
 const btnHub = document.getElementById("btn-hub") as HTMLButtonElement;
@@ -403,8 +444,8 @@ function updateSaveState(text?: string) {
   if (!isTauri()) { saveState.textContent = ""; return; }
   if (text) { saveState.textContent = text; return; }
   saveState.textContent = currentDir()
-    ? `${dirName()}${dirty ? "・未存變更" : "・已存檔"}`
-    : "未存檔（按「儲存案子」選資料夾）";
+    ? `${dirName()}${dirty ? t("・未存變更") : t("・已存檔")}`
+    : t("未存檔（按「儲存專案」選資料夾）");
 }
 
 async function doSave() {
@@ -414,7 +455,7 @@ async function doSave() {
       upsertRecent(currentDir()!, store.get().meta.title);
     } else {
       // 第一次儲存：存檔對話框輸入案名 → 以案名建立資料夾
-      const dir = await createProjectFolder(serialize(), store.get().meta.title || "未命名案子");
+      const dir = await createProjectFolder(serialize(), store.get().meta.title || t("未命名案子"));
       if (!dir) return;
       upsertRecent(dir, store.get().meta.title);
     }
@@ -422,14 +463,14 @@ async function doSave() {
     updateSaveState();
     void syncMtime(); // 自己寫的檔＝新基準，別誤判成外部改動
   } catch (err) {
-    updateSaveState(`存檔失敗：${err}`);
+    updateSaveState(tf("存檔失敗：{err}", { err: String(err) }));
   }
 }
 
 // 切換案子前的防呆：目前內容還沒存成案子就要先確認（已存案子有自動存檔，安全）
 function confirmLeave(): boolean {
   if (currentDir() || !dirty) return true;
-  return confirm("目前的內容尚未儲存成案子，切換後會消失。確定繼續？");
+  return confirm(t("目前的內容尚未儲存成案子，切換後會消失。確定繼續？"));
 }
 
 async function doOpen(): Promise<boolean> {
@@ -437,14 +478,14 @@ async function doOpen(): Promise<boolean> {
     if (!confirmLeave()) return false;
     const raw = await chooseFolderAndLoad();
     if (!raw) return false;
-    store.replaceProject(normalizeProject(raw));
+    store.replaceProject(promoteScoutBoards(normalizeProject(raw)));
     dirty = false;
     updateSaveState();
     void healPosters();
     void syncMtime();
     return true;
   } catch (err) {
-    alert(`開不了這個檔案——請選案子資料夾裡的 project.json。\n（${err}）`);
+    alert(tf("開不了這個檔案——請選案子資料夾裡的 project.json。\n（{err}）", { err: String(err) }));
     return false;
   }
 }
@@ -456,7 +497,7 @@ function hubOpenSample(): boolean {
   store.replaceProject(sampleProject());
   detachDir();
   dirty = false;
-  updateSaveState("示範案（唯讀概念：改了不會存，除非另存新檔）");
+  updateSaveState(t("示範案（唯讀概念：改了不會存，除非另存新檔）"));
   return true;
 }
 
@@ -471,9 +512,9 @@ async function hubCreate(mode: "ppm" | "schedule"): Promise<boolean> {
     if (a === null) return false;
     aspect = a;
   }
-  const proj = emptyProject("未命名案子", aspect);
+  const proj = emptyProject(t("未命名案子"), aspect);
   proj.mode = mode;
-  const dir = await createProjectFolder(JSON.stringify(proj, null, 2), mode === "schedule" ? "未命名通告" : "未命名案子");
+  const dir = await createProjectFolder(JSON.stringify(proj, null, 2), mode === "schedule" ? t("未命名通告") : t("未命名案子"));
   if (!dir) return false;
   proj.meta.title = dirName() || proj.meta.title; // 案名＝使用者輸入的資料夾名
   store.replaceProject(proj);
@@ -492,21 +533,21 @@ async function hubImportPacked(): Promise<boolean> {
   try {
     if (!confirmLeave()) return false;
     const path = await open({
-      title: "選擇打包案子（.stb）",
-      filters: [{ name: "STB 打包案子", extensions: ["stb"] }],
+      title: t("選擇打包案子（.stb）"),
+      filters: [{ name: t("STB 打包案子"), extensions: ["stb"] }],
     });
     if (typeof path !== "string") return false;
     const dir = await unpackPacked(path, await mobileBase());
     const raw = await loadFromDir(dir);
     if (!raw) return false;
-    store.replaceProject(normalizeProject(raw));
+    store.replaceProject(promoteScoutBoards(normalizeProject(raw)));
     dirty = false;
     updateSaveState();
     void healPosters();
     void syncMtime();
     return true;
   } catch (err) {
-    alert(`匯入失敗：${err}\n（備援路線：把 .stb 存進 檔案 App ▸ 我的 iPad ▸ STB，回專案頁點一下即可解開）`);
+    alert(tf("匯入失敗：{err}\n（備援路線：把 .stb 存進 檔案 App ▸ 我的 iPad ▸ STB，回專案頁點一下即可解開）", { err: String(err) }));
     return false;
   }
 }
@@ -518,16 +559,64 @@ async function hubOpenPacked(path: string): Promise<boolean> {
     const dir = await unpackPacked(path);
     const raw = await loadFromDir(dir);
     if (!raw) return false;
-    store.replaceProject(normalizeProject(raw));
+    store.replaceProject(promoteScoutBoards(normalizeProject(raw)));
     dirty = false;
     updateSaveState();
     void healPosters();
     void syncMtime();
     return true;
   } catch (err) {
-    alert(`解不開這個打包案子：${err}`);
+    alert(tf("解不開這個打包案子：{err}", { err: String(err) }));
     return false;
   }
+}
+
+// 從磁碟選一個 .stb 分鏡包解開成專案（「匯入分鏡…」）。
+// ⚠️ 2026-07-28 修：這顆按鈕原本誤綁 doOpen，而 doOpen 只吃「案子資料夾裡的 project.json」，
+// 選 .stb 一定失敗——標籤承諾了程式沒做的事（Armin 實測踩到）。
+async function hubOpenStbFile(): Promise<boolean> {
+  const path = await open({
+    title: t("選擇分鏡包（.stb）"),
+    filters: [{ name: t("分鏡包（.stb）"), extensions: ["stb"] }],
+  });
+  if (typeof path !== "string") return false;
+  return hubOpenPacked(path);
+}
+
+// 從 STBC 三岔路選「開成新專案」：解包＋載入＋照片自動升格為分鏡（使用者已明確選了，不再問）
+async function openPackedAsProject(path: string): Promise<boolean> {
+  try {
+    if (!confirmLeave()) return false;
+    const dir = await unpackPacked(path, isMobile() ? await mobileBase() : undefined);
+    const raw = await loadFromDir(dir);
+    if (!raw) return false;
+    const p = normalizeProject(raw);
+    const promoted = p.cuts.some((c) => c.scoutRef) && !p.cuts.some((c) => c.imageRef)
+      ? { ...p, cuts: p.cuts.map((c) => (c.scoutRef ? { ...c, imageRef: c.scoutRef, scoutRef: null } : c)) }
+      : p;
+    store.replaceProject(promoted);
+    dirty = false;
+    updateSaveState();
+    void healPosters();
+    void syncMtime();
+    return true;
+  } catch (err) {
+    alert(tf("開不了這個分鏡包：{err}", { err: String(err) }));
+    return false;
+  }
+}
+
+// STBC「自建分鏡包」：照片存在 scoutRef、imageRef 全空——直接開會看到一排空白分鏡
+// （Armin 2026-07-28 實測踩到：檔案有解開，但分鏡欄是空的＝看起來像匯入失敗）。
+// 規則對齊 importAsNewFilm：照片就是這一路的分鏡圖。
+function promoteScoutBoards(p: Project): Project {
+  const cuts = p.cuts ?? [];
+  if (!cuts.some((c) => c.scoutRef) || cuts.some((c) => c.imageRef)) return p;
+  const yes = confirm(
+    t("這是 STB Camera 的自建分鏡包——照片在場勘欄、分鏡欄是空的。\n\n要把照片當成分鏡圖嗎？\n確定＝照片變分鏡（建議）；取消＝維持場勘欄。"),
+  );
+  if (!yes) return p;
+  return { ...p, cuts: cuts.map((c) => (c.scoutRef ? { ...c, imageRef: c.scoutRef, scoutRef: null } : c)) };
 }
 
 async function hubOpenDir(dir: string): Promise<boolean> {
@@ -547,7 +636,7 @@ async function hubOpenDir(dir: string): Promise<boolean> {
 // 另存新檔：沒開案子＝等同第一次儲存；有案子＝整份（含素材）複製成新案子
 async function doSaveAs() {
   try {
-    const title = store.get().meta.title || "未命名案子";
+    const title = store.get().meta.title || t("未命名案子");
     const dir = currentDir()
       ? await chooseFolderAndSaveAs(serialize(), title)
       : await createProjectFolder(serialize(), title);
@@ -560,7 +649,7 @@ async function doSaveAs() {
     updateSaveState();
     void syncMtime();
   } catch (err) {
-    alert(`另存失敗：${err}`);
+    alert(tf("另存失敗：{err}", { err: String(err) }));
   }
 }
 
@@ -596,7 +685,9 @@ const hubActions = {
   onOpenOther: doOpen,
   onOpenSample: hubOpenSample,
   onOpenPacked: hubOpenPacked,
+  onOpenStbFile: hubOpenStbFile,
   onImportPacked: isMobile() ? hubImportPacked : undefined,
+  onImportSTBC: () => void importScoutFlow(store, openPackedAsProject),
   list: isMobile() ? listMobileProjects : undefined,
 };
 
@@ -616,7 +707,7 @@ if (isTauri()) {
       if (raw) {
         store.replaceProject(normalizeProject(raw));
         dirty = false;
-        updateSaveState(`${dirName()}・已從外部更新`);
+        updateSaveState(tf("{name}・已從外部更新", { name: String(dirName()) }));
         void healPosters();
       }
       knownMtime = m;
@@ -705,17 +796,52 @@ document.addEventListener("stb:selchange", () => renderInspector());
 let lastPtrType = "";
 stbArea.addEventListener("pointerdown", (e) => { lastPtrType = (e as PointerEvent).pointerType; }, true);
 stbArea.addEventListener("click", (e) => {
+  // ＋新增 cut（從頂欄搬進分鏡章，跟匯入按鈕同列）
+  if ((e.target as HTMLElement).closest("[data-addcut]")) { addCut(); return; }
+  // 匯入場勘包（STB Camera 拍回來的 .stb）
+  if ((e.target as HTMLElement).closest("[data-scoutimport]")) { void importScoutFlow(store, openPackedAsProject); return; }
+  // 清除本案全部場勘圖
+  if ((e.target as HTMLElement).closest("[data-scoutclear]")) {
+    const n = store.get().cuts.filter((c) => c.scoutRef).length;
+    if (confirm(tf("刪除本案全部 {n} 張場勘圖？分鏡圖不受影響（⌘Z 可復原）。", { n }))) store.clearAllScout();
+    return;
+  }
+  // ✕＝刪除這格的場勘圖（分鏡不動，可 undo）
+  const ds = (e.target as HTMLElement).closest("[data-delscout]") as HTMLElement | null;
+  if (ds) {
+    if (confirm(t("刪除這張場勘圖？分鏡圖不受影響（可 ⌘Z 復原）。"))) store.clearScout(ds.dataset.delscout!);
+    return;
+  }
   // ⬇＝把這格的分鏡圖另存成檔案
   const si = (e.target as HTMLElement).closest("[data-saveimg]") as HTMLElement | null;
   if (si) {
     const p = store.get();
     const c = p.cuts.find((x) => x.id === si.dataset.saveimg);
-    if (c?.imageRef) {
+    // 場勘模式存 scoutRef、分鏡模式存 imageRef
+    const img = store.scoutMode ? c?.scoutRef : c?.imageRef;
+    if (c && img) {
       const label = computeCutNumbers(p.cuts, p.films).get(c.id)?.label ?? c.id;
-      void saveImageAs(c.imageRef, `${p.meta.title || "分鏡"}_CUT${label}`);
+      void saveImageAs(img, `${p.meta.title || (store.scoutMode ? "場勘" : "分鏡")}_CUT${label}`);
     }
     return;
   }
+  // 場勘模式空格＝手動匯入單張場勘圖
+  // 點場勘照＝進調整介面（跟分鏡圖同一套；iPad 存圖入口就在裡面——區塊零按鈕原則）
+  const se = (e.target as HTMLElement).closest("[data-scoutedit]") as HTMLElement | null;
+  if (se) {
+    const cutId = se.dataset.scoutedit!;
+    const c = store.get().cuts.find((x) => x.id === cutId);
+    if (c?.scoutRef) {
+      void (async () => {
+        const ar = aspectSpec(store.get().aspect).ar;
+        const out = await openCropper(c.scoutRef!, ar, { saveName: `${store.get().meta.title || t("場勘")}_${t("場勘")}` });
+        if (out) store.setScoutImage(cutId, out);
+      })();
+    }
+    return;
+  }
+  const sa = (e.target as HTMLElement).closest("[data-scoutadd]") as HTMLElement | null;
+  if (sa) { void pickScoutImage(sa.dataset.scoutadd!); return; }
   // ✏️（桌面 hover 鈕）＝塗鴉分鏡；已是塗鴉的格點縮圖也直接回編輯器（筆跡可再編輯）
   const sk = (e.target as HTMLElement).closest("[data-sketch]") as HTMLElement | null;
   if (sk) { openSketchEditor(store, sk.dataset.sketch!); return; }
@@ -733,6 +859,11 @@ bindRefPage(store, refpageArea, () => store.currentChapter, renderAll);
 document.getElementById("btn-preview")!.addEventListener("click", () => openPreview(store));
 document.getElementById("btn-print")!.addEventListener("click", () => void openExportDialog(store));
 document.getElementById("btn-help")!.addEventListener("click", openHelp);
+document.getElementById("btn-theme")!.addEventListener("click", () => {
+  const dark = document.documentElement.dataset.theme !== "dark";
+  localStorage.setItem(THEME_KEY, dark ? "dark" : "light");
+  applyTheme(dark);
+});
 // iPad 全 App 復原/重做：雙指輕點＝上一步、三指輕點＝下一步
 //（iPadOS 通用手勢；Mac 仍是 ⌘Z／⇧⌘Z）。對話框開著或正在打字時讓位。
 // 手勢是隱形的——跳個小提示確認「剛剛真的退了一步」（Armin：不知道怎麼按）
@@ -744,8 +875,8 @@ const gestureToast = (msg: string) => {
   setTimeout(() => t.remove(), 700);
 };
 bindUndoGestures(document, {
-  onUndo: () => { if (store.canUndo()) { store.undo(); gestureToast("↩︎ 上一步"); } },
-  onRedo: () => { if (store.canRedo()) { store.redo(); gestureToast("↪︎ 下一步"); } },
+  onUndo: () => { if (store.canUndo()) { store.undo(); gestureToast(t("↩︎ 上一步")); } },
+  onRedo: () => { if (store.canRedo()) { store.redo(); gestureToast(t("↪︎ 下一步")); } },
   enabled: () =>
     !document.querySelector('[class*="overlay"]') &&
     !(document.activeElement as HTMLElement | null)?.isContentEditable,

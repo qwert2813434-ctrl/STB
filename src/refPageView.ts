@@ -5,6 +5,7 @@ import { CHAPTERS, PORTRAIT_CHAPTERS, computeCutNumbers, type Aspect } from "./m
 import { openCropper } from "./cropper";
 import { openExternal, chooseVideoImport, chooseMediaImport, mountInlineVideo, isTauri, isMobile, saveImageAs } from "./persistence";
 import { openCutPicker, cutRefLabel, fileToWorkingImage, pickFiles, bindDropImage } from "./cutPicker";
+import { t, tf } from "./i18n";
 
 // 通用圖文參考頁：一個組件覆蓋 TONE / REFERENCE RHYTHM / REFERENCES /
 // ACTOR / WARDROBE / SETTING / LOCATION 七章。
@@ -61,53 +62,53 @@ export function renderRefPage(store: Store, root: HTMLElement, chapterId: string
   const chPortrait = chapterPortrait(chapterId, store.get().aspect); // 章節統一直式（actor/wardrobe/tone）
   const side = SIDE_CHAPTERS.has(chapterId);
   const items = store.get().refPages[chapterId] || [];
-  let html = `<p class="page-label">${ch?.en || ""} · A5 橫</p><div class="page refpage">`;
+  let html = `<p class="page-label">${ch?.en || ""} · ${t("A5 橫")}</p><div class="page refpage">`;
   if (!items.length) {
-    html += `<div class="ref-empty">此章尚無內容。按「＋ 新增項目」貼上參考圖與說明。</div>`;
+    html += `<div class="ref-empty">${t("此章尚無內容。按「＋ 新增項目」貼上參考圖與說明。")}</div>`;
   }
   html += `<div class="ref-grid${gridClass(chapterId, items.length, chPortrait)}">`;
   for (const it of items) {
     const itPortrait = perItem ? !!it.portrait : chPortrait; // 混排章看每項旗標，其餘看章節
     const showVideo = (it.videoUrl ?? "") !== "" || expandedVideo.has(it.id);
     const hasVideo = (it.videoUrl ?? "") !== "" || (it.videoFile ?? "") !== "";
-    const addLabel = VIDEO_CHAPTERS.has(chapterId) ? "＋ 加入檔案（圖片／影片）" : "＋ 圖片";
+    const addLabel = VIDEO_CHAPTERS.has(chapterId) ? t("＋ 加入檔案（圖片／影片）") : t("＋ 圖片");
     const dark = it.videoFile && !it.imageRef; // 有影片但沒封面：暗底佔位
     // 徽章：本機影片＝▶（區塊內播）；只有連結＝↗（開瀏覽器，地圖/網頁都適用）
     const badge = it.videoFile ? "▶" : "↗";
     const main = `
         <div class="ref-thumb${itPortrait ? " portrait" : ""}${dark ? " dark" : ""}" data-refimg="${it.id}">
-          ${it.imageRef ? `<img src="${it.imageRef}" alt="" draggable="false">` : `<span class="thumb-add">${dark ? "影片" : addLabel}</span>`}
-          ${hasVideo ? `<button class="ref-play" data-refplay="${it.id}" aria-label="播放／開啟">${badge}</button>` : ""}
-          ${it.imageRef ? `<button class="ref-save" data-refsave="${it.id}" title="把這張圖存成檔案">⬇</button>` : ""}
+          ${it.imageRef ? `<img src="${it.imageRef}" alt="" draggable="false">` : `<span class="thumb-add">${dark ? t("影片") : addLabel}</span>`}
+          ${hasVideo ? `<button class="ref-play" data-refplay="${it.id}" aria-label="${t("播放／開啟")}">${badge}</button>` : ""}
+          ${it.imageRef ? `<button class="ref-save" data-refsave="${it.id}" title="${t("把這張圖存成檔案")}">⬇</button>` : ""}
         </div>
-        <div class="ref-title cut-line" contenteditable draggable="false" data-ritem="${it.id}" data-rf="title" data-ph="標題">${esc(it.title)}</div>
-        <div class="ref-note cut-line" contenteditable draggable="false" data-ritem="${it.id}" data-rf="note" data-ph="說明／備註">${esc(it.note)}</div>
+        <div class="ref-title cut-line" contenteditable draggable="false" data-ritem="${it.id}" data-rf="title" data-ph="${t("標題")}">${esc(it.title)}</div>
+        <div class="ref-note cut-line" contenteditable draggable="false" data-ritem="${it.id}" data-rf="note" data-ph="${t("說明／備註")}">${esc(it.note)}</div>
         ${side ? "" : renderCutRefs(store, it.id, it.cutRefs ?? [])}
-        ${showVideo ? `<div class="ref-video"><span class="tag">${badge}</span><span class="cut-edit" contenteditable draggable="false" data-ritem="${it.id}" data-rf="videoUrl" data-ph="${VIDEO_CHAPTERS.has(chapterId) ? "影片連結（YouTube／Vimeo／雲端）" : "連結（地圖／網頁／雲端）"}">${esc(it.videoUrl ?? "")}</span></div>` : ""}
+        ${showVideo ? `<div class="ref-video"><span class="tag">${badge}</span><span class="cut-edit" contenteditable draggable="false" data-ritem="${it.id}" data-rf="videoUrl" data-ph="${VIDEO_CHAPTERS.has(chapterId) ? t("影片連結（YouTube／Vimeo／雲端）") : t("連結（地圖／網頁／雲端）")}">${esc(it.videoUrl ?? "")}</span></div>` : ""}
         <div class="ref-actions">
-          ${!showVideo ? `<button class="ref-mini" data-refvideo="${it.id}">${VIDEO_CHAPTERS.has(chapterId) ? "＋ 影片連結" : "＋ 連結"}</button>` : ""}
-          ${chapterId === "actor" && !isMobile() ? `<button class="ref-mini" data-refvidfile="${it.id}">＋ 本機影片</button>` : ""}
+          ${!showVideo ? `<button class="ref-mini" data-refvideo="${it.id}">${VIDEO_CHAPTERS.has(chapterId) ? t("＋ 影片連結") : t("＋ 連結")}</button>` : ""}
+          ${chapterId === "actor" && !isMobile() ? `<button class="ref-mini" data-refvidfile="${it.id}">${t("＋ 本機影片")}</button>` : ""}
         </div>`;
     if (side) {
       html += `
       <div class="ref-item side" data-item="${it.id}">
         <div class="ref-main">${main}</div>
         <div class="ref-side">
-          <div class="ref-side-h">對照 CUT</div>
+          <div class="ref-side-h">${t("對照 CUT")}</div>
           ${renderCutRefs(store, it.id, it.cutRefs ?? [])}
         </div>
-        <button class="ref-grip" data-grip="${it.id}" aria-label="拖曳調整順序" title="拖曳調整順序">⠿</button>
-        <button class="ref-del" data-refdel="${it.id}" aria-label="刪除項目">✕</button>
+        <button class="ref-grip" data-grip="${it.id}" aria-label="${t("拖曳調整順序")}" title="${t("拖曳調整順序")}">⠿</button>
+        <button class="ref-del" data-refdel="${it.id}" aria-label="${t("刪除項目")}">✕</button>
       </div>`;
     } else {
       html += `
       <div class="ref-item" data-item="${it.id}">${main}
-        <button class="ref-grip" data-grip="${it.id}" aria-label="拖曳調整順序" title="拖曳調整順序">⠿</button>
-        <button class="ref-del" data-refdel="${it.id}" aria-label="刪除項目">✕</button>
+        <button class="ref-grip" data-grip="${it.id}" aria-label="${t("拖曳調整順序")}" title="${t("拖曳調整順序")}">⠿</button>
+        <button class="ref-del" data-refdel="${it.id}" aria-label="${t("刪除項目")}">✕</button>
       </div>`;
     }
   }
-  html += `</div><div class="ref-addrow"><button data-refadd="${chapterId}">＋ 新增項目</button></div></div>`;
+  html += `</div><div class="ref-addrow"><button data-refadd="${chapterId}">${t("＋ 新增項目")}</button></div></div>`;
   root.innerHTML = html;
 }
 
@@ -117,12 +118,12 @@ function renderCutRefs(store: Store, itemId: string, cutIds: string[]): string {
   const portrait = p.aspect === "9:16"; // 對照 cut＝分鏡本身，跟隨整片比例（直式縮圖統一站立）
   const numbers = computeCutNumbers(p.cuts, p.films);
   if (!cutIds.length) {
-    return `<button class="ref-mini ref-cutbtn" data-refcut="${itemId}"><i>⌗</i> 對照 cut</button>`;
+    return `<button class="ref-mini ref-cutbtn" data-refcut="${itemId}"><i>⌗</i> ${t("對照 cut")}</button>`;
   }
   let thumbs = "";
   for (const c of p.cuts.filter((x) => cutIds.includes(x.id))) {
     const n = numbers.get(c.id)!;
-    thumbs += `<span class="rc-thumb${portrait ? " portrait" : ""}" title="CUT ${n.label}">${c.imageRef ? `<img src="${c.imageRef}" alt="">` : ""}<span class="rc-no">${n.label}</span></span>`;
+    thumbs += `<span class="rc-thumb${portrait ? " portrait" : ""}" title="${tf("CUT {label}", { label: n.label })}">${c.imageRef ? `<img src="${c.imageRef}" alt="">` : ""}<span class="rc-no">${n.label}</span></span>`;
   }
   return `<div class="ref-cutrefs" data-refcut="${itemId}"><span class="rc-label">${cutRefLabel(store, cutIds)}</span><span class="rc-strip${portrait ? " portrait" : ""}">${thumbs}</span></div>`;
 }
@@ -229,7 +230,7 @@ async function playInline(store: Store, root: HTMLElement, chapterId: string, it
     const stop = document.createElement("button");
     stop.className = "vstop";
     stop.textContent = "✕";
-    stop.title = "停止播放";
+    stop.title = t("停止播放");
     thumb.appendChild(stop);
   }
 }
@@ -262,7 +263,7 @@ async function applyRefImageFile(store: Store, chapterId: string, itemId: string
   const auto = AUTO_ASPECT_CHAPTERS.has(chapterId);
   // 先縮成工作圖再裁（iPad：原檔直餵會耗盡解碼資源）
   const url = await fileToWorkingImage(f);
-  if (!url) { alert("這張照片讀不進來——若原檔還在 iCloud，等幾秒再試一次。"); return; }
+  if (!url) { alert(t("這張照片讀不進來——若原檔還在 iCloud，等幾秒再試一次。")); return; }
   // 混排章依素材方向自動判定直式；其餘（actor/wardrobe/tone/…）跟隨章節
   const portrait = auto ? await detectPortrait(url) : chapterPortrait(chapterId, store.get().aspect);
   const cropped = await openCropper(url, portrait ? 9 / 16 : 16 / 9, { allowReplace: true });

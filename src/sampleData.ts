@@ -1,16 +1,21 @@
 import type { Project, Aspect } from "./model";
 import { normalizeProject, newId } from "./model";
+import { t, tf, locale } from "./i18n";
+import { sampleProjectEn } from "./sampleData.en";
+import { sampleProjectJa } from "./sampleData.ja";
 
 // 全新空白案子（「新增案子」用）：結構齊全、內容全空——
 // 十章從零開始，一個拍攝日待填，聯絡人只留職位框。
 // aspect＝分鏡比例（新建時問一次；"9:16"＝直式，其餘＝橫式）。
-export function emptyProject(name = "未命名案子", aspect?: Aspect): Project {
+// 預設案名與職位是「建立當下寫入的內容」：跟隨語系合理，舊檔不受影響。
+export function emptyProject(name = t("未命名案子"), aspect?: Aspect): Project {
   return normalizeProject({
     meta: { title: name, client: "", version: 1 },
+    films: [{ id: newId("f"), name: tf("{x}路", { x: "A" }) }],
     contacts: [
-      { role: "製片", name: "", phone: "" },
-      { role: "監製", name: "", phone: "" },
-      { role: "導演", name: "", phone: "" },
+      { role: t("製片"), name: "", phone: "" },
+      { role: t("監製"), name: "", phone: "" },
+      { role: t("導演"), name: "", phone: "" },
     ],
     cuts: [],
     days: [{ id: newId("d"), date: "", callTime: "08:00", callGroups: [], rundown: [] }],
@@ -23,7 +28,10 @@ export function emptyProject(name = "未命名案子", aspect?: Aspect): Project
 // 示範案：全部使用中性示意文字（發佈給別人看時不含任何真實專案內容）。
 // 05 群組有兩個成員 → 連續鏡 05-1 / 05-2。
 // 經 normalizeProject 出場：films/filmId 等新欄位自動補齊（單路）。
+// 英文語系＝載入英文情境示範案（sampleData.en.ts，同構不同文）；ja 版之後比照。
 export function sampleProject(): Project {
+  if (locale() === "en") return sampleProjectEn();
+  if (locale() === "ja") return sampleProjectJa();
   return normalizeProject({
     meta: {
       title: "示範案_品牌形象篇",
@@ -58,14 +66,14 @@ export function sampleProject(): Project {
           { label: "演員", time: "08:30", loc: "通告直達第一場景（示意）" },
         ],
         rundown: [
-      { id: "b1", durMin: 30, type: "集合", title: "集合・器材上車", loc: "", mapUrl: "", park: "", props: "", cutIds: [], note: "" },
-      { id: "b2", durMin: 30, type: "移動", title: "前往場景 A", loc: "場景 A（示意地址）", mapUrl: "#", park: "路邊白線（示意）", props: "", cutIds: [], note: "" },
-      { id: "b3", durMin: 90, type: "拍攝", title: "場景 A：外景日戲", loc: "場景 A（示意地址）", mapUrl: "#", park: "路邊白線（示意）", props: "無", cutIds: ["c1", "c7", "c8"], note: "示範備註" },
-      { id: "b4", durMin: 60, type: "移動", title: "移動＋場佈｜場景 B", loc: "場景 B（示意地址）", mapUrl: "#", park: "附近平面停車場（示意）", props: "", cutIds: [], note: "" },
-      { id: "b5", durMin: 60, type: "用餐", title: "劇組便當", loc: "", mapUrl: "", park: "", props: "", cutIds: [], note: "" },
-      { id: "b6", durMin: 90, type: "拍攝", title: "場景 B：內景戲", loc: "場景 B（示意地址）", mapUrl: "", park: "", props: "示範道具 ×6、示範陳設", cutIds: ["c2", "c3", "c4"], note: "" },
-      { id: "b7", durMin: 60, type: "拍攝", title: "場景 B：補拍與特寫", loc: "場景 B（示意地址）", mapUrl: "", park: "", props: "示範道具（小件）", cutIds: ["c5", "c6"], note: "" },
-      { id: "b8", durMin: 30, type: "其他", title: "收工整理・器材清點", loc: "", mapUrl: "", park: "", props: "", cutIds: [], note: "" },
+      { id: "b1", durMin: 30, type: "call", title: "集合・器材上車", loc: "", mapUrl: "", park: "", props: "", cutIds: [], note: "" },
+      { id: "b2", durMin: 30, type: "move", title: "前往場景 A", loc: "場景 A（示意地址）", mapUrl: "#", park: "路邊白線（示意）", props: "", cutIds: [], note: "" },
+      { id: "b3", durMin: 90, type: "shoot", title: "場景 A：外景日戲", loc: "場景 A（示意地址）", mapUrl: "#", park: "路邊白線（示意）", props: "無", cutIds: ["c1", "c7", "c8"], note: "示範備註" },
+      { id: "b4", durMin: 60, type: "move", title: "移動＋場佈｜場景 B", loc: "場景 B（示意地址）", mapUrl: "#", park: "附近平面停車場（示意）", props: "", cutIds: [], note: "" },
+      { id: "b5", durMin: 60, type: "meal", title: "劇組便當", loc: "", mapUrl: "", park: "", props: "", cutIds: [], note: "" },
+      { id: "b6", durMin: 90, type: "shoot", title: "場景 B：內景戲", loc: "場景 B（示意地址）", mapUrl: "", park: "", props: "示範道具 ×6、示範陳設", cutIds: ["c2", "c3", "c4"], note: "" },
+      { id: "b7", durMin: 60, type: "shoot", title: "場景 B：補拍與特寫", loc: "場景 B（示意地址）", mapUrl: "", park: "", props: "示範道具（小件）", cutIds: ["c5", "c6"], note: "" },
+      { id: "b8", durMin: 30, type: "other", title: "收工整理・器材清點", loc: "", mapUrl: "", park: "", props: "", cutIds: [], note: "" },
         ],
       },
     ],

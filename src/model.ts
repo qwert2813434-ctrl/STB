@@ -1,8 +1,24 @@
 // 資料模型 + 連鎖引擎。schema 是唯一介面（紅線）。
 // 這裡只放「真相結構」與「衍生機器欄」；渲染/操作在別處。
 
-// 分鏡比例：橫式 16:9（預設）／直式 9:16（直式廣告用）。整片層級一次定案。
-export type Aspect = "16:9" | "9:16";
+// 分鏡比例：整片層級一次定案。加新比例＝在 ASPECTS 表加一行（版面沿用橫/直兩套，不用改程式）。
+export type Aspect = "16:9" | "9:16" | "3:2" | "21:9";
+
+export interface AspectSpec {
+  ar: number;                      // 寬/高
+  label: string;                   // 選擇器顯示名
+  board: { w: number; h: number }; // 裁切/塗鴉畫布尺寸
+  portrait: boolean;               // 直式版面（卡片站立、6 欄）
+}
+export const ASPECTS: Record<Aspect, AspectSpec> = {
+  "16:9": { ar: 16 / 9, label: "橫式 16:9", board: { w: 1280, h: 720 }, portrait: false },
+  "3:2":  { ar: 3 / 2,  label: "全幅 3:2",  board: { w: 1200, h: 800 }, portrait: false },
+  "21:9": { ar: 21 / 9, label: "寬銀幕 21:9", board: { w: 1344, h: 576 }, portrait: false },
+  "9:16": { ar: 9 / 16, label: "直式 9:16", board: { w: 720, h: 1280 }, portrait: true },
+};
+export function aspectSpec(a?: string): AspectSpec {
+  return ASPECTS[(a as Aspect) ?? "16:9"] ?? ASPECTS["16:9"];
+}
 
 export interface Meta {
   title: string;
@@ -28,6 +44,9 @@ export interface Cut {
   groupId: string;
   filmId: string;    // 屬於哪一路（films 的 id）
   shot: string;      // 景別 W/M/CU
+  // 秒數（選配）：2026-07-07 從繁中版拿掉、schema 留選配位；2026-07-28 日文版啟用
+  // （日本絵コンテ每 cut 必填秒數＋頁尾合計對齊 15/30 秒）。缺欄＝舊行為，舊檔 byte-identical。
+  sec?: number;
   desc: string;      // 畫面描述（人欄）
   vo: string;        // VO（人欄）
   sup: string;       // Super 疊印字卡（人欄）
@@ -36,6 +55,14 @@ export interface Cut {
   prompt: string;
   props: string;
   note: string;
+  // STB Camera 場勘：攝影師在現場拍的鏡位圖（data URL，與 imageRef 同存法）。
+  // imageRef＝導演的分鏡（永不被場勘覆蓋）；scoutRef＝現場實拍，分鏡章可切換顯示。
+  // 缺欄＝沒場勘（舊檔序列化後 byte-identical）。
+  scoutRef?: string | null;
+  scoutMeta?: { system: "ff" | "s35"; focal: number; takenAt: string } | null; // 拍攝資訊：機身/標示焦距/ISO 時間
+  // 隱藏 cut（Keynote 跳過投影片邏輯）：編輯器顯示細灰格、預覽/匯出看不見、不佔編號。
+  // 場勘溢出（現場新增的 cut）匯入時預設隱藏＝照片有地方住、分鏡編號完全不動。
+  hidden?: boolean;
 }
 
 export interface Project {
@@ -58,18 +85,21 @@ export interface Contact { role: string; name: string; phone: string; }
 
 // PPM AGENDA 章節（固定十章）
 export type ChapterKind = "agenda" | "refpage" | "storyboard" | "schedule";
-export interface Chapter { id: string; label: string; en: string; kind: ChapterKind; }
+// en＝現行 deck 標題（台灣圈慣用英文，zh 語系沿用不變）；
+// enIntl＝英語市場修正版（LOOK & FEEL 等，依 07_在地化對照表）；ja＝日文 deck 標題。
+// 消費端在 en/ja 語系才改用 enIntl/ja（階段 1/2 接線），zh 行為零變。
+export interface Chapter { id: string; label: string; en: string; enIntl: string; ja: string; kind: ChapterKind; }
 export const CHAPTERS: Chapter[] = [
-  { id: "agenda", label: "目錄", en: "AGENDA", kind: "agenda" },
-  { id: "tone", label: "調性", en: "TONE & MANNER", kind: "refpage" },
-  { id: "rhythm", label: "參考節奏", en: "REFERENCE RHYTHM", kind: "refpage" },
-  { id: "storyboard", label: "分鏡", en: "STORYBOARD", kind: "storyboard" },
-  { id: "references", label: "參考資料", en: "REFERENCES", kind: "refpage" },
-  { id: "actor", label: "演員", en: "ACTOR", kind: "refpage" },
-  { id: "wardrobe", label: "服裝", en: "WARDROBE", kind: "refpage" },
-  { id: "setting", label: "美術道具", en: "SETTING", kind: "refpage" },
-  { id: "location", label: "場景", en: "LOCATION", kind: "refpage" },
-  { id: "schedule", label: "製作時程", en: "SCHEDULE", kind: "schedule" },
+  { id: "agenda", label: "目錄", en: "AGENDA", enIntl: "AGENDA", ja: "目次", kind: "agenda" },
+  { id: "tone", label: "調性", en: "TONE & MANNER", enIntl: "LOOK & FEEL", ja: "トーン&マナー", kind: "refpage" },
+  { id: "rhythm", label: "參考節奏", en: "REFERENCE RHYTHM", enIntl: "RHYTHM REFERENCES", ja: "リズム参考", kind: "refpage" },
+  { id: "storyboard", label: "分鏡", en: "STORYBOARD", enIntl: "STORYBOARD", ja: "絵コンテ", kind: "storyboard" },
+  { id: "references", label: "參考資料", en: "REFERENCES", enIntl: "REFERENCES", ja: "リファレンス", kind: "refpage" },
+  { id: "actor", label: "演員", en: "ACTOR", enIntl: "TALENT", ja: "キャスト", kind: "refpage" },
+  { id: "wardrobe", label: "服裝", en: "WARDROBE", enIntl: "WARDROBE", ja: "衣装・ヘアメイク", kind: "refpage" },
+  { id: "setting", label: "美術道具", en: "SETTING", enIntl: "ART & SET DESIGN", ja: "美術・セット", kind: "refpage" },
+  { id: "location", label: "場景", en: "LOCATION", enIntl: "LOCATIONS", ja: "ロケ地", kind: "refpage" },
+  { id: "schedule", label: "製作時程", en: "SCHEDULE", enIntl: "SCHEDULE", ja: "スケジュール", kind: "schedule" },
 ];
 
 // 通用圖文參考項目（TONE/REFERENCE/ACTOR/WARDROBE/SETTING/LOCATION… 共用）
@@ -96,8 +126,23 @@ export interface Milestone { id: string; label: string; start: string; end: stri
 export const GANTT_COLORS = ["#2b2a27", "#185fa5", "#3b6d11", "#b07d2b", "#a33a2f", "#6a4b8a", "#8f8d87"];
 
 // 拍攝日程區塊＝真實時間段（不是影片秒數）
-export type BlockType = "集合" | "拍攝" | "移動" | "場佈" | "用餐" | "其他";
-export const BLOCK_TYPES: BlockType[] = ["集合", "拍攝", "移動", "場佈", "用餐", "其他"];
+// type 存英文 key（1.6.0 起）；顯示文字一律查 BLOCK_TYPE_LABELS，勿直接渲染 type。
+export type BlockType = "call" | "shoot" | "move" | "setup" | "meal" | "other";
+export const BLOCK_TYPES: BlockType[] = ["call", "shoot", "move", "setup", "meal", "other"];
+export const BLOCK_TYPE_LABELS: Record<BlockType, string> = {
+  call: "集合", shoot: "拍攝", move: "移動", setup: "場佈", meal: "用餐", other: "其他",
+};
+// 1.5.x 以前 type 直接存中文——載入時在 normalizeProject 遷移成 key
+const LEGACY_BLOCK_TYPES: Record<string, BlockType> = {
+  "集合": "call", "拍攝": "shoot", "移動": "move", "場佈": "setup", "用餐": "meal", "其他": "other",
+};
+export function toBlockType(v: unknown): BlockType {
+  if (typeof v === "string") {
+    if ((BLOCK_TYPES as string[]).includes(v)) return v as BlockType;
+    if (LEGACY_BLOCK_TYPES[v]) return LEGACY_BLOCK_TYPES[v];
+  }
+  return "other";
+}
 
 export interface RundownBlock {
   id: string;
@@ -159,12 +204,12 @@ export const PER_PAGE = 8; // 橫式 4×2（匯出 pptxNative 仍走此值；直
 
 // 分鏡底圖尺寸（匯入裁切、塗鴉畫布共用）：直式＝橫式轉 90°。
 export function boardDims(aspect?: Aspect): { w: number; h: number } {
-  return aspect === "9:16" ? { w: 720, h: 1280 } : { w: 1280, h: 720 };
+  return aspectSpec(aspect).board;
 }
 
 // 分鏡章每頁格數：橫式 4欄×2列＝8（原值不變）；直式 6欄×2列＝12。
 export function perPage(aspect?: Aspect): number {
-  return aspect === "9:16" ? 12 : 8;
+  return aspectSpec(aspect).portrait ? 12 : 8;
 }
 
 // 依出現順序給群組主號；群組成員 >1 則加子號。
@@ -177,7 +222,9 @@ export function computeCutNumbers(cuts: Cut[], films?: Film[]): Map<string, CutN
   const multi = filmOrder.length > 1;
 
   filmOrder.forEach((fid, fi) => {
-    const sub = cuts.filter((c) => c.filmId === fid);
+    const sub = cuts.filter((c) => c.filmId === fid && !c.hidden);
+    // 隱藏的不佔號（Keynote 跳過邏輯）；標籤「隱藏」給引用處顯示
+    for (const c of cuts) if (c.filmId === fid && c.hidden) out.set(c.id, { main: "—", sub: null, label: "隱藏", groupSize: 1 });
     const order: string[] = [];
     const members = new Map<string, string[]>();
     for (const c of sub) {
@@ -288,6 +335,12 @@ export function normalizeProject(raw: unknown): Project {
       prompt: c?.prompt ?? "",
       props: c?.props ?? "",
       note: c?.note ?? "",
+      // 秒數：同上，只在有值時才寫入（沒填秒數的舊檔 byte-identical）
+      ...(typeof c?.sec === "number" && c.sec > 0 ? { sec: c.sec } : {}),
+      // 場勘欄位：只在有值時才寫入（同 aspect 慣例）＝沒場勘的舊檔 byte-identical
+      ...(c?.scoutRef ? { scoutRef: c.scoutRef } : {}),
+      ...(c?.scoutMeta ? { scoutMeta: c.scoutMeta } : {}),
+      ...(c?.hidden ? { hidden: true } : {}),
     })),
     days: days.map((d) => ({
       id: d?.id ?? newId("d"),
@@ -299,7 +352,7 @@ export function normalizeProject(raw: unknown): Project {
       rundown: (Array.isArray(d?.rundown) ? d.rundown : []).map((b) => ({
         id: b?.id ?? newId("b"),
         durMin: typeof b?.durMin === "number" && b.durMin >= 5 ? b.durMin : 30,
-        type: b?.type ?? "其他",
+        type: toBlockType(b?.type),
         title: b?.title ?? "",
         loc: b?.loc ?? "",
         mapUrl: b?.mapUrl ?? "",
@@ -322,7 +375,8 @@ export function normalizeProject(raw: unknown): Project {
       ? (r.hiddenChapters as unknown[]).filter((x): x is string => typeof x === "string")
       : [],
     mode: r.mode === "schedule" ? "schedule" : "ppm",
-    // 只有直式才寫入欄位：橫式回 undefined＝舊檔序列化後 byte-identical（不平白多欄）
-    ...(r.aspect === "9:16" ? { aspect: "9:16" as const } : {}),
+    // 預設 16:9 不寫入欄位＝舊檔序列化後 byte-identical；其餘認得的比例照存
+    ...(typeof r.aspect === "string" && r.aspect !== "16:9" && (r.aspect as Aspect) in ASPECTS
+      ? { aspect: r.aspect as Aspect } : {}),
   };
 }

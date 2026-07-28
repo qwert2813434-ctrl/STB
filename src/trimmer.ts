@@ -1,3 +1,4 @@
+import { t, tf } from "./i18n";
 // 影片首尾裁切（匯入時選 in/out 點，沿用 ALIGN 的導入體驗、無時長限制）。
 // 不重新編碼：只記 trimStart/trimEnd（秒），播放時從起點播、到終點停。
 // 手勢自製（pointerdown/move/up），不依賴原生 range input。
@@ -20,15 +21,15 @@ export function openTrimmer(url: string): Promise<TrimRange | null> {
         <video class="trim-video" playsinline></video>
         <div class="trim-track">
           <div class="trim-range"></div>
-          <div class="trim-handle" data-h="s" title="起點"></div>
-          <div class="trim-handle" data-h="e" title="終點"></div>
+          <div class="trim-handle" data-h="s" title="${t("起點")}"></div>
+          <div class="trim-handle" data-h="e" title="${t("終點")}"></div>
         </div>
         <div class="crop-bar">
-          <span class="crop-hint trim-label">載入中…</span>
+          <span class="crop-hint trim-label">${t("載入中…")}</span>
           <span class="spacer"></span>
-          <button class="trim-preview">▶ 預覽片段</button>
-          <button class="trim-skip">不裁切</button>
-          <button class="trim-apply">套用</button>
+          <button class="trim-preview">${t("▶ 預覽片段")}</button>
+          <button class="trim-skip">${t("不裁切")}</button>
+          <button class="trim-apply">${t("套用")}</button>
         </div>
       </div>`;
     document.body.appendChild(o);
@@ -60,7 +61,7 @@ export function openTrimmer(url: string): Promise<TrimRange | null> {
       he.style.left = `calc(${pct(e)}% - 7px)`;
       rangeEl.style.left = pct(s) + "%";
       rangeEl.style.width = Math.max(0, pct(e) - pct(s)) + "%";
-      label.textContent = `${fmt(s)} – ${fmt(e)}　（全長 ${fmt(dur)}）`;
+      label.textContent = tf("{start} – {end}　（全長 {dur}）", { start: fmt(s), end: fmt(e), dur: fmt(dur) });
     };
 
     v.muted = true;

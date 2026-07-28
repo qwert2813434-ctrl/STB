@@ -3,6 +3,7 @@ import { mountInlineVideo, openExternal } from "./persistence";
 import type { RefItem } from "./model";
 import { collectChapters, coverSlideHtml, titleSlideHtml, logoSlideHtml, chapterPlan } from "./pages";
 import { openExportDialog } from "./exportDialog";
+import { t, chapterTitle } from "./i18n";
 
 // 預覽（簡報模式）：照 PPM 簡報節奏播放——
 // 目錄 → 大項標題頁 → 該章內頁 → 下一大項…。←/→/空白鍵換頁、Esc 離開。
@@ -35,14 +36,31 @@ export function openPreview(store: Store) {
     <div class="pv-stage"><div class="pv-fit"></div></div>
     <div class="pv-chpop" hidden></div>
     <div class="pv-nav">
-      <button class="pv-prev" aria-label="上一頁">←</button>
+      <button class="pv-prev" aria-label="${t("上一頁")}">←</button>
       <span class="pv-count"></span>
-      <button class="pv-next" aria-label="下一頁">→</button>
-      <button class="pv-chap">章節</button>
-      <button class="pv-print">匯出…</button>
-      <button class="pv-close" aria-label="離開預覽">Esc 離開</button>
+      <button class="pv-next" aria-label="${t("下一頁")}">→</button>
+      <button class="pv-chap">${t("章節")}</button>
+      <button class="pv-theme">${t("淺色")}</button>
+      <button class="pv-print">${t("匯出…")}</button>
+      <button class="pv-close" aria-label="${t("離開預覽")}">${t("Esc 離開")}</button>
     </div>`;
   document.body.appendChild(overlay);
+  // 簡報主題：預設深色（黑底白字、VO 亮藍、Super 橘），選擇記起來。
+  // 匯出不受影響——那條路是另一個白底容器。
+  const DARK_KEY = "stbPreviewDark";
+  let dark = localStorage.getItem(DARK_KEY) !== "0";
+  const themeBtn = overlay.querySelector(".pv-theme") as HTMLElement;
+  const syncTheme = () => {
+    overlay.classList.toggle("pv-dark", dark);
+    themeBtn.textContent = dark ? t("淺色") : t("深色");
+    themeBtn.title = dark ? t("切回米白（印刷版面）") : t("切成黑底簡報");
+  };
+  themeBtn.addEventListener("click", () => {
+    dark = !dark;
+    localStorage.setItem(DARK_KEY, dark ? "1" : "0");
+    syncTheme();
+  });
+  syncTheme();
   const fit = overlay.querySelector(".pv-fit") as HTMLElement;
   const stage = overlay.querySelector(".pv-stage") as HTMLElement;
   const count = overlay.querySelector(".pv-count") as HTMLElement;
@@ -137,9 +155,9 @@ export function openPreview(store: Store) {
     const rows = chapterPlan(store.get(), true).map((ch) => `
       <label class="pv-chrow">
         <input type="checkbox" data-chtoggle="${ch.id}" ${hidden.has(ch.id) ? "" : "checked"}>
-        <span class="pv-chen">${ch.en}</span><span class="pv-chzh">${ch.label}</span>
+        <span class="pv-chen">${chapterTitle(ch).cap}</span>${chapterTitle(ch).sub ? `<span class="pv-chzh">${chapterTitle(ch).sub}</span>` : ""}
       </label>`).join("");
-    chpop.innerHTML = `<div class="pv-chpop-h">給客戶看的章節（空章自動跳過）</div>${rows || `<div class="pv-chpop-h">各章都還沒有內容</div>`}`;
+    chpop.innerHTML = `<div class="pv-chpop-h">${t("給客戶看的章節（空章自動跳過）")}</div>${rows || `<div class="pv-chpop-h">${t("各章都還沒有內容")}</div>`}`;
   }
   (overlay.querySelector(".pv-chap") as HTMLElement).addEventListener("click", (e) => {
     e.stopPropagation();

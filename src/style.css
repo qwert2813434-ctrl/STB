@@ -1,7 +1,10 @@
 /* 配色與字重參考概念圖 v8（Armin 2026-07-07 拍板：v8 為視覺基準）
    米白底、白卡、柔和黑髮絲線分層；字重正常（不用 300，太細難讀）；
    VO/Super 保留語意色（藍/綠）。 */
-:root {
+/* 色票分兩組：
+   ① 米白（v8 基準，預設）② 深色（2026-07-27 加，編輯與簡報共用同一組值）
+   `.pv-overlay:not(.pv-dark)` 也吃米白＝簡報切「淺色」時就算 App 是深色也回印刷版面。 */
+:root, .pv-overlay:not(.pv-dark) {
   --bg: #efeee8;        /* 畫布底，米白 */
   --card: #ffffff;      /* 白卡 */
   --ink: #1f1e1d;       /* 主文字 */
@@ -14,9 +17,22 @@
   --placeholder: #e7e5dd;       /* 16:9 分鏡佔位 */
   --vo: #185fa5;        /* VO 語意色（v8 藍） */
   --sup: #3b6d11;       /* Super 語意色（v8 綠） */
+}
+
+:root {
   --radius: 12px;
   --font: -apple-system, "PingFang TC", "Noto Sans TC", "Helvetica Neue", "Inter", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+/* 日文語系（<html lang> 由 i18n.ts 設定）：日文字型優先＋禁則處理。
+   用 TC 字型渲染日文＝漢字字形錯（直/骨），日本用戶一眼看出外國製。 */
+:root[lang="ja"] {
+  --font: -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", system-ui, sans-serif;
+}
+:root[lang="ja"] body { line-break: strict; }
+:root[lang="en"] {
+  --font: -apple-system, "Inter", "Helvetica Neue", system-ui, sans-serif;
 }
 
 * { box-sizing: border-box; }
@@ -162,7 +178,7 @@ button:active { transform: scale(.98); }
 .cut-shot:focus { border-color: var(--ink); }
 
 .cut-thumb {
-  aspect-ratio: 16 / 9;
+  aspect-ratio: var(--cut-ar, 1.7778);
   background: var(--placeholder);
   border-radius: 6px;
   margin-bottom: 7px;
@@ -190,6 +206,18 @@ button:active { transform: scale(.98); }
   line-height: 1.55;
   margin-top: 2px;
 }
+/* 景別／秒數列：卡片最下方的機器欄，用內縮髮絲線與人欄分開（同 iOS 群組列表的內縮線） */
+.cut-meta {
+  display: flex; gap: 14px; align-items: baseline;
+  margin-top: 6px; padding-top: 5px;
+  border-top: 1px solid var(--line);
+  font-size: 11.5px; color: var(--muted);
+}
+.cut-meta .cm-pair { display: flex; gap: 5px; align-items: baseline; }
+.cut-meta .cm-k { font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em; }
+.cut-meta .cm-v { color: var(--ink2); min-width: 2.2em; }
+.cut-meta .cm-v:empty::before { content: attr(data-ph); color: var(--muted); }
+
 .cut-line-row.cut-vo { color: var(--vo); }
 .cut-line-row.cut-sup { color: var(--sup); }
 .cut-line-row .tag {
@@ -306,7 +334,7 @@ button:active { transform: scale(.98); }
 .rd-tools { display: flex; gap: 12px; margin-top: 5px; }
 .rd-cut-box {
   display: flex;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: var(--cut-ar, 1.7778);
   background: var(--placeholder);
   border-radius: 4px;
   align-items: center;
@@ -445,6 +473,110 @@ body.dragging-any { user-select: none; cursor: grabbing; }
 .cut-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .thumb-add { font-size: 11px; color: var(--faint); }
 .cut-thumb:hover .thumb-add { color: var(--ink2); }
+/* 場勘列：匯入鈕與顯示切換隔開一點；hover「場勘」長出 ✕（清除全部場勘） */
+.scout-row [data-scoutimport] { margin-left: 10px; }
+.scout-row [data-addcut] { margin-left: 6px; }
+.scout-wrap { position: relative; display: inline-flex; align-items: center; }
+.scout-wrap .scout-clear { display: none; margin-left: 2px; font-size: 10px;
+  padding: 4px 7px; border-radius: 6px; color: var(--muted); }
+.scout-wrap:hover .scout-clear { display: inline-block; }
+.scout-wrap .scout-clear:hover { color: #a33a2f; border-color: #a33a2f; }
+/* 隱藏 cut＝縫間半高圓頭短線（方案4，Armin 定案 43125）：
+   掛在前一顆卡右側的 14px 縫裡，不佔格位；hover 伸長全高；點一下顯示回來 */
+.cut { position: relative; }
+.ghost-stick { position: absolute; top: 0; bottom: 0; right: -14px; width: 14px;
+  display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 5; }
+.ghost-stick.left { right: auto; left: -14px; }
+.ghost-stick i { width: 3px; height: 46%; border-radius: 99px; background: var(--line);
+  transition: height .18s, background .15s; }
+.ghost-stick:hover i { height: 92%; background: var(--muted); }
+
+/* 任何彈窗開著＝鎖背景滾動（滾輪/觸控不再透到底下的頁面） */
+html:has(.mb-overlay, .crop-overlay, .pv-overlay, .ex-overlay, .sk-overlay, .hub-overlay, .nd-overlay, .help-overlay, .cutpick-overlay),
+body:has(.mb-overlay, .crop-overlay, .pv-overlay, .ex-overlay, .sk-overlay, .hub-overlay, .nd-overlay, .help-overlay, .cutpick-overlay) {
+  overflow: hidden;
+}
+
+/* ── 配對板（R3）：照片對到分鏡格 ── */
+.mb-overlay { position: fixed; inset: 0; z-index: 3800; background: rgba(20,19,17,.5);
+  display: flex; align-items: center; justify-content: center; padding: 3vh 3vw; }
+.mb-panel { background: var(--bg); border-radius: 14px; width: min(1120px, 100%); height: 86vh;
+  display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 18px 60px rgba(0,0,0,.35); }
+.mb-head { display: flex; align-items: center; gap: 10px; padding: 14px 18px;
+  border-bottom: 1px solid var(--line); }
+.mb-title { font-size: 16px; font-weight: 800; }
+.mb-hint { font-size: 12px; color: var(--ink2); flex: 1; }
+.mb-head button { font-size: 12px; padding: 6px 14px; border-radius: 8px; }
+.mb-go { background: var(--ink); color: var(--bg); border-color: var(--ink); font-weight: 700; }
+.mb-go:disabled { opacity: .4; }
+.mb-body { flex: 1; display: flex; min-height: 0; }
+.mb-photos { width: 252px; flex: none; overflow-y: auto; padding: 14px;
+  border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 10px;
+  overscroll-behavior: contain; }
+.mb-ph { border: 2px solid transparent; border-radius: 10px; cursor: pointer;
+  background: var(--card); box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+.mb-ph-th { position: relative; width: 100%; height: 0; overflow: hidden; border-radius: 8px; }
+.mb-ph-th img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.mb-ph.sel { border-color: var(--ink); }
+.mb-ph.done { opacity: .55; }
+.mb-ph.done.sel { opacity: 1; }
+.mb-ph-cap { display: flex; gap: 6px; align-items: baseline; font-size: 11px; color: var(--ink2);
+  padding: 5px 8px; }
+.mb-ph-cap b { color: var(--ink); }
+.mb-ph-cap span { margin-left: auto; }
+.mb-ph.done .mb-ph-cap span { color: #3E7A52; font-weight: 700; }
+.mb-cuts { flex: 1; overflow-y: auto; padding: 14px 18px; overscroll-behavior: contain; }
+.mb-film { font-size: 11px; letter-spacing: .12em; color: var(--ink2); font-weight: 700; margin: 8px 0 6px; }
+.mb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.mb-cut { cursor: pointer; }
+.mb-cut-th { height: 0; background: var(--placeholder); border-radius: 8px; overflow: hidden;
+  position: relative; border: 2px solid transparent; }
+.mb-cut-th img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.mb-cut.done .mb-cut-th { border-color: #3E7A52; }
+.mb-cut:hover .mb-cut-th { border-color: var(--muted); }
+.mb-cut.done:hover .mb-cut-th { border-color: #3E7A52; }
+.mb-noimg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 11px; color: var(--faint); }
+/* 疊圖預覽：選著照片滑過格子＝即時半透明疊上（構圖對不對一眼可辨） */
+.mb-ghost { position: absolute !important; inset: 0; width: 100% !important; height: 100% !important;
+  object-fit: cover; opacity: 0; transition: opacity .12s; pointer-events: none; z-index: 2; }
+.mb-cut-th:hover .mb-ghost { opacity: .55; }
+/* 「下一個未配格」跳轉閃框 */
+.mb-cut-th.flash { border-color: var(--ink) !important; box-shadow: 0 0 0 3px rgba(38,37,31,.18); }
+.mb-mini { position: absolute !important; right: 4px; bottom: 4px; width: 44% !important; height: auto !important;
+  border-radius: 5px; border: 1px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+.mb-badge { position: absolute; left: 4px; top: 4px; font-size: 10px; font-weight: 800; color: #fff;
+  background: #3E7A52; border-radius: 6px; padding: 1px 7px; }
+.mb-hasscout { position: absolute; left: 4px; top: 4px; font-size: 9.5px; color: var(--ink2);
+  background: rgba(255,255,255,.9); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; }
+.mb-cut-cap { font-size: 11px; color: var(--ink2); font-weight: 700; padding: 4px 2px; }
+.mb-alldone { font-size: 12.5px; color: var(--ink2); padding: 12px 6px; line-height: 1.7; }
+/* 直式案（9:16）：縮圖比例跟著直、照片欄改兩欄、格子縮窄——不再被壓扁 */
+.mb-portrait .mb-photos { display: grid; grid-template-columns: 1fr 1fr; align-content: start; grid-auto-rows: max-content; }
+.mb-portrait .mb-grid { grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); }
+/* 選擇窗（當新的一路 / 當場勘圖） */
+.mb-choice { width: min(460px, 100%); height: auto; padding: 22px; gap: 10px; }
+.mb-choice .mb-title { font-size: 17px; }
+.mb-p { font-size: 13px; color: var(--ink2); margin: 6px 0 12px; }
+.mb-big { display: block; width: 100%; text-align: left; font-size: 14px; font-weight: 800;
+  padding: 12px 16px; border-radius: 10px; margin-bottom: 8px; }
+.mb-big span { display: block; font-size: 11.5px; font-weight: 400; color: var(--ink2); margin-top: 2px; }
+.mb-big:disabled { opacity: .45; }
+.mb-cancel { font-size: 12px; color: var(--ink2); padding: 6px 12px; border-radius: 8px; }
+/* 隱藏鈕：cut 頭列 hover 現身（右端） */
+.cut-hide { display: none; margin-left: auto; font-size: 10px; line-height: 1;
+  padding: 2px 7px; border-radius: 6px; color: var(--muted); }
+@media (hover: hover) {
+  .cut-head:hover .cut-hide { display: inline-block; }
+  .cut-hide:hover { color: var(--ink); }
+}
+/* 場勘模式空格可點（匯入單張場勘圖） */
+.cut-thumb.scout[data-scoutadd] { cursor: pointer; }
+/* 場勘模式縮圖：左下角焦距/機身徽章（STB Camera 帶回的 scoutMeta） */
+.cut-thumb.scout { cursor: default; }
+.scout-meta { position: absolute; left: 4px; bottom: 4px; font-family: var(--mono);
+  font-size: 9.5px; letter-spacing: .04em; color: #fff; background: rgba(0,0,0,.56);
+  border-radius: 5px; padding: 1px 6px; pointer-events: none; }
 .rd-grip { cursor: grab; color: var(--faint); font-size: 12px; user-select: none; align-self: center; }
 .rd-grip:active { cursor: grabbing; }
 .rd-row.drop-target { box-shadow: 0 -2px 0 var(--ink); }
@@ -463,6 +595,9 @@ body.dragging-any { user-select: none; cursor: grabbing; }
 .chap.on .chap-en { color: var(--ink); }
 .chap-zh { font-size: 13px; color: var(--ink2); }
 .chap.on .chap-zh { color: var(--ink); }
+/* 英文版章節單行（副行為空時只剩 chap-en）：升為主行粗細，避免整欄剩小灰字 */
+.chap .chap-en:only-child { font-size: 12px; letter-spacing: .07em; color: var(--ink2); }
+.chap.on .chap-en:only-child { color: var(--ink); font-weight: 600; }
 .content-col { flex: 1; min-width: 0; }
 .chapter-content { padding: 14px 18px; }
 
@@ -638,6 +773,50 @@ body.dragging-any { user-select: none; cursor: grabbing; }
 .pv-stage { flex: 1; position: relative; overflow: hidden; cursor: pointer; }
 .pv-fit { position: absolute; left: 50%; top: 50%; width: 1560px; transform: translate(-50%, -50%); pointer-events: none; }
 .pv-fit .page { box-shadow: 0 6px 26px rgba(0,0,0,.12); }
+
+/* 簡報深色（Armin 2026-07-27）：黑底白字、VO 亮藍、Super 橘。
+   只覆寫變數＝整套頁面跟著變，不用逐個元件改。
+   ⚠️ 只作用在 .pv-overlay 內；匯出走的是 body 下另一個 .pdf-capture 容器（白底），
+   所以 PDF／PPTX／列印永遠是米白印刷版，不受簡報主題影響。 */
+:root[data-theme="dark"], .pv-overlay.pv-dark {
+  --bg: #0c0c0e;
+  --card: #141416;
+  --ink: #f4f3f1;
+  --ink2: #bfbdb8;
+  --muted: #928f8a;
+  --faint: #6a6863;
+  --line: rgba(255, 255, 255, .17);
+  --line2: rgba(255, 255, 255, .09);
+  --hover: #1c1c20;
+  --placeholder: #242428;
+  --vo: #5cabff;        /* VO 亮藍 */
+  --sup: #ff9b45;       /* Super 橘 */
+}
+.pv-overlay.pv-dark .pv-fit .page { box-shadow: none; }
+/* LOGO 直接反白成純白剪影（brightness(0) 把不透明像素壓黑、invert(1) 翻白，alpha 保留）
+   ——首頁＝全黑底白 LOGO（Armin 指定） */
+.pv-overlay.pv-dark .pv-logo-slide img { filter: brightness(0) invert(1); }
+/* 甘特圖：色票是為米白底挑的深色（#2b2a27 在黑底幾乎看不見）。
+   用 background-image 疊一層白＝色塊反白成淺色（色相留一點），字改黑。
+   用 background-image 而不是 ::after，是因為背景永遠畫在子元素下面，不會蓋住日期文字。 */
+/* 甘特圖夜間色票：色票原本是為米白挑的深色（#2b2a27 在黑底幾乎看不見），
+   但顏色差異是資訊（哪個里程碑是哪色）——所以不是洗白，是給同一組色的夜間版。
+   對映順序＝model.ts 的 GANTT_COLORS。條上日期字一律黑（夜間色都夠亮）。
+   選色器（gt-swatch／gt-dot）吃同一組規則，看到的顏色跟條子一致。
+   !important＝壓過元素上的 inline background。 */
+:root[data-theme="dark"] [data-c="#2b2a27"], .pv-overlay.pv-dark [data-c="#2b2a27"] { background: #d9d7d0 !important; }
+:root[data-theme="dark"] [data-c="#185fa5"], .pv-overlay.pv-dark [data-c="#185fa5"] { background: #5cabff !important; }
+:root[data-theme="dark"] [data-c="#3b6d11"], .pv-overlay.pv-dark [data-c="#3b6d11"] { background: #8fd14f !important; }
+:root[data-theme="dark"] [data-c="#b07d2b"], .pv-overlay.pv-dark [data-c="#b07d2b"] { background: #ffb648 !important; }
+:root[data-theme="dark"] [data-c="#a33a2f"], .pv-overlay.pv-dark [data-c="#a33a2f"] { background: #ff7f6b !important; }
+:root[data-theme="dark"] [data-c="#6a4b8a"], .pv-overlay.pv-dark [data-c="#6a4b8a"] { background: #bb96ec !important; }
+:root[data-theme="dark"] [data-c="#8f8d87"], .pv-overlay.pv-dark [data-c="#8f8d87"] { background: #b0aca3 !important; }
+:root[data-theme="dark"] .gt-dates, .pv-overlay.pv-dark .gt-dates { color: #16150f !important; }
+
+/* 編輯模式深色的共通修正：黑底上的陰影沒有意義，改用髮絲線分層 */
+:root[data-theme="dark"] .page { box-shadow: none; }
+:root[data-theme="dark"] .topbar { border-bottom: 1px solid var(--line); }
+
 .pv-fit button:not(.ref-play), .pv-fit input, .pv-fit .rd-adj, .pv-fit .ref-addrow, .pv-fit .gt-addrow, .pv-fit .rd-addrow, .pv-fit .thumb-add, .pv-fit .ref-actions, .pv-fit .ref-mini, .pv-fit .ref-del, .pv-fit .gt-del, .pv-fit .rd-del, .pv-fit .cs-addgroup { display: none !important; }
 /* 簡報中唯一可互動的元件：▶ 與參考縮圖（有影片就播，沒影片照常換頁） */
 .pv-fit .ref-play { pointer-events: auto; }
@@ -833,6 +1012,19 @@ body.sel-mode .cut [contenteditable] { pointer-events: none; }
   background: rgba(0, 0, 0, .6); color: #fff;
   font-size: 9px; line-height: 18px; padding: 0; text-align: center;
 }
+/* 場勘刪除鈕：釘右上（四角慣例：✕刪除＝右上），hover 才浮出；只在場勘模式渲染 */
+.thumb-delscout { display: none; }
+@media (hover: hover) {
+  .thumb-delscout {
+    display: block;
+    position: absolute; right: 4px; top: 4px;
+    font-size: 11px; line-height: 1; padding: 5px 8px;
+    background: rgba(255,255,255,.92); border: 1px solid var(--line); border-radius: 8px;
+    color: var(--ink2);
+    opacity: 0;
+  }
+  .cut-thumb:hover .thumb-delscout { opacity: 1; }
+}
 .thumb-sketch { display: none; }
 @media (hover: hover) {
   .thumb-sketch {
@@ -871,7 +1063,7 @@ body.sel-mode .cut [contenteditable] { pointer-events: none; }
 .sk-overlay, .sk-panel, .sk-stage { touch-action: none; }
 .sk-stage { padding: 12px; display: flex; justify-content: center; background: var(--hover); }
 .sk-canvas {
-  width: 100%; max-height: calc(94vh - 130px); aspect-ratio: 16 / 9;
+  width: 100%; max-height: calc(94vh - 130px); aspect-ratio: var(--cut-ar, 1.7778);
   background: #fff; border: 1px solid var(--line); border-radius: 8px;
   touch-action: none; cursor: crosshair;
 }
@@ -1024,6 +1216,8 @@ body.sel-mode .cut [contenteditable] { pointer-events: none; }
   border: 1px solid var(--border-strong); border-radius: 3px;
 }
 .asp-frame.land::before { width: 60px; height: 34px; }
+.asp-frame.land32::before { width: 54px; height: 36px; }
+.asp-frame.land219::before { width: 60px; height: 26px; }
 .asp-frame.port::before { width: 34px; height: 60px; }
 .asp-label { font-size: 13px; font-weight: 500; color: var(--ink); }
 .asp-hint { font-size: 11px; color: var(--muted); }
@@ -1055,6 +1249,10 @@ body.sel-mode .cut [contenteditable] { pointer-events: none; }
 .help-about { flex: 1; overflow-y: auto; padding: 22px 26px; }
 .help-lede { font-size: 14px; color: var(--ink2); line-height: 1.7; margin: 0 0 14px; }
 .help-link { font-size: 13px; }
+.help-langrow { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+.help-langk { font-size: 11px; letter-spacing: .12em; color: var(--ink2); margin-right: 4px; }
+.help-lang { font: inherit; font-size: 12.5px; padding: 3px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink2); cursor: pointer; }
+.help-lang.on { color: var(--ink); border-color: var(--ink2); font-weight: 600; }
 .help-rel { margin-top: 18px; }
 .help-relh { display: flex; align-items: baseline; gap: 10px; font-size: 14px; }
 .help-relh span { font-family: var(--mono); font-size: 11px; color: var(--muted); }
@@ -1095,7 +1293,7 @@ body.sel-mode .cut [contenteditable] { pointer-events: none; }
 .cp-cell { min-width: 0; border: 2px solid var(--line); border-radius: 8px; padding: 6px; background: var(--card); text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 4px; }
 .cp-cell.on { border-color: var(--ink); background: var(--hover); }
 .cp-no { font-family: var(--mono); font-size: 11px; color: var(--muted); }
-.cp-thumb { aspect-ratio: 16/9; background: var(--placeholder); border-radius: 4px; overflow: hidden; display: flex; align-items: center; justify-content: center; color: var(--faint); font-size: 10px; }
+.cp-thumb { aspect-ratio: var(--cut-ar, 1.7778); background: var(--placeholder); border-radius: 4px; overflow: hidden; display: flex; align-items: center; justify-content: center; color: var(--faint); font-size: 10px; }
 .cp-thumb.portrait { aspect-ratio: 9/16; }
 .cp-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .cp-desc { font-size: 11px; color: var(--ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1129,4 +1327,18 @@ body.sel-mode .cut [contenteditable] { pointer-events: none; }
   .print-page .ref-side:not(:has(.ref-cutrefs)),
   .print-page .ref-video,
   .print-page .ref-empty { display: none !important; }
+}
+
+/* ── 觸控裝置（iPad）：hover 長出來的按鈕改常駐 ──
+   桌面的「hover 才浮出」在觸控上＝永遠摸不到（2026-07-28 Armin 抓到 iPad 版一堆功能不見的病根之一）。
+   半透明常駐、角落小藥丸，不搶畫面。 */
+@media (hover: none) {
+  /* 觸控（iPad）：區塊零按鈕（Armin 定案）——塗鴉＝Pencil 點縮圖、存圖＝調整介面內、
+     刪場勘＝長按卡片選取後底欄。hover 藥丸全關。 */
+  .thumb-save, .thumb-delscout, .thumb-sketch { display: none !important; }
+  /* 清除全部場勘的 ✕：長按「場勘」chip 才長出（4 秒後自動收）——常駐太怪、按鈕要少 */
+  .scout-wrap.show-clear .scout-clear { display: inline-block; }
+  /* 隱藏 cut 的縫間短線：14px 手指按不準，觸控放寬到 22px */
+  .ghost-stick { width: 22px; right: -18px; }
+  .ghost-stick.left { right: auto; left: -18px; }
 }

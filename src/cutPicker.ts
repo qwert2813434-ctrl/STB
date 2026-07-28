@@ -2,6 +2,7 @@ import type { Store } from "./store";
 import { computeCutNumbers, boardDims, type Aspect } from "./model";
 import { invoke } from "@tauri-apps/api/core";
 import { isMobile } from "./persistence";
+import { t, tf } from "./i18n";
 
 // cut 對照選擇器：列出所有分鏡縮圖＋編號，勾選要對照的 cut，確定回傳 id 陣列。
 // 用於 REF 項目與 Rundown 時段的「對照 cutXX–cutYY」。
@@ -15,14 +16,14 @@ export function openCutPicker(store: Store, selected: string[]): Promise<string[
     overlay.className = "cutpick-overlay";
     overlay.innerHTML = `
       <div class="cutpick-card">
-        <div class="cp-head">對照分鏡 — 勾選對應的 cut</div>
+        <div class="cp-head">${t("對照分鏡 — 勾選對應的 cut")}</div>
         <div class="cp-grid"></div>
         <div class="cp-bar">
-          <button class="cp-import" title="選其他軟體輸出的分鏡圖檔（可多選），每張自動變成一顆 cut">＋ 匯入分鏡圖</button>
-          <button class="cp-clear">清除</button>
+          <button class="cp-import" title="${t("選其他軟體輸出的分鏡圖檔（可多選），每張自動變成一顆 cut")}">${t("＋ 匯入分鏡圖")}</button>
+          <button class="cp-clear">${t("清除")}</button>
           <span class="spacer"></span>
-          <button class="cp-cancel">取消</button>
-          <button class="cp-ok">確定</button>
+          <button class="cp-cancel">${t("取消")}</button>
+          <button class="cp-ok">${t("確定")}</button>
         </div>
       </div>`;
     document.body.appendChild(overlay);
@@ -47,7 +48,7 @@ export function openCutPicker(store: Store, selected: string[]): Promise<string[
         const cs = p.cuts.filter((c) => c.filmId === f.id);
         if (!cs.length) return "";
         return (multi ? `<div class="cp-filmh">${esc(f.name)}</div>` : "") + cs.map(cell).join("");
-      }).join("") || `<div class="cp-empty">這個案子還沒有分鏡。<br>按左下「＋ 匯入分鏡圖」，把其他軟體輸出的分鏡圖（可多選）一次帶進來。</div>`;
+      }).join("") || `<div class="cp-empty">${t("這個案子還沒有分鏡。")}<br>${t("按左下「＋ 匯入分鏡圖」，把其他軟體輸出的分鏡圖（可多選）一次帶進來。")}</div>`;
     }
     renderGrid();
 
@@ -105,13 +106,13 @@ export function pickBoardImages(aspect?: Aspect): Promise<string[]> {
       // 挑選當下還沒下載完就會拿到空殼——Armin 抓到的根因）
       // 「剛剛的點選」其實已觸發 iCloud 開始下載原檔——教使用者重試節奏，
       // 不依賴任何看不到的下載指示器（挑選介面不顯示下載狀態＝系統限制）
-      const retryHint = "剛剛的點選已經讓 iCloud 開始下載這幾張了——\n等個幾秒，再按一次「＋ 匯入分鏡圖」選同樣的照片，通常第二次就會成功。\n（一直失敗的話：設定 → 照片 → 改「下載並保留原始檔」可根治）";
+      const retryHint = t("剛剛的點選已經讓 iCloud 開始下載這幾張了——\n等個幾秒，再按一次「＋ 匯入分鏡圖」選同樣的照片，通常第二次就會成功。\n（一直失敗的話：設定 → 照片 → 改「下載並保留原始檔」可根治）");
       let msg = "";
       if (cloudy.length) {
-        msg += `☁️ ${cloudy.length} 張的原始檔還在 iCloud：\n${cloudy.join("\n")}\n\n${retryHint}\n`;
+        msg += tf("☁️ {n} 張的原始檔還在 iCloud：\n{names}\n\n{hint}\n", { n: cloudy.length, names: cloudy.join("\n"), hint: retryHint });
       }
       if (failed.length) {
-        msg += `\n⚠️ ${failed.length} 張讀取失敗（尺寸/格式超過系統上限，全景照與超大圖常見）：\n${failed.join("\n")}\n\n可在「照片」App 裁切或縮小後再加入。`;
+        msg += tf("\n⚠️ {n} 張讀取失敗（尺寸/格式超過系統上限，全景照與超大圖常見）：\n{names}\n\n可在「照片」App 裁切或縮小後再加入。", { n: failed.length, names: failed.join("\n") });
       }
       if (msg) alert(msg);
       resolve(out);
@@ -168,7 +169,7 @@ export async function pickFiles(accept: string, multiple: boolean): Promise<File
   if (isMobile() && accept.startsWith("image")) {
     const toast = document.createElement("div");
     toast.className = "pv-toast";
-    toast.textContent = "正在準備照片…（在 iCloud 的原檔會先下載）";
+    toast.textContent = t("正在準備照片…（在 iCloud 的原檔會先下載）");
     toast.addEventListener("click", () => toast.remove()); // 保險絲：萬一等待卡住，點一下就收
     document.body.appendChild(toast);
     try {
@@ -242,7 +243,7 @@ async function decodePhoto(f: File): Promise<{ src: CanvasImageSource; w: number
     const bmp = await createImageBitmap(f);
     return { src: bmp, w: bmp.width, h: bmp.height, cleanup: () => bmp.close() };
   } catch (e) { lastErr = String((e as Error)?.message ?? e); }
-  return { why: `無法解碼（${lastErr || "格式不支援"}）` };
+  return { why: tf("無法解碼（{err}）", { err: lastErr || t("格式不支援") }) };
 }
 
 async function fileToBoard(f: File, dims: { w: number; h: number }): Promise<string | { why: string; dims?: string }> {
@@ -257,7 +258,7 @@ async function fileToBoard(f: File, dims: { w: number; h: number }): Promise<str
     const px = ctx.getImageData(Math.floor(BW / 2) - 40, Math.floor(BH / 2) - 20, 80, 40).data;
     let sum = 0;
     for (let i = 3; i < px.length; i += 4) sum += px[i];
-    if (sum === 0) return { why: "超過繪圖上限（畫布為空）", dims: `${d.w}×${d.h}` };
+    if (sum === 0) return { why: t("超過繪圖上限（畫布為空）"), dims: `${d.w}×${d.h}` };
     return workCanvas!.toDataURL("image/jpeg", 0.85);
   } finally {
     d.cleanup();

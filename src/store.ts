@@ -1,5 +1,12 @@
 import type { Project, Cut, RundownBlock, ShootDay, RefItem, Milestone, BlockType } from "./model";
 import { normalizeGroups, newId, BLOCK_TYPES } from "./model";
+import { t, tf, locale } from "./i18n";
+
+// 檢視偏好旗標：使用者設過就聽他的，沒設過用該語系的預設值
+function prefFlag(key: string, dflt: boolean): boolean {
+  const v = localStorage.getItem(key);
+  return v === null ? dflt : v === "1";
+}
 
 // 日期加減（YYYY-MM-DD ± 天數），甘特拖曳用
 function addDays(dateStr: string, days: number): string {
@@ -29,6 +36,11 @@ export class Store {
   currentDayId: string;
   currentChapter = "storyboard"; // PPM 章節 id（預設進分鏡）
   portraitDense = true; // 直式分鏡格密度：true＝6 欄 12／頁（密）、false＝4 欄 4／頁（大）。純檢視偏好，不存檔。
+  scoutMode = false; // 分鏡章顯示：false＝分鏡（imageRef）、true＝場勘（scoutRef，STB Camera 帶回）。純檢視偏好，不存檔、不動資料。
+  // 景別／秒數欄顯示：純檢視偏好（存 localStorage、不進 project.json）。
+  // 預設值跟語系走——日文版兩欄都開（日本絵コンテ的標配），繁中/英文預設關（不改既有體驗）。
+  showShot = prefFlag("stbShowShot", locale() === "ja");
+  showSec = prefFlag("stbShowSec", locale() === "ja");
 
   constructor(initial: Project) {
     this.project = initial;
@@ -58,7 +70,7 @@ export class Store {
 
   addFilm() {
     this.commit((p) => {
-      const f = { id: newId("f"), name: `${String.fromCharCode(65 + p.films.length)}路` };
+      const f = { id: newId("f"), name: tf("{x}路", { x: String.fromCharCode(65 + p.films.length) }) };
       p.films.push(f);
       this.currentFilmId = f.id;
     });
@@ -290,7 +302,7 @@ export class Store {
       const day = p.days.find((d) => d.id === this.currentDayId);
       if (!day) return;
       const block: RundownBlock = {
-        id: newId("b"), durMin: 30, type: "拍攝", title: "新時段",
+        id: newId("b"), durMin: 30, type: "shoot", title: t("新時段"),
         loc: "", mapUrl: "", park: "", props: "", cutIds: [], note: "",
       };
       const idx = blockId ? day.rundown.findIndex((b) => b.id === blockId) : day.rundown.length - 1;
@@ -499,7 +511,7 @@ export class Store {
         : {
             id: newId("d"), date: "", callTime: "08:00", callGroups: [],
             rundown: [
-              { id: newId("b"), durMin: 30, type: "集合", title: "集合", loc: "", mapUrl: "", park: "", props: "", cutIds: [], note: "" },
+              { id: newId("b"), durMin: 30, type: "call", title: t("集合"), loc: "", mapUrl: "", park: "", props: "", cutIds: [], note: "" },
             ],
           };
       p.days.push(day);
@@ -558,6 +570,164 @@ export class Store {
     if (this.portraitDense === dense) return;
     this.portraitDense = dense;
     this.emit();
+  }
+
+  // 分鏡／場勘顯示切換（純檢視偏好，不動資料、不記 undo）
+  setScoutMode(on: boolean) {
+    if (this.scoutMode === on) return;
+    this.scoutMode = on;
+    this.emit();
+  }
+
+  // 隱藏／顯示單顆 cut（Keynote 跳過邏輯：預覽/匯出看不見、不佔編號；可 undo）
+  setHidden(cutId: string, on: boolean) {
+    this.commit((p) => {
+      const c = p.cuts.find((x) => x.id === cutId);
+      if (!c) return;
+      if (on) c.hidden = true;
+      else delete c.hidden;
+    });
+  }
+
+  // 顯示回來（一根棒可能代表多顆連續隱藏；單一 undo 步）
+  showCuts(ids: string[]) {
+    this.commit((p) => {
+      for (const id of ids) {
+        const c = p.cuts.find((x) => x.id === id);
+        if (c) delete c.hidden;
+      }
+    });
+  }
+
+  // 手動匯入／更換單顆場勘圖（STB 端直接改，方便修圖重放；可 undo）
+  setScoutImage(cutId: string, dataUrl: string) {
+    this.commit((p) => {
+      const c = p.cuts.find((x) => x.id === cutId);
+      if (c) { c.scoutRef = dataUrl; delete c.scoutMeta; }
+    });
+  }
+
+  // 刪除單顆場勘圖（分鏡不動；可 undo）。刪到一張不剩＝自動切回分鏡顯示
+  // 多顆一次刪（單一 undo 步）——iPad 長按選取後底欄用
+  clearScoutMany(ids: string[]) {
+    const set = new Set(ids);
+    this.commit((p) => {
+      for (const c of p.cuts) if (set.has(c.id)) { delete c.scoutRef; delete c.scoutMeta; }
+    });
+    if (!this.get().cuts.some((c) => c.scoutRef)) this.setScoutMode(false);
+  }
+
+  clearScout(cutId: string) {
+    this.commit((p) => {
+      const c = p.cuts.find((x) => x.id === cutId);
+      if (c) { delete c.scoutRef; delete c.scoutMeta; }
+    });
+    if (!this.get().cuts.some((c) => c.scoutRef)) this.setScoutMode(false);
+  }
+
+  // 逆向流「當新的一路」：把 STBC 自建（或別案）分鏡包整包加成新的一路（B路/C路…）。
+  // 照片（scoutRef）成為該路分鏡圖；cutId 盡量保留原值——之後攝影師同一個 STBC 專案
+  // 再匯出場勘，就能按 id 直接對回這路（順向流自動接上）。撞名才重生 id。
+  importAsNewFilm(
+    pkgFilms: { id?: string; name?: string }[],
+    pkgCuts: (Partial<Cut> & { id?: string })[],
+  ): { films: number; cuts: number; firstFid: string } {
+    let filmsAdded = 0, cutsAdded = 0, firstFid = "";
+    this.commit((p) => {
+      const ids = new Set(p.cuts.map((c) => c.id));
+      const gids = new Set(p.cuts.map((c) => c.groupId));
+      // 依包內的路分組（沒 films 的舊包＝全部一路）
+      const byFilm = new Map<string, (Partial<Cut> & { id?: string })[]>();
+      for (const c of pkgCuts) {
+        const k = c.filmId ?? "";
+        if (!byFilm.has(k)) byFilm.set(k, []);
+        byFilm.get(k)!.push(c);
+      }
+      const orderKeys = pkgFilms.map((f) => f.id ?? "").filter((k) => byFilm.has(k));
+      for (const k of byFilm.keys()) if (!orderKeys.includes(k)) orderKeys.push(k);
+      const gRemap = new Map<string, string>();
+      for (const k of orderKeys) {
+        const fid = newId("f");
+        if (!firstFid) firstFid = fid;
+        p.films.push({ id: fid, name: tf("{x}路", { x: String.fromCharCode(65 + Math.min(p.films.length, 25)) }) });
+        filmsAdded++;
+        for (const c of byFilm.get(k)!) {
+          const id = c.id && !ids.has(c.id) ? c.id : newId();
+          ids.add(id);
+          let g = c.groupId ?? id;
+          if (gids.has(g) && !gRemap.has(g)) gRemap.set(g, newId("g")); // 與本案既有群組撞名才改（整組一致）
+          g = gRemap.get(g) ?? g;
+          p.cuts.push({
+            id, groupId: g, filmId: fid,
+            shot: c.shot ?? "", desc: c.desc ?? "", vo: c.vo ?? "", sup: c.sup ?? "",
+            imageRef: c.imageRef ?? c.scoutRef ?? null, // 自建包：照片就是這路的分鏡圖
+            sketch: null, prompt: "", props: "", note: c.note ?? "",
+            ...(c.scoutRef && c.imageRef ? { scoutRef: c.scoutRef } : {}), // 有分鏡圖時照片留場勘欄
+            ...(c.scoutMeta ? { scoutMeta: c.scoutMeta } : {}),
+          });
+          cutsAdded++;
+        }
+      }
+    });
+    if (firstFid) this.setFilm(firstFid); // 匯完直接跳到新的一路，結果當場看得到
+    return { films: filmsAdded, cuts: cutsAdded, firstFid };
+  }
+
+  // 刪除本案全部場勘圖（分鏡不動；單一 undo 步），清完切回分鏡顯示
+  clearAllScout() {
+    this.commit((p) => {
+      for (const c of p.cuts) { delete c.scoutRef; delete c.scoutMeta; }
+    });
+    this.setScoutMode(false);
+  }
+
+  // 匯入場勘包：按 cutId 批次寫入 scoutRef/scoutMeta（單一 undo 步；imageRef 永不動），
+  // 完成直接切到場勘顯示——匯入的結果當場看得到。
+  // additions＝包裡有、本案沒有的新 cut（攝影師現場加的）：插在包內順序的對應位置，
+  // 錨點＝包內前一顆的最終 id（前一顆也是新的＝跟著它的落點，連續新增不會亂序）。
+  importScout(
+    items: { id: string; scoutRef: string; scoutMeta?: Cut["scoutMeta"] }[],
+    additions: { cut: Partial<Cut> & { id?: string }; prevPkgId: string | null; headAnchorId: string | null }[] = [],
+  ) {
+    this.scoutMode = true;
+    this.commit((p) => {
+      for (const it of items) {
+        const c = p.cuts.find((x) => x.id === it.id);
+        if (!c) continue;
+        c.scoutRef = it.scoutRef;
+        if (it.scoutMeta) c.scoutMeta = it.scoutMeta;
+      }
+      const ids = new Set(p.cuts.map((c) => c.id));
+      const gids = new Set(p.cuts.map((c) => c.groupId));
+      const gRemap = new Map<string, string>();
+      const finalId = new Map<string, string>(); // 包內 id → 實際落地 id（撞名重生時對得上）
+      for (const a of additions) {
+        const c = a.cut;
+        const id = c.id && !ids.has(c.id) ? c.id : newId();
+        ids.add(id);
+        if (c.id) finalId.set(c.id, id);
+        let g = c.groupId ?? id;
+        if (gids.has(g) && !gRemap.has(g)) gRemap.set(g, newId("g")); // 撞本案既有群組才改（整組一致）
+        g = gRemap.get(g) ?? g;
+        // 插入點：包內前一顆的落點之後；沒有＝插在該路第一顆對上的 cut 之前；再沒有＝最後
+        const prev = a.prevPkgId ? (finalId.get(a.prevPkgId) ?? a.prevPkgId) : null;
+        let at = prev ? p.cuts.findIndex((x) => x.id === prev) : -1;
+        if (at < 0 && a.headAnchorId) at = p.cuts.findIndex((x) => x.id === a.headAnchorId) - 1;
+        if (at < -1) at = -1;
+        const anchor = at >= 0 ? p.cuts[at] : p.cuts.find((x) => x.id === a.headAnchorId);
+        const filmId = anchor?.filmId ?? p.films[0].id;
+        if (at < 0 && !a.headAnchorId) at = p.cuts.length - 1;
+        p.cuts.splice(at + 1, 0, {
+          id, groupId: g, filmId,
+          shot: c.shot ?? "", desc: c.desc ?? "", vo: c.vo ?? "", sup: c.sup ?? "",
+          imageRef: c.imageRef ?? null, // 照片「不」進分鏡圖——留在場勘欄（Armin 定案）
+          sketch: null, prompt: "", props: "", note: c.note ?? "",
+          hidden: true, // 溢出新 cut 預設隱藏（細灰格）：分鏡編號完全不動，照片有地方住
+          ...(c.scoutRef ? { scoutRef: c.scoutRef } : {}),
+          ...(c.scoutMeta ? { scoutMeta: c.scoutMeta } : {}),
+        });
+      }
+    });
   }
 
   addRefItem(chapterId: string) {
@@ -634,7 +804,7 @@ export class Store {
     this.commit((p) => {
       const last = p.milestones[p.milestones.length - 1];
       const base = last?.end || p.days[0]?.date || "";
-      p.milestones.push({ id: newId("m"), label: "新事項", start: base, end: base } as Milestone);
+      p.milestones.push({ id: newId("m"), label: t("新事項"), start: base, end: base } as Milestone);
     });
   }
 
@@ -697,6 +867,23 @@ export class Store {
         if (m.start > m.end) m.start = m.end; // 不晚於終點
       }
     });
+  }
+
+  // 景別／秒數欄顯示切換（純檢視，記在 localStorage）
+  setShowShot(on: boolean) { this.showShot = on; localStorage.setItem("stbShowShot", on ? "1" : "0"); this.emit(); }
+  setShowSec(on: boolean) { this.showSec = on; localStorage.setItem("stbShowSec", on ? "1" : "0"); this.emit(); }
+
+  // 秒數 inline 編輯：吃字串（可能含全形數字或單位），空/0/非數字＝拿掉欄位（回到「沒填」）
+  editSec(id: string, raw: string) {
+    const cut = this.project.cuts.find((c) => c.id === id);
+    if (!cut) return;
+    const half = raw.replace(/[０-９．]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0));
+    const n = parseFloat(half.replace(/[^0-9.]/g, ""));
+    const next = Number.isFinite(n) && n > 0 ? Math.round(n * 10) / 10 : undefined;
+    if (cut.sec === next) return;
+    this.snapshot();
+    if (next === undefined) delete cut.sec; else cut.sec = next;
+    this.touched();
   }
 
   editField(id: string, field: "desc" | "vo" | "sup" | "shot", value: string) {

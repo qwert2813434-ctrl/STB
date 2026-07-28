@@ -1,6 +1,9 @@
 import helpHtml from "./help.html?raw";
+import helpHtmlEn from "./help.en.html?raw";
+import helpHtmlJa from "./help.ja.html?raw";
 import { APP_VERSION, RELEASE_NOTES } from "./releaseNotes";
 import { openExternal } from "./persistence";
+import { locale, setLocale, t, type Locale } from "./i18n";
 
 // 說明視窗：工具列「?」開啟。兩個分頁——
 // 「使用說明」＝內嵌 行銷素材/PPM_使用說明.html（同套米白視覺，iframe srcdoc）；
@@ -18,18 +21,21 @@ export function openHelp() {
         <span class="help-title">STB</span>
         <span class="help-ver">v${APP_VERSION}</span>
         <span class="help-tabs">
-          <button class="help-tab on" data-htab="guide">使用說明</button>
-          <button class="help-tab" data-htab="about">關於與更新</button>
+          <button class="help-tab on" data-htab="guide">${t("使用說明")}</button>
+          <button class="help-tab" data-htab="about">${t("關於與更新")}</button>
         </span>
         <span class="spacer"></span>
-        <button class="help-close" aria-label="關閉">✕</button>
+        <button class="help-close" aria-label="${t("關閉")}">✕</button>
       </div>
       <div class="help-body">
-        <iframe class="help-frame" title="使用說明"></iframe>
+        <iframe class="help-frame" title="${t("使用說明")}"></iframe>
         <div class="help-about" style="display:none">
-          <p class="help-lede">STB — 為腳本與前製會議而生的 Mac App。<br>
-          資料全在本機：一個案子＝一個資料夾＋一份 project.json，無帳號、無雲端。</p>
-          <p><button class="help-link" data-hgithub>原始碼與最新版下載（GitHub）↗</button></p>
+          <p class="help-lede">${t("STB — 為腳本與前製會議而生的 Mac App。<br>資料全在本機：一個案子＝一個資料夾＋一份 project.json，無帳號、無雲端。")}</p>
+          <p><button class="help-link" data-hgithub>${t("原始碼與最新版下載（GitHub）↗")}</button></p>
+          <p class="help-langrow"><span class="help-langk">語言 · Language</span>
+            ${(["zh", "en"] as const).map((l) => `
+              <button class="help-lang${locale() === l ? " on" : ""}" data-hlang="${l}">${{ zh: "繁體中文", en: "English", ja: "日本語" }[l]}</button>`).join("")}
+          </p>
           ${RELEASE_NOTES.map((r) => `
             <div class="help-rel">
               <div class="help-relh"><b>v${r.version}</b><span>${r.date}</span></div>
@@ -41,7 +47,8 @@ export function openHelp() {
   document.body.appendChild(overlay);
 
   // 使用說明：srcdoc 內嵌（自帶完整樣式，不吃 app 的 CSS）
-  (overlay.querySelector(".help-frame") as HTMLIFrameElement).srcdoc = helpHtml;
+  (overlay.querySelector(".help-frame") as HTMLIFrameElement).srcdoc =
+    { zh: helpHtml, en: helpHtmlEn, ja: helpHtmlJa }[locale()];
 
   const frame = overlay.querySelector(".help-frame") as HTMLElement;
   const about = overlay.querySelector(".help-about") as HTMLElement;
@@ -59,6 +66,8 @@ export function openHelp() {
     const t = e.target as HTMLElement;
     if (t.closest(".help-close") || t === overlay) { close(); return; }
     if (t.closest("[data-hgithub]")) { openExternal(GITHUB_URL); return; }
+    const lg = t.closest("[data-hlang]") as HTMLElement | null;
+    if (lg) { setLocale(lg.dataset.hlang as Locale); return; }
     const tab = t.closest("[data-htab]") as HTMLElement | null;
     if (tab) {
       overlay.querySelectorAll(".help-tab").forEach((el) => el.classList.toggle("on", el === tab));

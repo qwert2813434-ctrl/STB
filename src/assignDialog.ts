@@ -1,5 +1,6 @@
 import type { Store } from "./store";
-import { chainRundown, hhmmToMin, minToHHMM } from "./model";
+import { chainRundown, hhmmToMin, minToHHMM, BLOCK_TYPE_LABELS } from "./model";
+import { t, tf } from "./i18n";
 
 // 「指派到時段」（＝設定場次）：分鏡章多選 cut 後，挑一個 Rundown 時段
 // 反向指派——製片先把卡片整理好，再一批一批分到場次，不用進 Rundown 一個個勾。
@@ -16,17 +17,17 @@ export function openBlockPicker(store: Store): Promise<string | null> {
       body += d.rundown.map((b, bi) => `
         <button class="bp-row" data-bp="${b.id}">
           <span class="bp-time">${minToHHMM(times[bi].start)}–${minToHHMM(times[bi].end)}</span>
-          <span class="bp-type">${b.type}</span>
-          <span class="bp-title">${esc(b.title || "（未命名時段）")}</span>
-          ${b.cutIds.length ? `<span class="bp-count">${b.cutIds.length} 顆</span>` : ""}
-        </button>`).join("") || `<div class="cp-empty">這天還沒有時段——先到 Rundown 新增時段。</div>`;
+          <span class="bp-type">${t(BLOCK_TYPE_LABELS[b.type])}</span>
+          <span class="bp-title">${esc(b.title || t("（未命名時段）"))}</span>
+          ${b.cutIds.length ? `<span class="bp-count">${tf("{n} 顆", { n: b.cutIds.length })}</span>` : ""}
+        </button>`).join("") || `<div class="cp-empty">${t("這天還沒有時段——先到 Rundown 新增時段。")}</div>`;
     });
 
     overlay.innerHTML = `
       <div class="cutpick-card">
-        <div class="cp-head">指派到時段 — 這批 cut 要在哪個場次拍</div>
+        <div class="cp-head">${t("指派到時段 — 這批 cut 要在哪個場次拍")}</div>
         <div class="bp-list">${body}</div>
-        <div class="cp-bar"><span class="spacer"></span><button class="cp-cancel">取消</button></div>
+        <div class="cp-bar"><span class="spacer"></span><button class="cp-cancel">${t("取消")}</button></div>
       </div>`;
     document.body.appendChild(overlay);
 

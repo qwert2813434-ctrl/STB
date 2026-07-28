@@ -241,6 +241,25 @@ fn unpack_project(src: String, dst_dir: String) -> Result<(), String> {
   Ok(())
 }
 
+// 存圖進系統相簿（iPad「存圖」的正解：直接進相簿，不繞分享面板——
+// 分享面板的「儲存影像」在沒有相簿權限時會靜默失敗，Armin 實機踩到）
+#[tauri::command]
+fn save_to_photos(app: tauri::AppHandle, path: String) -> Result<(), String> {
+  #[cfg(target_os = "ios")]
+  {
+    let p = path.clone();
+    app
+      .run_on_main_thread(move || unsafe { ios_share::save_to_album(&p) })
+      .map_err(|e| e.to_string())?;
+    Ok(())
+  }
+  #[cfg(not(target_os = "ios"))]
+  {
+    let _ = (&app, &path);
+    Err("僅 iOS 支援".into())
+  }
+}
+
 // 把「既有檔案」交給系統：iOS 分享面板／macOS Finder 顯示（打包案子的出口）
 #[tauri::command]
 fn share_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
@@ -411,6 +430,27 @@ mod ios_share {
     }
     // 放掉 alloc/init 的 +1（呈現機制自己會持有；同 pick_photos 的 leak 修正）
     let _: () = msg_send![avc, release];
+  }
+
+  // UIKit 的 C 函式：寫進系統相簿（需要 Info.plist 的 NSPhotoLibraryAddUsageDescription）
+  extern "C" {
+    fn UIImageWriteToSavedPhotosAlbum(
+      image: *mut AnyObject,
+      completion_target: *mut AnyObject,
+      completion_selector: *mut std::ffi::c_void,
+      context_info: *mut std::ffi::c_void,
+    );
+  }
+
+  pub unsafe fn save_to_album(path: &str) {
+    let ns_string = AnyClass::get("NSString").unwrap();
+    let cpath = std::ffi::CString::new(path).unwrap();
+    let ns_path: *mut AnyObject = msg_send![ns_string, stringWithUTF8String: cpath.as_ptr()];
+    let img_cls = AnyClass::get("UIImage").unwrap();
+    let img: *mut AnyObject = msg_send![img_cls, imageWithContentsOfFile: ns_path];
+    if !img.is_null() {
+      UIImageWriteToSavedPhotosAlbum(img, std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut());
+    }
   }
 }
 
@@ -696,7 +736,7 @@ pub fn run() {
   tauri::Builder::default()
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_opener::init())
-    .invoke_handler(tauri::generate_handler![save_project, load_project, import_asset, read_asset, read_file, save_file, open_path, video_for_embed, save_as, project_mtime, share_export, list_projects, move_dir, pick_photos, pack_project, unpack_project, share_path])
+    .invoke_handler(tauri::generate_handler![save_project, load_project, import_asset, read_asset, read_file, save_file, open_path, video_for_embed, save_as, project_mtime, share_export, list_projects, move_dir, pick_photos, pack_project, unpack_project, share_path, save_to_photos])
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(

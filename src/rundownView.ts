@@ -1,10 +1,11 @@
 import { bindEditKeys } from "./editKeys";
 import { bindPointerDrag } from "./pointerDrag";
 import type { Store } from "./store";
-import { computeCutNumbers, chainRundown, hhmmToMin, minToHHMM } from "./model";
+import { computeCutNumbers, chainRundown, hhmmToMin, minToHHMM, BLOCK_TYPE_LABELS } from "./model";
 import { openCutPicker, fileToWorkingImage, pickFiles } from "./cutPicker";
 import { openCropper } from "./cropper";
 import { saveImageAs } from "./persistence";
+import { t, tf } from "./i18n";
 
 // 渲染 Rundown 拍攝日程頁：真實時間區塊、地點/停車/道具、指派的 cut（顯示編號）。
 export function renderRundown(store: Store, root: HTMLElement, dayOverride?: import("./model").ShootDay) {
@@ -15,9 +16,9 @@ export function renderRundown(store: Store, root: HTMLElement, dayOverride?: imp
   const times = chainRundown(day.rundown, hhmmToMin(day.callTime));
 
   const portrait = p.aspect === "9:16"; // 指派的分鏡縮圖跟隨整片比例（停車照另計，維持橫式）
-  let html = `<p class="page-label">Rundown · 拍攝日程 · A5 橫</p><div class="page rundown">`;
+  let html = `<p class="page-label">${t("Rundown · 拍攝日程 · A5 橫")}</p><div class="page rundown">`;
   day.rundown.forEach((b, i) => {
-    const t = times[i];
+    const tm = times[i];
     let cutsHtml = "";
     for (const cid of b.cutIds) {
       const n = numbers.get(cid);
@@ -28,44 +29,44 @@ export function renderRundown(store: Store, root: HTMLElement, dayOverride?: imp
     }
     html += `
       <div class="rd-row" data-block="${b.id}">
-        <span class="rd-grip" data-block="${b.id}" title="拖曳排序">⠿</span>
-        <div class="rd-time">${minToHHMM(t.start)}–${minToHHMM(t.end)}</div>
+        <span class="rd-grip" data-block="${b.id}" title="${t("拖曳排序")}">⠿</span>
+        <div class="rd-time">${minToHHMM(tm.start)}–${minToHHMM(tm.end)}</div>
         <div class="rd-main">
           <div class="rd-head">
-            <span class="rd-type" data-btype="${b.id}" title="點擊切換類型" role="button">${b.type}</span>
-            <span class="rd-title cut-edit" contenteditable draggable="false" data-bitem="${b.id}" data-bf="title" data-ph="時段名稱">${esc(b.title)}</span>
+            <span class="rd-type" data-btype="${b.id}" title="${t("點擊切換類型")}" role="button">${t(BLOCK_TYPE_LABELS[b.type])}</span>
+            <span class="rd-title cut-edit" contenteditable draggable="false" data-bitem="${b.id}" data-bf="title" data-ph="${t("時段名稱")}">${esc(b.title)}</span>
           </div>
           <div class="rd-cols">
             <div class="rd-col-media">
               ${cutsHtml ? `<div class="rd-cuts">${cutsHtml}</div>` : ""}
               <div class="rd-tools">
-                <button class="ref-mini" data-assigncuts="${b.id}"><i>⌗</i> 對照分鏡</button>
-                <button class="ref-mini" data-parkimg="${b.id}">＋ 停車圖</button>
+                <button class="ref-mini" data-assigncuts="${b.id}"><i>⌗</i> ${t("對照分鏡")}</button>
+                <button class="ref-mini" data-parkimg="${b.id}">${t("＋ 停車圖")}</button>
               </div>
             </div>
             <div class="rd-col-text">
               <div class="rd-sub">
-                <span class="rd-pair"><span class="rd-k">地點</span><span class="cut-edit" contenteditable draggable="false" data-bitem="${b.id}" data-bf="loc" data-ph="地點">${esc(b.loc)}</span></span>
+                <span class="rd-pair"><span class="rd-k">${t("地點")}</span><span class="cut-edit" contenteditable draggable="false" data-bitem="${b.id}" data-bf="loc" data-ph="${t("地點")}">${esc(b.loc)}</span></span>
               </div>
               <div class="rd-sub">
-                <span class="rd-pair"><span class="rd-k">停車</span><span class="cut-edit" contenteditable draggable="false" data-bitem="${b.id}" data-bf="park" data-ph="停車資訊">${esc(b.park)}</span></span>
+                <span class="rd-pair"><span class="rd-k">${t("停車")}</span><span class="cut-edit" contenteditable draggable="false" data-bitem="${b.id}" data-bf="park" data-ph="${t("停車資訊")}">${esc(b.park)}</span></span>
               </div>
               <div class="rd-sub">
-                <span class="rd-pair"><span class="rd-k">道具</span><span class="cut-edit" contenteditable draggable="false" data-bitem="${b.id}" data-bf="props" data-ph="道具準備">${esc(b.props)}</span></span>
+                <span class="rd-pair"><span class="rd-k">${t("道具")}</span><span class="cut-edit" contenteditable draggable="false" data-bitem="${b.id}" data-bf="props" data-ph="${t("道具準備")}">${esc(b.props)}</span></span>
               </div>
-              ${b.parkImage ? `<div class="rd-parkrow"><span class="rd-park"><img src="${b.parkImage}" alt="停車位置" data-parkedit="${b.id}" draggable="false"><span class="rd-park-tag">停車</span><button class="rd-park-save" data-parksave="${b.id}" title="把停車圖存成檔案">⬇</button><button class="rd-park-x" data-parkdel="${b.id}" aria-label="移除停車圖">✕</button></span></div>` : ""}
+              ${b.parkImage ? `<div class="rd-parkrow"><span class="rd-park"><img src="${b.parkImage}" alt="${t("停車位置")}" data-parkedit="${b.id}" draggable="false"><span class="rd-park-tag">${t("停車")}</span><button class="rd-park-save" data-parksave="${b.id}" title="${t("把停車圖存成檔案")}">⬇</button><button class="rd-park-x" data-parkdel="${b.id}" aria-label="${t("移除停車圖")}">✕</button></span></div>` : ""}
             </div>
           </div>
         </div>
         <div class="rd-adj">
-          <button data-block="${b.id}" data-d="-5" aria-label="減 5 分">−5</button>
-          <span class="rd-dur">${b.durMin} 分</span>
-          <button data-block="${b.id}" data-d="5" aria-label="加 5 分">+5</button>
-          <button class="rd-del" data-del="${b.id}" aria-label="刪除時段">✕</button>
+          <button data-block="${b.id}" data-d="-5" aria-label="${t("減 5 分")}">−5</button>
+          <span class="rd-dur">${tf("{n} 分", { n: b.durMin })}</span>
+          <button data-block="${b.id}" data-d="5" aria-label="${t("加 5 分")}">+5</button>
+          <button class="rd-del" data-del="${b.id}" aria-label="${t("刪除時段")}">✕</button>
         </div>
       </div>`;
   });
-  html += `<div class="rd-addrow"><button data-addblock>＋ 新增時段</button></div>`;
+  html += `<div class="rd-addrow"><button data-addblock>${t("＋ 新增時段")}</button></div>`;
   html += `</div>`;
   root.innerHTML = html;
 }
@@ -133,7 +134,7 @@ async function pickParkImage(store: Store, blockId: string) {
   if (!f) return;
   // 先縮成工作圖再裁（iPad：原檔直餵會耗盡解碼資源）
   const url = await fileToWorkingImage(f);
-  if (!url) { alert("這張照片讀不進來——若原檔還在 iCloud，等幾秒再試一次。"); return; }
+  if (!url) { alert(t("這張照片讀不進來——若原檔還在 iCloud，等幾秒再試一次。")); return; }
   const cropped = await openCropper(url, 16 / 9, { allowReplace: true });
   if (cropped) store.setBlockParkImage(blockId, cropped);
 }

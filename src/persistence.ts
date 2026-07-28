@@ -1,10 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { appDataDir, documentDir } from "@tauri-apps/api/path";
+import { appDataDir, documentDir, appCacheDir } from "@tauri-apps/api/path";
 import type { Project } from "./model";
 import { openTrimmer, type TrimRange } from "./trimmer";
 import { askName } from "./nameDialog";
+import { t, tf } from "./i18n";
 
 export interface VideoImport {
   path: string;
@@ -110,7 +111,7 @@ export async function listMobileProjects(): Promise<RecentEntry[]> {
 
 // tauri dialog 在 iOS 回傳 file:// URL（中文百分比編碼）；Rust fs 要純路徑
 // （Armin 實測：匯入失敗 No such file or directory 的病根）
-function asFsPath(p: string): string {
+export function asFsPath(p: string): string {
   if (!p.startsWith("file://")) return p;
   try { return decodeURIComponent(p.slice(7)); } catch { return p.slice(7); }
 }
@@ -132,7 +133,7 @@ export async function unpackPacked(rawPath: string, destParent?: string): Promis
       throw err;
     }
   }
-  throw new Error("同名資料夾太多，清一下再解");
+  throw new Error(t("同名資料夾太多，清一下再解"));
 }
 
 // iPad 建案／另存共用：App 內輸入案名 → Documents/{案名}；
@@ -149,7 +150,7 @@ async function createInDocuments(srcDir: string | null, contents: string, title:
       localStorage.setItem("lastProjectDir", dst);
       return dst;
     } catch (err) {
-      if (String(err).includes("已有案子")) { alert("已經有同名的案子——換個名字。"); def = name; continue; }
+      if (String(err).includes("已有案子")) { alert(t("已經有同名的案子——換個名字。")); def = name; continue; }
       throw err;
     }
   }
@@ -160,8 +161,8 @@ async function createInDocuments(srcDir: string | null, contents: string, title:
 // 只亮 .json、選到什麼一目瞭然，再從檔案位置推回案子資料夾。
 export async function chooseFolderAndLoad(): Promise<Project | null> {
   const path = await open({
-    title: "開啟案子：選 project.json 或打包案子（.stb）",
-    filters: [{ name: "STB 案子（project.json／.stb）", extensions: ["json", "stb"] }],
+    title: t("開啟案子：選 project.json 或打包案子（.stb）"),
+    filters: [{ name: t("STB 案子（project.json／.stb）"), extensions: ["json", "stb"] }],
   });
   if (typeof path !== "string") return null;
   // 打包案子：先在同層解開成資料夾再載入
@@ -183,8 +184,8 @@ export function detachDir() {
 // 走「儲存對話框」——輸入案名＝資料夾名，按鈕就是「儲存」。
 // （不再用資料夾選擇器：按鈕顯示 Open、檔案灰色，Armin 實測反直覺。）
 export async function createProjectFolder(contents: string, suggestedName: string): Promise<string | null> {
-  if (isMobile()) return createInDocuments(null, contents, "輸入案名（案子會存在「檔案」App ▸ STB）", suggestedName);
-  const path = await save({ defaultPath: suggestedName, title: "輸入案名（會以案名建立案子資料夾）" });
+  if (isMobile()) return createInDocuments(null, contents, t("輸入案名（案子會存在「檔案」App ▸ STB）"), suggestedName);
+  const path = await save({ defaultPath: suggestedName, title: t("輸入案名（會以案名建立案子資料夾）") });
   if (!path) return null;
   await invoke("save_as", { srcDir: null, dstDir: path, contents });
   projectDir = path;
@@ -203,8 +204,8 @@ export async function saveToCurrent(contents: string): Promise<boolean> {
 // 之後的編輯與自動存檔都寫到新家——版本備份、改稿分支都靠這顆。
 // 同樣走「儲存對話框」：輸入新案名＝新資料夾名。
 export async function chooseFolderAndSaveAs(contents: string, suggestedName: string): Promise<string | null> {
-  if (isMobile()) return createInDocuments(currentDir(), contents, "另存新檔：輸入新案名（整個案子會複製一份）", `${suggestedName} 副本`);
-  const path = await save({ defaultPath: `${suggestedName} 副本`, title: "另存新檔：輸入新案名（整個案子會複製過去）" });
+  if (isMobile()) return createInDocuments(currentDir(), contents, t("另存新檔：輸入新案名（整個案子會複製一份）"), tf("{name} 副本", { name: suggestedName }));
+  const path = await save({ defaultPath: tf("{name} 副本", { name: suggestedName }), title: t("另存新檔：輸入新案名（整個案子會複製過去）") });
   if (!path) return null;
   await invoke("save_as", { srcDir: projectDir, dstDir: path, contents });
   projectDir = path;
@@ -221,7 +222,14 @@ export async function saveImageAs(dataUrl: string, suggestedName: string): Promi
   const ext = m[1].toLowerCase() === "jpeg" ? "jpg" : m[1].toLowerCase();
   // 標題可能含換行／斜線（欄位現在允許 shift+Enter 換行），不能直接當檔名
   const name = (suggestedName.replace(/[\\/:*?"<>|\r\n]+/g, "_").trim() || "圖片").slice(0, 60);
-  const path = await save({ defaultPath: `${name}.${ext}`, title: "存圖片" });
+  // iPad：直接存進系統相簿（跟 STB Camera 同體驗）——分享面板繞路又容易失敗（Armin 實機回報）
+  if (isMobile()) {
+    const dst = `${(await appCacheDir()).replace(/\/+$/, "")}/${name}.${ext}`;
+    await invoke("save_file", { path: dst, b64: m[2] });
+    await invoke("save_to_photos", { path: dst });
+    return true;
+  }
+  const path = await save({ defaultPath: `${name}.${ext}`, title: t("存圖片") });
   if (!path) return false;
   await invoke("save_file", { path, b64: m[2] });
   return true;
@@ -243,7 +251,7 @@ function videoMime(path: string): string {
 // 讀案子裡的檔案 → Blob URL。播放不走 asset protocol：
 // WKWebView 對自訂協定的影片串流不可靠、失敗又無聲；bytes→Blob 保證 <video> 吃得下。
 async function assetBlobUrl(relPath: string): Promise<string> {
-  if (!projectDir) throw new Error("尚未開啟案子");
+  if (!projectDir) throw new Error(t("尚未開啟案子"));
   const buf = await invoke<ArrayBuffer>("read_asset", { dir: projectDir, rel: relPath });
   return URL.createObjectURL(new Blob([buf], { type: videoMime(relPath) }));
 }
@@ -261,12 +269,12 @@ function imageMime(path: string): string {
 // 已有 project.json 的資料夾請走「開啟案子」載入，避免把原內容覆蓋掉）。
 async function importVideo(src: string): Promise<VideoImport | null> {
   if (!projectDir) {
-    const dir = await open({ directory: true, title: "選擇案子資料夾（影片與 project.json 將存在這裡）" });
+    const dir = await open({ directory: true, title: t("選擇案子資料夾（影片與 project.json 將存在這裡）") });
     if (typeof dir !== "string") return null;
     let hasProject = false;
     try { await invoke<string>("load_project", { dir }); hasProject = true; } catch { /* 沒有 project.json */ }
     if (hasProject) {
-      alert("這個資料夾已經有案子檔（project.json）。請先按頂欄「開啟案子…」載入它，再加入影片，避免覆蓋原內容。");
+      alert(t("這個資料夾已經有案子檔（project.json）。請先按頂欄「開啟案子…」載入它，再加入影片，避免覆蓋原內容。"));
       return null;
     }
     projectDir = dir;
@@ -287,8 +295,8 @@ async function importVideo(src: string): Promise<VideoImport | null> {
 // 選本機影片檔 → 複製進案子 assets/ → 裁切 → 抽首圖
 export async function chooseVideoImport(): Promise<VideoImport | null> {
   const src = await open({
-    title: "選擇影片檔",
-    filters: [{ name: "影片", extensions: VID_EXTS }],
+    title: t("選擇影片檔"),
+    filters: [{ name: t("影片"), extensions: VID_EXTS }],
   });
   if (typeof src !== "string") return null;
   return importVideo(src);
@@ -308,12 +316,12 @@ export async function chooseMediaImport(): Promise<
     const [f] = await pickFiles("image/*", false);
     if (!f) return null;
     const url = await fileToWorkingImage(f); // 先縮再進裁切器（iPad 解碼預算）
-    if (!url) { alert("這張照片讀不進來——等幾秒再試一次。"); return null; }
+    if (!url) { alert(t("這張照片讀不進來——等幾秒再試一次。")); return null; }
     return { kind: "image", url };
   }
   const src = await open({
-    title: "選擇圖片或影片",
-    filters: [{ name: "圖片或影片", extensions: [...IMG_EXTS, ...VID_EXTS] }],
+    title: t("選擇圖片或影片"),
+    filters: [{ name: t("圖片或影片"), extensions: [...IMG_EXTS, ...VID_EXTS] }],
   });
   if (typeof src !== "string") return null;
   const ext = src.split(".").pop()?.toLowerCase() ?? "";
@@ -334,7 +342,7 @@ export async function mountInlineVideo(container: HTMLElement, relPath: string, 
   try {
     url = await assetBlobUrl(relPath);
   } catch (err) {
-    container.innerHTML = `<span class="thumb-add">影片載入失敗：${err}</span>`;
+    container.innerHTML = `<span class="thumb-add">${tf("影片載入失敗：{err}", { err: String(err) })}</span>`;
     return null;
   }
   container.innerHTML = "";

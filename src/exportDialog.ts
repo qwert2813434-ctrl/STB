@@ -1,3 +1,4 @@
+import { exportForSTBC } from "./stbcExport";
 import type { Store } from "./store";
 import { collectChapters, coverSlideHtml, titleSlideHtml, logoSlideHtml } from "./pages";
 import { rasterLogo } from "./logoAsset";
@@ -8,6 +9,7 @@ import { jsPDF } from "jspdf";
 import { buildEditablePptx } from "./pptxNative";
 import { save } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
+import { t, tf } from "./i18n";
 
 // 匯出中心：先把每頁用 html2canvas 截成圖（沿用簡報字體/版面），縮圖預覽
 // 確認後組成 PDF（A5 橫）或 PPTX（16:9，Keynote／PowerPoint 可直接開）。
@@ -26,17 +28,18 @@ export async function openExportDialog(store: Store) {
   overlay.innerHTML = `
     <div class="ex-panel">
       <div class="ex-head">
-        <span class="ex-title">匯出</span>
-        <label class="ex-opt"><input type="checkbox" data-extitles checked> 封面＋章節標題頁</label>
-        <label class="ex-opt"><input type="checkbox" data-exlabels> 頁面小標</label>
+        <span class="ex-title">${t("匯出")}</span>
+        <label class="ex-opt"><input type="checkbox" data-extitles checked> ${t("封面＋章節標題頁")}</label>
+        <label class="ex-opt"><input type="checkbox" data-exlabels> ${t("頁面小標")}</label>
         <span class="spacer"></span>
-        <button class="ex-go" data-exgo="pdf">匯出 PDF</button>
-        <button class="ex-go" data-exgo="pptx">匯出 PPTX（可編輯）</button>
-        <button class="ex-go" data-expack title="整個案子（含影片素材）壓成一個 .stb 檔——對方的 STB 開啟即還原完整案子">打包案子</button>
-        <button class="ex-close" aria-label="關閉">✕</button>
+        <button class="ex-go" data-exgo="pdf">${t("匯出 PDF")}</button>
+        <button class="ex-go" data-exgo="pptx">${t("匯出 PPTX（可編輯）")}</button>
+        <button class="ex-go" data-expack title="${t("整個專案（含影片素材）壓成一個 .stb 檔——對方的 STB 開啟即還原完整專案")}">${t("打包專案匯出")}</button>
+        <button class="ex-go" data-exstbc title="${t("只含分鏡章的輕量 .stb——AirDrop 給手機 STB Camera 場勘用")}">${t("匯出分鏡 for STBC")}</button>
+        <button class="ex-close" aria-label="${t("關閉")}">✕</button>
       </div>
-      <div class="ex-hint">勾選要匯出的章節。PDF＝與縮圖完全一致的成品；PPTX＝可編輯重排版——文字可改、圖片可換、本機影片嵌入（Keynote／PowerPoint 可播）、影片連結可點。打包案子＝整案（含素材）壓成一個 .stb 檔，傳給另一台 Mac／iPad 的 STB 直接開。</div>
-      <div class="ex-body"><div class="ex-status">擷取頁面中…</div></div>
+      <div class="ex-hint">${t("勾選要匯出的章節。PDF＝與縮圖完全一致的成品；PPTX＝可編輯重排版——文字可改、圖片可換、本機影片嵌入（Keynote／PowerPoint 可播）、影片連結可點。打包專案＝整案（含素材）壓成一個 .stb 檔，傳給另一台 Mac／iPad 的 STB 直接開；匯出分鏡 for STBC＝輕量分鏡包給手機場勘。")}</div>
+      <div class="ex-body"><div class="ex-status">${t("擷取頁面中…")}</div></div>
     </div>`;
   document.body.appendChild(overlay);
   const body = overlay.querySelector(".ex-body") as HTMLElement;
@@ -75,7 +78,7 @@ export async function openExportDialog(store: Store) {
       let done = 0;
       const tick = () => {
         const s = body.querySelector(".ex-status");
-        if (s) s.textContent = `擷取頁面中… ${++done} / ${total}`;
+        if (s) s.textContent = tf("擷取頁面中… {done} / {total}", { done: ++done, total });
       };
       // LOGO 若是 SVG：先轉 PNG 再截（html2canvas 畫 SVG 會照原生尺寸、
       // 忽略 CSS 縮放 → 之前縮圖只剩一個角）
@@ -114,15 +117,15 @@ export async function openExportDialog(store: Store) {
       ? `<input type="checkbox" data-exch="${i}" ${off ? "" : "checked"}>`
       : `<span class="ex-covertag">●</span>`;
     return `<div class="ex-ch${off ? " off" : ""}">
-      <label class="ex-chname">${check} ${en}<span class="ex-zh">${zh}</span></label>
+      <label class="ex-chname">${check} ${en}${zh ? `<span class="ex-zh">${zh}</span>` : ""}</label>
       <div class="ex-thumbs">${imgs.map((m) => `<img src="${m.img}" loading="lazy" alt="">`).join("")}</div>
     </div>`;
   }
 
   function renderPreview() {
-    if (!chapters.length) { body.innerHTML = `<div class="ex-status">沒有可匯出的內容——先在各章加入內容。</div>`; return; }
+    if (!chapters.length) { body.innerHTML = `<div class="ex-status">${t("沒有可匯出的內容——先在各章加入內容。")}</div>`; return; }
     let html = "";
-    if (withTitles() && cover) html += groupHtml(-1, "COVER", "首頁＋封面", [...(logo ? [logo] : []), cover]);
+    if (withTitles() && cover) html += groupHtml(-1, "COVER", t("首頁＋封面"), [...(logo ? [logo] : []), cover]);
     chapters.forEach((ch, i) => {
       const imgs = [...(withTitles() && ch.title ? [ch.title] : []), ...ch.pages];
       html += groupHtml(i, ch.en, ch.zh, imgs);
@@ -146,11 +149,11 @@ export async function openExportDialog(store: Store) {
   async function doExport(kind: "pdf" | "pptx") {
     if (busy) return;
     const imgs = selectedImgs();
-    if (!imgs.length) { alert("沒有選取任何頁面。"); return; }
+    if (!imgs.length) { alert(t("沒有選取任何頁面。")); return; }
     busy = true;
     const toast = document.createElement("div");
     toast.className = "pv-toast";
-    toast.textContent = `組裝 ${kind.toUpperCase()}…`;
+    toast.textContent = tf("組裝 {kind}…", { kind: kind.toUpperCase() });
     document.body.appendChild(toast);
     try {
       const name = (store.get().meta.title || "PPM").replace(/[\/:*?"<>|]/g, "-");
@@ -187,7 +190,7 @@ export async function openExportDialog(store: Store) {
       if (isMobile()) {
         // iPad/iPhone：沒有「另存到哪」對話框——彈原生分享面板
         //（AirDrop／存到檔案／LINE 都從這裡出去）
-        toast.textContent = "開啟分享…";
+        toast.textContent = t("開啟分享…");
         await invoke("share_export", { name: `${name}_PPM.${kind}`, b64 });
         close();
         return;
@@ -199,7 +202,7 @@ export async function openExportDialog(store: Store) {
       try { await invoke("open_path", { path }); } catch { /* 檔已存好，開檔失敗不吵 */ }
     } catch (err) {
       console.error(err);
-      alert(`匯出失敗：${(err as Error)?.message ?? err}`);
+      alert(tf("匯出失敗：{msg}", { msg: String((err as Error)?.message ?? err) }));
     } finally {
       toast.remove();
       busy = false;
@@ -219,7 +222,7 @@ export async function openExportDialog(store: Store) {
   // （Mac：存檔對話框＋Finder 顯示；iPad：寫進快取→分享面板）
   async function doPack() {
     const dir = currentDir();
-    if (!dir) { alert("案子還沒儲存——先按「儲存案子」，打包才有東西可包。"); return; }
+    if (!dir) { alert(t("案子還沒儲存——先按「儲存專案」，打包才有東西可包。")); return; }
     const name = (store.get().meta.title || "案子").replace(/[\/:*?"<>|]/g, "-");
     try {
       if (isMobile()) {
@@ -229,13 +232,13 @@ export async function openExportDialog(store: Store) {
         close();
         return;
       }
-      const path = await save({ defaultPath: `${name}.stb`, filters: [{ name: "STB 打包案子", extensions: ["stb"] }] });
+      const path = await save({ defaultPath: `${name}.stb`, filters: [{ name: t("STB 打包案子"), extensions: ["stb"] }] });
       if (!path) return;
       await invoke("pack_project", { dir, dst: path });
       close();
       try { await invoke("share_path", { path }); } catch { /* 檔已打好，顯示失敗不吵 */ }
     } catch (err) {
-      alert(`打包失敗：${err}`);
+      alert(tf("打包失敗：{err}", { err: String(err) }));
     }
   }
 
@@ -243,25 +246,26 @@ export async function openExportDialog(store: Store) {
     const t = e.target as HTMLElement;
     if (t.closest(".ex-close")) { close(); return; }
     if (t.closest("[data-expack]")) { void doPack(); return; }
+    if (t.closest("[data-exstbc]")) { void exportForSTBC(store); return; }
     const go = t.closest("[data-exgo]") as HTMLElement | null;
     if (go) void doExport(go.dataset.exgo as "pdf" | "pptx");
   });
   overlay.addEventListener("change", (e) => {
-    const t = e.target as HTMLInputElement;
-    if (t.dataset.exch !== undefined) {
-      const i = Number(t.dataset.exch);
-      if (t.checked) excluded.delete(i); else excluded.add(i);
+    const el = e.target as HTMLInputElement;
+    if (el.dataset.exch !== undefined) {
+      const i = Number(el.dataset.exch);
+      if (el.checked) excluded.delete(i); else excluded.add(i);
       renderPreview();
-    } else if (t.hasAttribute("data-extitles")) {
+    } else if (el.hasAttribute("data-extitles")) {
       renderPreview();
-    } else if (t.hasAttribute("data-exlabels")) { // 小標開關要重截圖
-      body.innerHTML = `<div class="ex-status">擷取頁面中…</div>`;
+    } else if (el.hasAttribute("data-exlabels")) { // 小標開關要重截圖
+      body.innerHTML = `<div class="ex-status">${t("擷取頁面中…")}</div>`;
       void captureAll().then(renderPreview).catch(showCaptureError);
     }
   });
 
   const showCaptureError = (err: unknown) => {
-    body.innerHTML = `<div class="ex-status">擷取失敗：${String((err as Error)?.message ?? err).replace(/[&<>]/g, "")}</div>`;
+    body.innerHTML = `<div class="ex-status">${tf("擷取失敗：{msg}", { msg: String((err as Error)?.message ?? err).replace(/[&<>]/g, "") })}</div>`;
   };
   try {
     await (document as unknown as { fonts?: { ready: Promise<unknown> } }).fonts?.ready;

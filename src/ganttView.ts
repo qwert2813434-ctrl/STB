@@ -1,6 +1,7 @@
 import { bindEditKeys } from "./editKeys";
 import type { Store } from "./store";
 import { GANTT_COLORS } from "./model";
+import { t } from "./i18n";
 
 // SCHEDULE 大項：製作時程甘特圖。
 // 列＝事項（名稱可打字、起訖日期可改、可選色、可上下移動）；
@@ -33,7 +34,7 @@ function ganttSpan(ms: { start: string; end: string }[]) {
 export function renderGantt(store: Store, root: HTMLElement) {
   const ms = store.get().milestones;
   const { min, span } = ganttSpan(ms);
-  let html = `<p class="page-label">Schedule · 製作時程 · A5 橫</p><div class="page gantt">`;
+  let html = `<p class="page-label">${t("Schedule · 製作時程 · A5 橫")}</p><div class="page gantt">`;
 
   ms.forEach((m, idx) => {
     const s = d2n(m.start), e = d2n(m.end) + DAY;
@@ -44,31 +45,31 @@ export function renderGantt(store: Store, root: HTMLElement) {
     html += `
       <div class="gt-row" data-ms="${m.id}">
         <span class="gt-move">
-          <button class="gt-up" data-mup="${m.id}" ${idx === 0 ? "disabled" : ""} aria-label="上移">▲</button>
-          <button class="gt-down" data-mdown="${m.id}" ${idx === ms.length - 1 ? "disabled" : ""} aria-label="下移">▼</button>
+          <button class="gt-up" data-mup="${m.id}" ${idx === 0 ? "disabled" : ""} aria-label="${t("上移")}">▲</button>
+          <button class="gt-down" data-mdown="${m.id}" ${idx === ms.length - 1 ? "disabled" : ""} aria-label="${t("下移")}">▼</button>
         </span>
-        <button class="gt-swatch" data-mswatch="${m.id}" style="background:${color}" title="選顏色"></button>
-        <div class="gt-label cut-line" contenteditable draggable="false" data-mlabel="${m.id}" data-ph="事項">${esc(m.label)}</div>
+        <button class="gt-swatch" data-mswatch="${m.id}" data-c="${color}" style="background:${color}" title="${t("選顏色")}"></button>
+        <div class="gt-label cut-line" contenteditable draggable="false" data-mlabel="${m.id}" data-ph="${t("事項")}">${esc(m.label)}</div>
         <div class="gt-track">
-          ${ok ? `<div class="gt-bar" style="left:${left}%;width:${width}%;background:${color}" data-mbar="${m.id}" title="拖曳移動；拉左右緣改起訖日">
-            <span class="gt-resize-l" data-mresizel="${m.id}" title="調整起始日"></span>
+          ${ok ? `<div class="gt-bar" data-c="${color}" style="left:${left}%;width:${width}%;background:${color}" data-mbar="${m.id}" title="${t("拖曳移動；拉左右緣改起訖日")}">
+            <span class="gt-resize-l" data-mresizel="${m.id}" title="${t("調整起始日")}"></span>
             <span class="gt-dates">${fmtMD(m.start)}${m.end !== m.start ? `–${fmtMD(m.end)}` : ""}</span>
-            <span class="gt-resize" data-mresize="${m.id}" title="調整結束日"></span>
-          </div>` : `<span class="gt-nodate">未設日期</span>`}
+            <span class="gt-resize" data-mresize="${m.id}" title="${t("調整結束日")}"></span>
+          </div>` : `<span class="gt-nodate">${t("未設日期")}</span>`}
         </div>
         <input type="date" class="gt-date" data-mdate="${m.id}" data-df="start" value="${m.start}">
         <input type="date" class="gt-date" data-mdate="${m.id}" data-df="end" value="${m.end}">
-        <button class="gt-del" data-mdel="${m.id}" aria-label="刪除事項">✕</button>
+        <button class="gt-del" data-mdel="${m.id}" aria-label="${t("刪除事項")}">✕</button>
         ${openPalette === m.id ? paletteHtml(m.id, color) : ""}
       </div>`;
   });
-  html += `<div class="gt-addrow"><button data-madd>＋ 新增事項</button></div></div>`;
+  html += `<div class="gt-addrow"><button data-madd>${t("＋ 新增事項")}</button></div></div>`;
   root.innerHTML = html;
 }
 
 function paletteHtml(id: string, current: string): string {
   const dots = GANTT_COLORS.map(
-    (c) => `<button class="gt-dot${c === current ? " on" : ""}" style="background:${c}" data-mcolor="${id}" data-c="${c}" aria-label="顏色"></button>`
+    (c) => `<button class="gt-dot${c === current ? " on" : ""}" style="background:${c}" data-mcolor="${id}" data-c="${c}" aria-label="${t("顏色")}"></button>`
   ).join("");
   return `<div class="gt-palette">${dots}</div>`;
 }

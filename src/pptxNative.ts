@@ -1,12 +1,13 @@
 import PptxGenJS from "pptxgenjs";
 import type { Store } from "./store";
-import type { Project, RefItem, ShootDay } from "./model";
-import { PORTRAIT_CHAPTERS, computeCutNumbers, chainRundown, hhmmToMin, minToHHMM, PER_PAGE, GANTT_COLORS } from "./model";
+import type { Project, RefItem, ShootDay, Cut } from "./model";
+import { aspectSpec, PORTRAIT_CHAPTERS, computeCutNumbers, chainRundown, hhmmToMin, minToHHMM, PER_PAGE, GANTT_COLORS, BLOCK_TYPE_LABELS } from "./model";
 import { cutRefLabel } from "./cutPicker";
 import { chapterPlan } from "./pages";
 import { isTauri, currentDir } from "./persistence";
 import { projectLogo, rasterLogo } from "./logoAsset";
 import { invoke } from "@tauri-apps/api/core";
+import { t, tf, locale, chapterTitle } from "./i18n";
 
 // 可編輯 PPTX：不是把頁面截成圖，而是照 App 版面邏輯用「原生物件」重排——
 // 文字＝真文字框（客戶可改人名/時間/地點/腳本字）、圖片＝獨立圖片物件（可換）、
@@ -21,7 +22,9 @@ const MX = 0.45;              // 左右邊界
 const TOP = 0.72;             // 內容起點（頁首小標下方）
 const INK = "2b2a27", INK2 = "55534e", MUTED = "8f8d87", LINE = "e3e1d9";
 const BLUE = "185fa5", GREEN = "3b6d11";
-const FONT = "PingFang TC";
+// PPTX 是交到客戶手上的檔案：字型必須對方機器有——
+// ja 用 Yu Gothic（Win 內建、Mac Office 隨附），en 用 Arial（最保險），zh 維持 PingFang TC。
+const FONT = { zh: "PingFang TC", en: "Arial", ja: "Yu Gothic" }[locale()];
 
 export interface PptxOptions {
   ids: Set<string>;           // 要匯出的章節 id
@@ -46,18 +49,19 @@ export async function buildEditablePptx(store: Store, opts: PptxOptions): Promis
   for (let i = 0; i < plan.length; i++) {
     const ch = plan[i];
     if (!opts.ids.has(ch.id)) continue;
-    if (opts.withTitles) titleSlide(pptx, ch.en, ch.label, i + 1);
-    opts.onProgress?.(`組裝 PPTX…${ch.label}`);
+    const ct = chapterTitle(ch);
+    if (opts.withTitles) titleSlide(pptx, ct.cap, ct.sub, i + 1);
+    opts.onProgress?.(tf("組裝 PPTX…{label}", { label: ct.sub || ct.cap }));
     if (ch.kind === "storyboard") {
-      stbSlides(pptx, p, ch.en, ch.label, store.portraitDense);
+      stbSlides(pptx, p, ct.cap, ct.sub, store.portraitDense, store.showShot, store.showSec);
     } else if (ch.kind === "schedule") {
-      ganttSlide(pptx, p, ch.en, ch.label);
+      ganttSlide(pptx, p, ct.cap, ct.sub);
       for (let d = 0; d < p.days.length; d++) {
-        callSheetSlide(pptx, p, p.days[d], d, ch.en);
-        rundownSlides(pptx, p, p.days[d], d, ch.en);
+        callSheetSlide(pptx, p, p.days[d], d, ct.cap);
+        rundownSlides(pptx, p, p.days[d], d, ct.cap);
       }
     } else {
-      await refSlides(pptx, p, ch.id, ch.en, ch.label, opts.onProgress);
+      await refSlides(pptx, p, ch.id, ct.cap, ct.sub, opts.onProgress);
     }
   }
   return (await pptx.write({ outputType: "base64" })) as string;
@@ -66,7 +70,7 @@ export async function buildEditablePptx(store: Store, opts: PptxOptions): Promis
 // ---- 共用小件 ----
 
 function header(sl: Slide, en: string, zh: string) {
-  sl.addText(`${en} · ${zh}`, {
+  sl.addText(zh ? `${en} · ${zh}` : en, {
     x: MX, y: 0.16, w: W - MX * 2, h: 0.3,
     fontFace: FONT, fontSize: 9.5, color: MUTED, charSpacing: 2,
   });
@@ -85,14 +89,15 @@ async function logoSlide(pptx: PptxGenJS, p: Project) {
 
 function coverSlide(pptx: PptxGenJS, p: Project) {
   const sl = pptx.addSlide();
-  sl.addText(p.meta.title || "未命名案子", { x: MX, y: 0.85, w: W - MX * 2, h: 0.75, fontFace: FONT, fontSize: 30, bold: true, color: INK });
-  sl.addText(`${p.mode === "schedule" ? "拍攝通告" : "PPM ・ 前製會議"} ・ ${p.meta.client}`, { x: MX, y: 1.62, w: W - MX * 2, h: 0.35, fontFace: FONT, fontSize: 12.5, color: MUTED });
+  sl.addText(p.meta.title || t("未命名案子"), { x: MX, y: 0.85, w: W - MX * 2, h: 0.75, fontFace: FONT, fontSize: 30, bold: true, color: INK });
+  sl.addText(`${p.mode === "schedule" ? t("拍攝通告") : t("PPM ・ 前製會議")} ・ ${p.meta.client}`, { x: MX, y: 1.62, w: W - MX * 2, h: 0.35, fontFace: FONT, fontSize: 12.5, color: MUTED });
   const rows = chapterPlan(p); // 目錄只列會出場的章
   rows.forEach((c, i) => {
+    const ct = chapterTitle(c);
     sl.addText([
       { text: `${String(i + 1).padStart(2, "0")}   `, options: { fontSize: 10, color: MUTED, fontFace: "Courier New" } },
-      { text: c.en, options: { fontSize: 12, color: INK, fontFace: FONT } },
-      { text: `　${c.label}`, options: { fontSize: 11, color: MUTED, fontFace: FONT } },
+      { text: ct.cap, options: { fontSize: 12, color: INK, fontFace: FONT } },
+      ...(ct.sub ? [{ text: `　${ct.sub}`, options: { fontSize: 11, color: MUTED, fontFace: FONT } }] : []),
     ], { x: MX, y: 2.25 + i * 0.34, w: 6.5, h: 0.32 });
   });
 }
@@ -101,7 +106,7 @@ function titleSlide(pptx: PptxGenJS, en: string, zh: string, index: number) {
   const sl = pptx.addSlide();
   sl.addText(String(index).padStart(2, "0"), { x: 0, y: 1.85, w: W, h: 0.35, align: "center", fontFace: "Courier New", fontSize: 12, color: MUTED, charSpacing: 4 });
   sl.addText(en, { x: 0, y: 2.25, w: W, h: 0.75, align: "center", fontFace: FONT, fontSize: 34, bold: true, color: INK });
-  sl.addText(zh, { x: 0, y: 3.05, w: W, h: 0.4, align: "center", fontFace: FONT, fontSize: 13, color: MUTED });
+  if (zh) sl.addText(zh, { x: 0, y: 3.05, w: W, h: 0.4, align: "center", fontFace: FONT, fontSize: 13, color: MUTED });
 }
 
 // 影片項目：嵌入 mp4（有海報當封面）。過大或 .mov 容器 → Rust 用 avconvert
@@ -111,14 +116,14 @@ function titleSlide(pptx: PptxGenJS, en: string, zh: string, index: number) {
 async function mediaOrImage(sl: Slide, it: RefItem, x: number, y: number, w: number, h: number, onProgress?: (m: string) => void) {
   if (it.videoFile && isTauri() && currentDir()) {
     try {
-      onProgress?.(`處理影片…${it.title || it.videoFile}（大檔自動轉 720p，可能需要一點時間）`);
+      onProgress?.(tf("處理影片…{name}（大檔自動轉 720p，可能需要一點時間）", { name: it.title || it.videoFile }));
       // 首尾裁切點一併帶給 Rust：stb-trim 轉檔時直接切出該段（客戶只看到裁好的）
       const buf = await invoke<ArrayBuffer>("video_for_embed", {
         dir: currentDir(), rel: it.videoFile, maxMb: 60,
         trimStart: it.trimStart ?? null, trimEnd: it.trimEnd ?? null,
       });
       if (buf.byteLength > 0 && buf.byteLength <= 150 * 1024 * 1024) {
-        onProgress?.(`嵌入影片…${it.title || it.videoFile}`);
+        onProgress?.(tf("嵌入影片…{name}", { name: it.title || it.videoFile }));
         const m: Record<string, unknown> = { type: "video", data: `video/mp4;base64,${bufToB64(buf)}`, x, y, w, h };
         if (it.imageRef) m.cover = it.imageRef; // 海報圖當影片封面
         sl.addMedia(m as never);
@@ -128,7 +133,7 @@ async function mediaOrImage(sl: Slide, it: RefItem, x: number, y: number, w: num
   }
   if (it.imageRef) {
     const io: Record<string, unknown> = { data: it.imageRef, x, y, w, h };
-    if (it.videoUrl) io.hyperlink = { url: it.videoUrl, tooltip: "播放影片" };
+    if (it.videoUrl) io.hyperlink = { url: it.videoUrl, tooltip: t("播放影片") };
     sl.addImage(io as never);
   }
 }
@@ -145,11 +150,11 @@ function itemTexts(sl: Slide, store: Store, it: RefItem, x: number, y: number, w
     cy += big ? 0.78 : 0.57;
   }
   if (it.cutRefs?.length) {
-    sl.addText(`對照 ${cutRefLabel(store, it.cutRefs)}`, { x, y: cy, w, h: 0.26, fontFace: FONT, fontSize: 8.5, color: MUTED });
+    sl.addText(tf("對照 {refs}", { refs: cutRefLabel(store, it.cutRefs) }), { x, y: cy, w, h: 0.26, fontFace: FONT, fontSize: 8.5, color: MUTED });
     cy += 0.27;
   }
   if (it.videoUrl) {
-    sl.addText("▶ 影片連結", { x, y: cy, w, h: 0.28, fontFace: FONT, fontSize: 9.5, color: BLUE, underline: { style: "sng" }, hyperlink: { url: it.videoUrl } });
+    sl.addText(t("▶ 影片連結"), { x, y: cy, w, h: 0.28, fontFace: FONT, fontSize: 9.5, color: BLUE, underline: { style: "sng" }, hyperlink: { url: it.videoUrl } });
     cy += 0.29;
   }
   return cy - y;
@@ -171,7 +176,7 @@ async function refSlides(pptx: PptxGenJS, p: Project, chId: string, en: string, 
     const cutTall = p.aspect === "9:16"; // 對照 cut 縮圖跟隨整片比例
     for (const it of items) {
       const sl = pptx.addSlide();
-      header(sl, en, zh);
+      header(sl, en, t(zh));
       const side = chId === "references";
       const itPortrait = autoAspect && !!it.portrait; // 直式素材：圖靠左限高、文字放右
       if (itPortrait) {
@@ -187,9 +192,9 @@ async function refSlides(pptx: PptxGenJS, p: Project, chId: string, en: string, 
       }
       if (side && it.cutRefs?.length) {
         const sx = MX + 5.9 + 0.35, sw = W - sx - MX;
-        sl.addText("對照 CUT", { x: sx, y: TOP, w: sw, h: 0.26, fontFace: FONT, fontSize: 9, color: MUTED, charSpacing: 2 });
+        sl.addText(t("對照 CUT"), { x: sx, y: TOP, w: sw, h: 0.26, fontFace: FONT, fontSize: 9, color: MUTED, charSpacing: 2 });
         const thumbs = p.cuts.filter((c) => it.cutRefs!.includes(c.id));
-        const tw = cutTall ? 0.8 : 1.35, th = cutTall ? tw * 16 / 9 : tw * 9 / 16;
+        const tw = cutTall ? 0.8 : 1.35, th = tw / aspectSpec(p.aspect).ar;
         thumbs.forEach((c, i) => {
           const tx = sx + (i % 2) * (tw + 0.15);
           const ty = TOP + 0.32 + Math.floor(i / 2) * (th + 0.34);
@@ -205,7 +210,7 @@ async function refSlides(pptx: PptxGenJS, p: Project, chId: string, en: string, 
     // 演員／服裝：9:16 直式卡，4 個一頁
     for (let s = 0; s < items.length; s += 4) {
       const sl = pptx.addSlide();
-      header(sl, en, zh);
+      header(sl, en, t(zh));
       const batch = items.slice(s, s + 4);
       const cw = (W - MX * 2 - 3 * 0.25) / 4;
       for (let i = 0; i < batch.length; i++) {
@@ -221,7 +226,7 @@ async function refSlides(pptx: PptxGenJS, p: Project, chId: string, en: string, 
   // 2×2（TONE／RHYTHM／SETTING／LOCATION）：4 個一頁
   for (let s = 0; s < items.length; s += 4) {
     const sl = pptx.addSlide();
-    header(sl, en, zh);
+    header(sl, en, t(zh));
     const batch = items.slice(s, s + 4);
     const cw = (W - MX * 2 - 0.35) / 2;
     const chh = (H - TOP - 0.25 - 0.2) / 2;
@@ -245,7 +250,15 @@ async function refSlides(pptx: PptxGenJS, p: Project, chId: string, en: string, 
 
 // ---- 分鏡（STORYBOARD）：橫式 4×2 八顆一頁；直式一排 N 格站立框（頁維持 16:9）----
 
-function stbSlides(pptx: PptxGenJS, p: Project, en: string, zh: string, dense = true) {
+// 景別／秒數顯示跟隨編輯器的檢視開關（PDF 走同一份 DOM 自動跟上，PPTX 是第二份要自己接）
+function cutMeta(cut: Cut, showShot: boolean, showSec: boolean): string {
+  const bits: string[] = [];
+  if (showShot && cut.shot) bits.push(cut.shot);
+  if (showSec && typeof cut.sec === "number") bits.push(`${cut.sec}${t("秒")}`);
+  return bits.join(" ・ ");
+}
+
+function stbSlides(pptx: PptxGenJS, p: Project, en: string, zh: string, dense = true, showShot = false, showSec = false) {
   const numbers = computeCutNumbers(p.cuts, p.films);
   const multi = p.films.length > 1;
 
@@ -258,19 +271,22 @@ function stbSlides(pptx: PptxGenJS, p: Project, en: string, zh: string, dense = 
     const iw = ih * 9 / 16;                   // 依高回推寬，格內置中
     const bottom = H - 0.12;
     for (const f of p.films) {
-      const cuts = p.cuts.filter((c) => c.filmId === f.id);
+      const cuts = p.cuts.filter((c) => c.filmId === f.id && !c.hidden);
       if (!cuts.length) continue;
       const pages = Math.max(1, Math.ceil(cuts.length / cols));
       for (let pg = 0; pg < pages; pg++) {
         const sl = pptx.addSlide();
-        header(sl, en, `${zh}${multi ? ` · ${f.name}` : ""} · 頁 ${pg + 1}/${pages}`);
+        header(sl, en, `${t(zh)}${multi ? ` · ${f.name}` : ""} · ${tf("頁 {p}/{total}", { p: pg + 1, total: pages })}`);
         for (let slot = 0; slot < cols; slot++) {
           const cut = cuts[pg * cols + slot];
           if (!cut) continue;
           const n = numbers.get(cut.id)!;
           const cx = MX + slot * (cw + gap);
           const ix = cx + (cw - iw) / 2;
-          sl.addText(`CUT ${n.label}`, { x: cx, y: TOP, w: cw, h: 0.19, fontFace: "Courier New", fontSize: 8.5, bold: true, color: INK2, margin: 0, valign: "top" });
+          sl.addText(tf("CUT {label}", { label: n.label }), { x: cx, y: TOP, w: cw, h: 0.19, fontFace: "Courier New", fontSize: 8.5, bold: true, color: INK2, margin: 0, valign: "top" });
+          // 景別／秒數：靠右貼在編號那一行（PPTX 版面較擠，不另起一列避免壓到下一排）
+          const meta1 = cutMeta(cut, showShot, showSec);
+          if (meta1) sl.addText(meta1, { x: cx, y: TOP, w: cw, h: 0.19, fontFace: FONT, fontSize: 7, color: MUTED, margin: 0, valign: "top", align: "right" });
           const iy = TOP + 0.21;
           if (cut.imageRef) sl.addImage({ data: cut.imageRef, x: ix, y: iy, w: iw, h: ih });
           else sl.addShape("rect", { x: ix, y: iy, w: iw, h: ih, fill: { color: "f4f3ee" }, line: { color: LINE, width: 0.75 } });
@@ -280,11 +296,11 @@ function stbSlides(pptx: PptxGenJS, p: Project, en: string, zh: string, dense = 
             cy += 0.52;
           }
           if (cut.vo && cy + 0.2 <= bottom) {
-            sl.addText([{ text: "VO ", options: { fontSize: 7, bold: true, color: BLUE } }, { text: cut.vo, options: { fontSize: 8, color: BLUE } }], { x: cx, y: cy, w: cw, h: 0.2, fontFace: FONT, valign: "top", margin: 0, lineSpacingMultiple: 0.95 });
+            sl.addText([{ text: t("VO") + " ", options: { fontSize: 7, bold: true, color: BLUE } }, { text: cut.vo, options: { fontSize: 8, color: BLUE } }], { x: cx, y: cy, w: cw, h: 0.2, fontFace: FONT, valign: "top", margin: 0, lineSpacingMultiple: 0.95 });
             cy += 0.22;
           }
           if (cut.sup && cy + 0.2 <= bottom) {
-            sl.addText([{ text: "SUPER ", options: { fontSize: 7, bold: true, color: GREEN } }, { text: cut.sup, options: { fontSize: 8, color: GREEN } }], { x: cx, y: cy, w: cw, h: 0.2, fontFace: FONT, valign: "top", margin: 0, lineSpacingMultiple: 0.95 });
+            sl.addText([{ text: t("SUPER") + " ", options: { fontSize: 7, bold: true, color: GREEN } }, { text: cut.sup, options: { fontSize: 8, color: GREEN } }], { x: cx, y: cy, w: cw, h: 0.2, fontFace: FONT, valign: "top", margin: 0, lineSpacingMultiple: 0.95 });
           }
         }
       }
@@ -295,12 +311,12 @@ function stbSlides(pptx: PptxGenJS, p: Project, en: string, zh: string, dense = 
   const cw = (W - MX * 2 - 3 * 0.22) / 4;
   const rh = (H - TOP - 0.25) / 2;
   for (const f of p.films) { // 多路：逐路出頁，頁標帶路名
-    const cuts = p.cuts.filter((c) => c.filmId === f.id);
+    const cuts = p.cuts.filter((c) => c.filmId === f.id && !c.hidden);
     if (!cuts.length) continue;
     const pages = Math.max(1, Math.ceil(cuts.length / PER_PAGE));
   for (let pg = 0; pg < pages; pg++) {
     const sl = pptx.addSlide();
-    header(sl, en, `${zh}${multi ? ` · ${f.name}` : ""} · 頁 ${pg + 1}/${pages}`);
+    header(sl, en, `${t(zh)}${multi ? ` · ${f.name}` : ""} · ${tf("頁 {p}/{total}", { p: pg + 1, total: pages })}`);
     for (let slot = 0; slot < PER_PAGE; slot++) {
       const cut = cuts[pg * PER_PAGE + slot];
       if (!cut) continue;
@@ -309,8 +325,10 @@ function stbSlides(pptx: PptxGenJS, p: Project, en: string, zh: string, dense = 
       const y = TOP + Math.floor(slot / 4) * rh;
       // 文字框全數 margin:0＋行高收緊——PPTX 文字框有預設內距，
       // 不歸零的話堆到 VO/SUPER 會壓到下一排的 CUT 標籤（Armin 實測回報）
-      sl.addText(`CUT ${n.label}`, { x, y, w: cw, h: 0.19, fontFace: "Courier New", fontSize: 8.5, bold: true, color: INK2, margin: 0, valign: "top" });
-      const ih = cw * 9 / 16;
+      sl.addText(tf("CUT {label}", { label: n.label }), { x, y, w: cw, h: 0.19, fontFace: "Courier New", fontSize: 8.5, bold: true, color: INK2, margin: 0, valign: "top" });
+      const meta2 = cutMeta(cut, showShot, showSec);
+      if (meta2) sl.addText(meta2, { x, y, w: cw, h: 0.19, fontFace: FONT, fontSize: 7, color: MUTED, margin: 0, valign: "top", align: "right" });
+      const ih = cw / aspectSpec(p.aspect).ar;
       if (cut.imageRef) sl.addImage({ data: cut.imageRef, x, y: y + 0.21, w: cw, h: ih });
       else sl.addShape("rect", { x, y: y + 0.21, w: cw, h: ih, fill: { color: "f4f3ee" }, line: { color: LINE, width: 0.75 } });
       let cy = y + 0.21 + ih + 0.04;
@@ -321,14 +339,14 @@ function stbSlides(pptx: PptxGenJS, p: Project, en: string, zh: string, dense = 
       }
       if (cut.vo && cy + 0.2 <= bottom) {
         sl.addText([
-          { text: "VO ", options: { fontSize: 7, bold: true, color: BLUE } },
+          { text: t("VO") + " ", options: { fontSize: 7, bold: true, color: BLUE } },
           { text: cut.vo, options: { fontSize: 8, color: BLUE } },
         ], { x, y: cy, w: cw, h: 0.2, fontFace: FONT, valign: "top", margin: 0, lineSpacingMultiple: 0.95 });
         cy += 0.22;
       }
       if (cut.sup && cy + 0.2 <= bottom) {
         sl.addText([
-          { text: "SUPER ", options: { fontSize: 7, bold: true, color: GREEN } },
+          { text: t("SUPER") + " ", options: { fontSize: 7, bold: true, color: GREEN } },
           { text: cut.sup, options: { fontSize: 8, color: GREEN } },
         ], { x, y: cy, w: cw, h: 0.2, fontFace: FONT, valign: "top", margin: 0, lineSpacingMultiple: 0.95 });
       }
@@ -342,7 +360,7 @@ function stbSlides(pptx: PptxGenJS, p: Project, en: string, zh: string, dense = 
 function ganttSlide(pptx: PptxGenJS, p: Project, en: string, zh: string) {
   if (!p.milestones.length) return;
   const sl = pptx.addSlide();
-  header(sl, en, zh);
+  header(sl, en, t(zh));
   const DAY = 86400000;
   const d2n = (s: string) => (s ? new Date(s + "T00:00:00").getTime() : NaN);
   let min = Infinity, max = -Infinity;
@@ -376,18 +394,18 @@ function ganttSlide(pptx: PptxGenJS, p: Project, en: string, zh: string) {
 
 function callSheetSlide(pptx: PptxGenJS, p: Project, day: ShootDay, dayIdx: number, en: string) {
   const sl = pptx.addSlide();
-  header(sl, en, `通告單 · Day ${dayIdx + 1}`);
+  header(sl, en, tf("通告單 · Day {n}", { n: dayIdx + 1 }));
   const times = chainRundown(day.rundown, hhmmToMin(day.callTime));
   const wrap = times.length ? minToHHMM(times[times.length - 1].end) : "—";
 
   sl.addText([
     { text: p.meta.title, options: { fontSize: 19, bold: true, color: INK } },
-    { text: "　拍攝通告單", options: { fontSize: 10, color: MUTED } },
+    { text: "　" + t("拍攝通告單"), options: { fontSize: 10, color: MUTED } },
   ], { x: MX, y: 0.5, w: 6.8, h: 0.42, fontFace: FONT });
   sl.addText(day.date || "", { x: 7.3, y: 0.55, w: W - 7.3 - MX, h: 0.35, fontFace: FONT, fontSize: 12, color: INK2, align: "right" });
 
   // 上方資訊條：集合／預計收工／製作
-  const cells: [string, string][] = [["集合", day.callTime], ["預計收工", wrap], ["製作", p.meta.client]];
+  const cells: [string, string][] = [[t("集合"), day.callTime], [t("預計收工"), wrap], [t("製作"), p.meta.client]];
   const cw = (W - MX * 2 - 0.24) / 3;
   cells.forEach(([k, v], i) => {
     const x = MX + i * (cw + 0.12);
@@ -397,7 +415,7 @@ function callSheetSlide(pptx: PptxGenJS, p: Project, day: ShootDay, dayIdx: numb
   });
 
   // 聯絡人橫排
-  const runs: PptxGenJS.TextProps[] = [{ text: "聯絡人　", options: { fontSize: 9, color: MUTED } }];
+  const runs: PptxGenJS.TextProps[] = [{ text: t("聯絡人") + "　", options: { fontSize: 9, color: MUTED } }];
   p.contacts.forEach((c) => {
     runs.push({ text: `${c.role} `, options: { fontSize: 9.5, color: MUTED } });
     runs.push({ text: `${c.name}　`, options: { fontSize: 10.5, bold: true, color: INK } });
@@ -406,7 +424,7 @@ function callSheetSlide(pptx: PptxGenJS, p: Project, day: ShootDay, dayIdx: numb
   sl.addText(runs, { x: MX, y: 2.02, w: W - MX * 2, h: 0.34, fontFace: FONT });
 
   // 大組通告時間：兩欄
-  sl.addText("大組通告時間", { x: MX, y: 2.55, w: 4, h: 0.3, fontFace: FONT, fontSize: 11.5, bold: true, color: INK });
+  sl.addText(t("大組通告時間"), { x: MX, y: 2.55, w: 4, h: 0.3, fontFace: FONT, fontSize: 11.5, bold: true, color: INK });
   const colW = (W - MX * 2 - 0.5) / 2;
   day.callGroups.forEach((g, i) => {
     const col = Math.floor(i / 7), row = i % 7;
@@ -434,17 +452,17 @@ function rundownSlides(pptx: PptxGenJS, p: Project, day: ShootDay, dayIdx: numbe
     header(sl, en, `Rundown · Day ${dayIdx + 1}${day.date ? ` · ${day.date}` : ""}`);
     const batch = day.rundown.slice(s, s + perSlide);
     batch.forEach((b, bi) => {
-      const t = times[s + bi];
+      const tm = times[s + bi];
       const y = TOP + bi * 1.2;
       // 左：時間＋類型
-      sl.addText(`${minToHHMM(t.start)}–${minToHHMM(t.end)}`, { x: MX, y, w: 1.45, h: 0.28, fontFace: "Courier New", fontSize: 11, bold: true, color: INK });
-      sl.addText(b.type, { x: MX, y: y + 0.3, w: 1.45, h: 0.24, fontFace: FONT, fontSize: 9, color: MUTED });
+      sl.addText(`${minToHHMM(tm.start)}–${minToHHMM(tm.end)}`, { x: MX, y, w: 1.45, h: 0.28, fontFace: "Courier New", fontSize: 11, bold: true, color: INK });
+      sl.addText(t(BLOCK_TYPE_LABELS[b.type]), { x: MX, y: y + 0.3, w: 1.45, h: 0.24, fontFace: FONT, fontSize: 9, color: MUTED });
       // 中：標題＋cut 縮圖列
       sl.addText(b.title, { x: 2.05, y, w: 3.95, h: 0.3, fontFace: FONT, fontSize: 12, bold: true, color: INK });
       const thumbs = b.cutIds.map((cid) => p.cuts.find((c) => c.id === cid)).filter(Boolean).slice(0, 5);
       // 直式案：分鏡縮圖站立（縮小以塞進 1.2" 列高）；橫式維持 16:9
       const tall = p.aspect === "9:16";
-      const tw = tall ? 0.35 : 0.78, th = tall ? tw * 16 / 9 : tw * 9 / 16, step = tall ? 0.44 : 0.86;
+      const tw = tall ? 0.35 : 0.78, th = tw / aspectSpec(p.aspect).ar, step = tall ? 0.44 : 0.86;
       thumbs.forEach((c, i) => {
         const tx = 2.05 + i * step;
         if (c!.imageRef) sl.addImage({ data: c!.imageRef, x: tx, y: y + 0.36, w: tw, h: th });
@@ -452,7 +470,7 @@ function rundownSlides(pptx: PptxGenJS, p: Project, day: ShootDay, dayIdx: numbe
       });
       // 右：地點／停車／道具＋停車圖
       const rx = 6.15, rw = b.parkImage ? 2.15 : 3.4;
-      const lines: [string, string][] = [["地點", b.loc], ["停車", b.park], ["道具", b.props]];
+      const lines: [string, string][] = [[t("地點"), b.loc], [t("停車"), b.park], [t("道具"), b.props]];
       let ly = y;
       for (const [k, v] of lines) {
         if (!v) continue;
@@ -465,7 +483,7 @@ function rundownSlides(pptx: PptxGenJS, p: Project, day: ShootDay, dayIdx: numbe
       if (b.parkImage) {
         const pw = 1.1, ph = pw * 9 / 16;
         sl.addImage({ data: b.parkImage, x: W - MX - pw, y, w: pw, h: ph });
-        sl.addText("停車", { x: W - MX - pw, y: y + ph, w: pw, h: 0.18, fontFace: FONT, fontSize: 7, color: MUTED, align: "center" });
+        sl.addText(t("停車"), { x: W - MX - pw, y: y + ph, w: pw, h: 0.18, fontFace: FONT, fontSize: 7, color: MUTED, align: "center" });
       }
       if (bi < batch.length - 1) sl.addShape("line", { x: MX, y: y + 1.08, w: W - MX * 2, h: 0, line: { color: LINE, width: 0.75 } });
     });

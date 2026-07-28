@@ -7,6 +7,7 @@ import { renderGantt } from "./ganttView";
 import { renderCallSheet } from "./callSheetView";
 import { renderRundown } from "./rundownView";
 import { projectLogo } from "./logoAsset";
+import { t, chapterTitle } from "./i18n";
 
 // 頁面收集與標題頁 HTML：簡報（previewMode）與匯出中心（exportDialog）共用，
 // 兩邊吃同一份渲染 ⇒ 預覽＝輸出。
@@ -68,7 +69,8 @@ export function collectChapters(store: Store): ChapterPages[] {
     } else {
       pages = collect(() => renderRefPage(store, temp, ch.id));
     }
-    if (pages.length) result.push({ id: ch.id, en: ch.en, zh: ch.label, pages });
+    const ct = chapterTitle(ch);
+    if (pages.length) result.push({ id: ch.id, en: ct.cap, zh: ct.sub, pages });
   }
   return result;
 }
@@ -83,9 +85,10 @@ export function coverSlideHtml(store: Store): string {
   const p = store.get();
   let list = "";
   for (const ch of chapterPlan(p)) {
-    list += `<li><span class="ag-en">${ch.en}</span><span class="ag-zh">${ch.label}</span></li>`;
+    const ct = chapterTitle(ch);
+    list += `<li><span class="ag-en">${ct.cap}</span>${ct.sub ? `<span class="ag-zh">${ct.sub}</span>` : ""}</li>`;
   }
-  const sub = p.mode === "schedule" ? "拍攝通告" : "PPM ・ 前製會議";
+  const sub = p.mode === "schedule" ? t("拍攝通告") : t("PPM ・ 前製會議");
   return `<div class="pv-title-slide">
     <div class="pv-big">${esc(p.meta.title)}</div>
     <div class="pv-sub">${sub} ・ ${esc(p.meta.client)}</div>
@@ -98,7 +101,7 @@ export function titleSlideHtml(en: string, zh: string, index: number): string {
   return `<div class="pv-title-slide center">
     <div class="pv-index">${String(index).padStart(2, "0")}</div>
     <div class="pv-big">${en}</div>
-    <div class="pv-sub">${zh}</div>
+    ${zh ? `<div class="pv-sub">${zh}</div>` : ""}
   </div>`;
 }
 

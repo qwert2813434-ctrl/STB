@@ -5,11 +5,14 @@
 // 來源＝小高工具間（GitHub Pages 回 access-control-allow-origin: *，webview 直接 fetch 得到）。
 import { APP_VERSION } from "./releaseNotes";
 import { isMobile, isTauri, openExternal } from "./persistence";
+import { t, tf, locale } from "./i18n";
 
 const FEED = "https://qwert2813434-ctrl.github.io/tools/stb-latest.json";
 const SKIP_KEY = "stbSkipVersion"; // 使用者按「這版不用提醒」記在這
 
-interface Feed { version?: string; url?: string; notes?: string }
+// notes＝中文字串，1.5.x 舊版 App 讀這欄（改成物件會讓舊版橫幅壞掉，只能加欄不能改欄）；
+// notesI18n＝1.6.0 起依語系讀，缺語系回落 notes
+interface Feed { version?: string; url?: string; notes?: string; notesI18n?: Partial<Record<"zh" | "en" | "ja", string>> }
 
 // 純數字比較（1.10.0 > 1.9.0），不引語意化版本套件
 function isNewer(remote: string, local: string): boolean {
@@ -31,7 +34,7 @@ export async function checkUpdate(): Promise<void> {
     const d = (await r.json()) as Feed;
     if (!d.version || !isNewer(d.version, APP_VERSION)) return;
     if (localStorage.getItem(SKIP_KEY) === d.version) return;
-    showBanner(d.version, d.url || "https://github.com/qwert2813434-ctrl/STB/releases", d.notes || "");
+    showBanner(d.version, d.url || "https://github.com/qwert2813434-ctrl/STB/releases", d.notesI18n?.[locale()] ?? d.notes ?? "");
   } catch {
     /* 離線或網路不通：安靜跳過 */
   }
@@ -42,10 +45,10 @@ function showBanner(version: string, url: string, notes: string) {
   el.className = "upd-bar";
   el.innerHTML = `
     <span class="upd-dot"></span>
-    <span class="upd-txt"><b>有新版 ${version}</b>${notes ? `　${notes}` : ""}</span>
-    <button class="upd-go">前往下載</button>
-    <button class="upd-skip" title="這個版本不再提醒">略過</button>
-    <button class="upd-x" aria-label="關閉">✕</button>`;
+    <span class="upd-txt"><b>${tf("有新版 {version}", { version })}</b>${notes ? `　${notes}` : ""}</span>
+    <button class="upd-go">${t("前往下載")}</button>
+    <button class="upd-skip" title="${t("這個版本不再提醒")}">${t("略過")}</button>
+    <button class="upd-x" aria-label="${t("關閉")}">✕</button>`;
   document.body.appendChild(el);
   el.querySelector(".upd-go")!.addEventListener("click", () => { openExternal(url); el.remove(); });
   el.querySelector(".upd-skip")!.addEventListener("click", () => { localStorage.setItem(SKIP_KEY, version); el.remove(); });
