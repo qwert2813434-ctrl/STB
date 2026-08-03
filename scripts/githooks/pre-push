@@ -1,0 +1,18 @@
+#!/bin/bash
+# 擋未公證 DMG 上線（2026-08-03 事故後加裝；安裝＝git config core.hooksPath scripts/githooks）
+# push 範圍內任何 commit 動到 release/*.dmg → 驗證工作區那顆 DMG 已簽名＋公證＋staple，沒過就擋下
+ZERO="0000000000000000000000000000000000000000"
+while read -r _ local_sha _ remote_sha; do
+  [ "$local_sha" = "$ZERO" ] && continue
+  if [ "$remote_sha" = "$ZERO" ]; then range="$local_sha"; else range="$remote_sha..$local_sha"; fi
+  if git diff --name-only "$range" 2>/dev/null | grep -q '^release/.*\.dmg$'; then
+    dmg="release/STB_1.0.0_aarch64.dmg"
+    if ! xcrun stapler validate "$dmg" >/dev/null 2>&1 \
+       || ! spctl -a -t open --context context:primary-signature "$dmg" >/dev/null 2>&1; then
+      echo "❌ 擋下 push：$dmg 沒通過公證驗證（stapler/spctl）。"
+      echo "   發版請走 scripts/release-mac.sh，跑完全綠再 push。"
+      exit 1
+    fi
+  fi
+done
+exit 0
