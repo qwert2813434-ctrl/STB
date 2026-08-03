@@ -12,12 +12,13 @@ const LANG_ATTR: Record<Locale, string> = { zh: "zh-Hant", en: "en", ja: "ja" };
 function detect(): Locale {
   // QA 後門：?lang=en 強制語系（只讀不存，重載即回歸正常偵測）
   const q = new URLSearchParams(location.search).get("lang");
-  // 日文暫不開放（翻譯完成但未過母語審——日本市場第一印象比早一版重要，1.7 再開）
-  if (q === "zh" || q === "en" || q === "ja") return q;   // ?lang=ja 留給內部 QA
+  if (q === "zh" || q === "en" || q === "ja") return q;
+  // 日文 1.6.1 起開放（Armin 2026-08-03 拍板；語言包/手冊兩條長句仍標「審」待母語定案）
   const saved = localStorage.getItem("stbLang");
-  if (saved === "zh" || saved === "en") return saved;
+  if (saved === "zh" || saved === "en" || saved === "ja") return saved;
   const nav = (navigator.language || "").toLowerCase();
   if (nav.startsWith("en")) return "en";
+  if (nav.startsWith("ja")) return "ja";
   return "zh";
 }
 

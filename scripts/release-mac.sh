@@ -12,13 +12,13 @@ DMG="release/STB_1.0.0_aarch64.dmg"
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
-[ -d "$APP" ] || { echo "❌ 找不到 $APP（先 npm run tauri build，或把 .app 路徑當參數傳入）"; exit 1; }
+[ -d "$APP" ] || { echo "❌ 找不到 ${APP}（先 npm run tauri build，或把 .app 路徑當參數傳入）"; exit 1; }
 VER=$(defaults read "$(cd "$APP" && pwd)/Contents/Info.plist" CFBundleShortVersionString)
-echo "▸ 發版 v$VER（來源：$APP）"
+echo "▸ 發版 v${VER}（來源：${APP}）"
 
 notarize() { # $1=檔案
   xcrun notarytool submit "$1" --keychain-profile stb-notary --wait 2>&1 | tail -3 \
-    | grep -q "Accepted" || { echo "❌ 公證失敗：$1（xcrun notarytool log 查詳情）"; exit 1; }
+    | grep -q "Accepted" || { echo "❌ 公證失敗：${1}（xcrun notarytool log 查詳情）"; exit 1; }
 }
 
 echo "▸ 簽名（由內而外：stb-trim → 整包）"
@@ -54,7 +54,7 @@ spctl -a -t exec -vv "$WORK/qapp" 2>&1 | grep -q "Notarized Developer ID" \
   || { echo "❌ app spctl 未過"; exit 1; }
 
 cp "$WORK/out.dmg" "$DMG"
-echo "✅ v$VER 全綠，已蓋 $DMG（SHA $(shasum -a 256 "$DMG" | cut -c1-8)…）"
+echo "✅ v$VER 全綠，已蓋 ${DMG}（SHA $(shasum -a 256 "$DMG" | cut -c1-8)…）"
 echo "剩下手動三件："
 echo "  1. git add $DMG && git commit && git push（pre-push hook 會再驗一次）"
 echo "  2. 檢查 releaseNotes.ts APP_VERSION＋工具間 stb-latest.json（notesI18n 三語）是否同版本"

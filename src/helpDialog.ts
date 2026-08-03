@@ -33,7 +33,7 @@ export function openHelp() {
           <p class="help-lede">${t("STB — 為腳本與前製會議而生的 Mac App。<br>資料全在本機：一個案子＝一個資料夾＋一份 project.json，無帳號、無雲端。")}</p>
           <p><button class="help-link" data-hgithub>${t("原始碼與最新版下載（GitHub）↗")}</button></p>
           <p class="help-langrow"><span class="help-langk">語言 · Language</span>
-            ${(["zh", "en"] as const).map((l) => `
+            ${(["zh", "en", "ja"] as const).map((l) => `
               <button class="help-lang${locale() === l ? " on" : ""}" data-hlang="${l}">${{ zh: "繁體中文", en: "English", ja: "日本語" }[l]}</button>`).join("")}
           </p>
           ${RELEASE_NOTES.map((r) => `

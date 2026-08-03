@@ -1,11 +1,20 @@
 // 版本與更新紀錄——每次發版在最上面加一段（慣例同 ALIGNED 設定頁：
 // 版本號、日期、使用者看得懂的變更點；工程細節留在 進度與下一步.md）。
 
-export const APP_VERSION = "1.6.0";
+export const APP_VERSION = "1.6.1";
 
 export interface ReleaseNote { version: string; date: string; items: string[]; }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.6.1",
+    date: "2026-08-03",
+    items: [
+      "VO 稿獨立預覽：分鏡章「欄位」列開「VO稿」，整路旁白攤開連著讀——行帶編號、點行跳到那顆 cut、沒旁白的段落畫一條細線；附句數／字數／唸稿估秒，「複製全文」就是給配音與演員的純文字稿",
+      "日本語介面：說明視窗（?）→ 語言可切 日本語——整套介面、日本 CM 示範案與日文使用手冊；日文系統首次開啟自動進日文版",
+      "景別／秒數欄：分鏡章「欄位」列可開，每顆 cut 顯示景別與秒數、頁尾自動合計並對 15／30／60 秒標差額（日文版預設開啟）",
+    ],
+  },
   {
     version: "1.6.0",
     date: "2026-07-28",
