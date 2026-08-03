@@ -41,6 +41,8 @@ export class Store {
   // 預設值跟語系走——日文版兩欄都開（日本絵コンテ的標配），繁中/英文預設關（不改既有體驗）。
   showShot = prefFlag("stbShowShot", locale() === "ja");
   showSec = prefFlag("stbShowSec", locale() === "ja");
+  // VO 稿面板：整路旁白攤開連著讀（含複製全文＝給配音/演員的純文字稿）。各語系預設關。
+  showVoScript = prefFlag("stbShowVo", false);
 
   constructor(initial: Project) {
     this.project = initial;
@@ -872,6 +874,7 @@ export class Store {
   // 景別／秒數欄顯示切換（純檢視，記在 localStorage）
   setShowShot(on: boolean) { this.showShot = on; localStorage.setItem("stbShowShot", on ? "1" : "0"); this.emit(); }
   setShowSec(on: boolean) { this.showSec = on; localStorage.setItem("stbShowSec", on ? "1" : "0"); this.emit(); }
+  setShowVoScript(on: boolean) { this.showVoScript = on; localStorage.setItem("stbShowVo", on ? "1" : "0"); this.emit(); }
 
   // 秒數 inline 編輯：吃字串（可能含全形數字或單位），空/0/非數字＝拿掉欄位（回到「沒填」）
   editSec(id: string, raw: string) {

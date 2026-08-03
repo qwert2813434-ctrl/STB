@@ -92,6 +92,17 @@ export const en: Record<string, string> = {
   "每顆 cut 顯示秒數，頁尾自動合計": "Show duration on every shot, totalled at the foot of the page",
   "合計 {n} 秒": "{n}s total",
   "・{n} 顆未填": " · {n} not set",
+  // VO 稿面板（2026-08-03；朋友許願「VO 要能獨立預覽」＋純文字稿給配音/演員）
+  "VO稿": "VO Script",
+  "VO 稿": "VO Script",
+  "整路旁白攤開連著讀（點行跳到那顆 cut）": "Read the whole narration in one flow (click a line to jump to that shot)",
+  "跳到這顆 cut": "Jump to this shot",
+  "複製全文": "Copy All",
+  "純文字複製——傳給配音、演員的乾淨 VO 稿": "Copy as plain text — a clean VO script for voice talent",
+  "已複製": "Copied",
+  "還沒有任何 VO": "No VO yet",
+  "{n} 句・{m} 字・唸稿估 ≈ {s} 秒": "{n} lines · {m} words · ≈ {s}s read aloud",
+  "・畫面合計 {t} 秒": " · boards total {t}s",
 
   "分鏡格": "Grid",
   "4 欄・4 格一頁，閱讀舒服": "4 columns · 4 per page, easy reading",

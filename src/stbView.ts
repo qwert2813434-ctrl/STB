@@ -3,7 +3,7 @@ import { bindPointerDrag } from "./pointerDrag";
 import type { Store } from "./store";
 import { computeCutNumbers, perPage } from "./model";
 import type { Cut } from "./model";
-import { t, tf } from "./i18n";
+import { t, tf, locale } from "./i18n";
 
 // 渲染 STB 頁式版面。inline 編輯不觸發整頁重繪（避免游標跳）。
 // expanded：暫時展開但還沒填字的 VO/Super 行（key = `${cutId}:vo`／`:sup`）。
@@ -68,7 +68,8 @@ export function renderStb(store: Store, root: HTMLElement, flashFromSeq = -1, ex
   if (!filmOverride) {
     html += `<div class="board-density"><span class="bd-label">${t("欄位")}</span>
       <button data-fld="shot" class="${store.showShot ? "on" : ""}" title="${t("每顆 cut 顯示景別（W／M／CU）")}">${t("景別")}</button>
-      <button data-fld="sec" class="${store.showSec ? "on" : ""}" title="${t("每顆 cut 顯示秒數，頁尾自動合計")}">${t("秒數")}</button></div>`;
+      <button data-fld="sec" class="${store.showSec ? "on" : ""}" title="${t("每顆 cut 顯示秒數，頁尾自動合計")}">${t("秒數")}</button>
+      <button data-fld="vo" class="${store.showVoScript ? "on" : ""}" title="${t("整路旁白攤開連著讀（點行跳到那顆 cut）")}">${t("VO稿")}</button></div>`;
   }
 
   // 場勘列：分鏡／場勘切換（有場勘才出現；hover「場勘」長出 ✕＝清除全部）＋匯入場勘＋新增 cut
@@ -87,6 +88,10 @@ export function renderStb(store: Store, root: HTMLElement, flashFromSeq = -1, ex
     html += `<button data-addcut title="${t("在選取的 cut 之後新增一顆（沒選＝加在最後）")}">${t("＋ 新增 cut")}</button>`;
     html += `</div>`;
   }
+
+  // VO 稿面板（純檢視偏好）：把整路旁白攤開成連續的稿——判斷語感、節奏、總長，
+  // 「複製全文」＝傳給配音/演員的乾淨純文字稿。不進匯出/簡報（filmOverride 走不到這）。
+  if (!filmOverride && store.showVoScript) html += voPanelHtml(visible, numbers);
 
   for (let pg = 0; pg < pages; pg++) {
     html += `<p class="page-label">STB${multi ? ` · ${esc(film?.name ?? "")}` : ""} · ${tf("頁 {a} / {b}", { a: pg + 1, b: pages })} · ${portrait ? t("直式 9:16") : t("A5 橫")}${store.showSec ? secTotalLabel(visible) : ""}</p>`;
@@ -156,6 +161,78 @@ function secTotalLabel(cuts: Cut[]): string {
     : target ? `（${target}${t("秒")} ✓）` : "";
   const miss = filled.length < cuts.length ? tf("・{n} 顆未填", { n: cuts.length - filled.length }) : "";
   return ` · ${tf("合計 {n} 秒", { n: total })}${hint}${miss}`;
+}
+
+// VO 稿面板：每行「編號＋旁白（＋秒數）」，行可點＝跳到那顆 cut；
+// 連續沒 VO 的畫面段落畫一條細分隔線＝「這裡是無旁白的空拍」，讀節奏用。
+// 底部估秒：中文旁白約 4.5 字/秒（日文略快取 5.5），拉丁語系約 2.5 詞/秒——
+// 只是量尺不是碼表，所以標「估」。有填秒數時順便對比畫面合計，一眼看出稿太滿或太空。
+function voPanelHtml(visible: Cut[], numbers: ReturnType<typeof computeCutNumbers>): string {
+  const lines: string[] = [];
+  let gap = false;
+  for (const c of visible) {
+    if (c.vo === "") { gap = lines.length > 0; continue; }
+    if (gap) { lines.push(`<div class="vop-gap"></div>`); gap = false; }
+    lines.push(`<div class="vop-line" data-jump="${c.id}" title="${t("跳到這顆 cut")}">
+      <span class="vop-no">${numbers.get(c.id)?.label ?? ""}</span>
+      <span class="vop-text">${esc(c.vo)}</span>
+      ${typeof c.sec === "number" ? `<span class="vop-sec">${c.sec}${t("秒")}</span>` : ""}
+    </div>`);
+  }
+  const voCuts = visible.filter((c) => c.vo !== "");
+  let stats = "";
+  if (voCuts.length) {
+    const text = voCuts.map((c) => c.vo).join("\n");
+    const cjk = (text.match(/[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff]/g) || []).length;
+    const words = (text.match(/[A-Za-z0-9]+(?:['’-][A-Za-z0-9]+)*/g) || []).length;
+    const est = Math.max(1, Math.round(cjk / (locale() === "ja" ? 5.5 : 4.5) + words / 2.5));
+    stats = tf("{n} 句・{m} 字・唸稿估 ≈ {s} 秒", { n: voCuts.length, m: cjk + words, s: est });
+    const secTotal = visible.filter((c) => typeof c.sec === "number").reduce((s, c) => s + (c.sec ?? 0), 0);
+    if (secTotal > 0) stats += tf("・畫面合計 {t} 秒", { t: Math.round(secTotal * 10) / 10 });
+  }
+  return `<div class="vo-panel">
+    <div class="vop-head">
+      <span class="vop-title">${t("VO 稿")}</span>
+      <span class="vop-stats">${stats}</span>
+      ${voCuts.length ? `<button data-vocopy title="${t("純文字複製——傳給配音、演員的乾淨 VO 稿")}">${t("複製全文")}</button>` : ""}
+    </div>
+    ${lines.join("") || `<div class="vop-empty">${t("還沒有任何 VO")}</div>`}
+  </div>`;
+}
+
+// 目前這一路的純 VO 稿（跳過隱藏 cut）——複製全文用：不帶編號、一句一行，
+// 演員/配音拿到就能直接唸（Armin 定案：要的是「清楚純 VO」）。
+function voScriptText(store: Store): string {
+  const p = store.get();
+  const filmId = store.currentFilmId || p.films[0]?.id;
+  return p.cuts
+    .filter((c) => c.filmId === filmId && !c.hidden && c.vo !== "")
+    .map((c) => c.vo)
+    .join("\n");
+}
+
+// 純文字進剪貼簿：clipboard API 優先；WKWebView 舊路徑用隱形 textarea 兜底
+async function copyText(text: string): Promise<void> {
+  try {
+    if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return; }
+  } catch { /* 落到 fallback */ }
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.cssText = "position:fixed;opacity:0";
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand("copy");
+  ta.remove();
+}
+
+// VO 面板就地重繪（inline 編輯 blur 後呼叫：不整頁重繪、卡片與游標無感）
+function refreshVoPanel(store: Store, root: HTMLElement) {
+  const panel = root.querySelector(".vo-panel");
+  if (!panel) return;
+  const p = store.get();
+  const filmId = store.currentFilmId || p.films[0]?.id;
+  const visible = p.cuts.filter((c) => c.filmId === filmId && !c.hidden);
+  panel.outerHTML = voPanelHtml(visible, computeCutNumbers(p.cuts, p.films));
 }
 
 function esc(s: string): string {
@@ -233,11 +310,37 @@ export function bindStb(
     // 分鏡格密度切換（大／密）——純檢視偏好，不動資料
     const dens = t0.closest("[data-density]") as HTMLElement | null;
     if (dens) { store.setPortraitDense(dens.dataset.density === "dense"); return; }
-    // 景別／秒數欄顯示切換（點一下＝開關，純檢視偏好）
+    // 景別／秒數欄／VO 稿顯示切換（點一下＝開關，純檢視偏好）
     const fld = t0.closest("[data-fld]") as HTMLElement | null;
     if (fld) {
       if (fld.dataset.fld === "shot") store.setShowShot(!store.showShot);
-      else store.setShowSec(!store.showSec);
+      else if (fld.dataset.fld === "sec") store.setShowSec(!store.showSec);
+      else store.setShowVoScript(!store.showVoScript);
+      return;
+    }
+    // VO 稿面板：複製全文（給配音/演員的純文字稿；按鈕短暫變「已複製」當回饋）
+    const vc = t0.closest("[data-vocopy]") as HTMLElement | null;
+    if (vc) {
+      void copyText(voScriptText(store)).then(() => {
+        const old = vc.textContent;
+        vc.textContent = t("已複製");
+        setTimeout(() => { vc.textContent = old; }, 1200);
+      });
+      return;
+    }
+    // VO 稿面板：點行＝捲到那顆 cut ＋ 閃一下編號
+    const jp = t0.closest("[data-jump]") as HTMLElement | null;
+    if (jp) {
+      const card = root.querySelector(`.cut[data-id="${jp.dataset.jump}"]`) as HTMLElement | null;
+      if (card) {
+        card.scrollIntoView({ behavior: "smooth", block: "center" });
+        const no = card.querySelector(".cut-no") as HTMLElement | null;
+        if (no) {
+          no.classList.remove("flash");
+          void no.offsetWidth; // 強制 reflow，讓同一顆連點也重播動畫
+          no.classList.add("flash");
+        }
+      }
       return;
     }
     // 分鏡／場勘顯示切換（純檢視偏好）
@@ -283,12 +386,11 @@ export function bindStb(
     // 點可編輯區：什麼都不做，讓游標直接進入（不重繪，否則 contenteditable 被
     // 重建、游標掉出來，就變成「要長按才打得了字」）
     if ((e.target as HTMLElement).isContentEditable) return;
-    const t = e.target as HTMLElement;
     const id = cut?.dataset.id ?? null;
     store.select(id);
     // 點到卡片但沒點中細細的文字行（Armin：一直沒打到字）：
     // 游標自動進「畫面描述」——點了就能打，不用瞄準。頭列（拖曳）與縮圖除外。
-    if (cut && id && !t.closest(".cut-head") && !t.closest(".cut-thumb")) {
+    if (cut && id && !t0.closest(".cut-head") && !t0.closest(".cut-thumb")) {
       const desc = root.querySelector(`.cut[data-id="${id}"] .cut-desc`) as HTMLElement | null;
       if (desc) {
         desc.focus();
@@ -315,7 +417,7 @@ export function bindStb(
       }
       const id = el.dataset.id!;
       // 秒數是數字欄，走自己的解析（全形數字/單位都吃得下，空值＝拿掉欄位）
-      if (el.dataset.f === "sec") { store.editSec(id, el.innerText || ""); return; }
+      if (el.dataset.f === "sec") { store.editSec(id, el.innerText || ""); refreshVoPanel(store, root); return; }
       const field = el.dataset.f as "desc" | "vo" | "sup" | "shot";
       // tag 已移出可編輯區，直接取純文字。
       // 用 innerText 不用 textContent：shift+enter 產生的 <br> 在 textContent 會被吃掉
@@ -326,6 +428,8 @@ export function bindStb(
       if ((field === "vo" || field === "sup") && text === "") {
         expanded.delete(id + ":" + field);
       }
+      // 卡片上改完旁白＝VO 稿面板就地跟上（inline 編輯不整頁重繪，面板自己補）
+      if (field === "vo") refreshVoPanel(store, root);
     },
     true
   );
