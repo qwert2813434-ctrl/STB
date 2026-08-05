@@ -214,6 +214,8 @@ export const en: Record<string, string> = {
   "預計收工": "Est. wrap",
   "製作": "Production",
   "製作公司": "Production company",
+  "統編": "Tax ID",
+  "公司統編": "Company tax ID",
   "聯絡人": "Contacts",
   "職位": "Role",
   "姓名": "Name",

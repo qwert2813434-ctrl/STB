@@ -344,8 +344,8 @@ export class Store {
 
   // ---- 通告單欄位 ----
 
-  // 片名／製作公司（目錄頁與通告單都能改；blur 才呼叫，emit 安全）
-  editMeta(field: "title" | "client", value: string) {
+  // 片名／製作公司／統編（目錄頁與通告單都能改；blur 才呼叫，emit 安全）
+  editMeta(field: "title" | "client" | "taxId", value: string) {
     if (this.project.meta[field] === value) return;
     this.snapshot();
     this.project.meta[field] = value;

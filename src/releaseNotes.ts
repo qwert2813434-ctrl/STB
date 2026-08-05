@@ -1,11 +1,20 @@
 // 版本與更新紀錄——每次發版在最上面加一段（慣例同 ALIGNED 設定頁：
 // 版本號、日期、使用者看得懂的變更點；工程細節留在 進度與下一步.md）。
 
-export const APP_VERSION = "1.6.1";
+export const APP_VERSION = "1.6.2";
 
 export interface ReleaseNote { version: string; date: string; items: string[]; }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.6.2",
+    date: "2026-08-05",
+    items: [
+      "Rundown 自動分頁：拍攝日程排長了不會再全部擠成一頁——照時段實際高度切頁（頁標帶「頁 1 / 2」），簡報、PDF、列印都跟著分頁，比例不再被越壓越小",
+      "直式案的 Rundown 分鏡縮圖放大到與橫式同寬（約 1.5 倍），現場看得清畫面",
+      "通告單加「統編」欄：資訊條「製作」後面多一格，沒填就不會出現在簡報與列印",
+    ],
+  },
   {
     version: "1.6.1",
     date: "2026-08-03",

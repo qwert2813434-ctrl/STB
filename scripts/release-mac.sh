@@ -43,10 +43,15 @@ notarize "$WORK/out.dmg"
 xcrun stapler staple -q "$WORK/out.dmg"
 
 echo "▸ quarantine 模擬驗收"
-xattr -w com.apple.quarantine "0083;0;Safari;RELEASE-TEST" "$WORK/out.dmg"
-spctl -a -t open --context context:primary-signature "$WORK/out.dmg" >/dev/null 2>&1 \
+# 驗收一律打在副本上：quarantine 會沿著「掛載→拷出」傳染，
+# 直接標 out.dmg 的話 RELEASE-TEST 這枚標籤會跟著 cp 進 release/，
+# 之後從那顆 DMG 裝機就被 App Translocation 丟去 /private/var 亂碼路徑跑
+#（2026-08-05 抓到；對外下載不受影響——使用者的 quarantine 是瀏覽器蓋的——但本機裝機會中）。
+cp "$WORK/out.dmg" "$WORK/qtest.dmg"
+xattr -w com.apple.quarantine "0083;0;Safari;RELEASE-TEST" "$WORK/qtest.dmg"
+spctl -a -t open --context context:primary-signature "$WORK/qtest.dmg" >/dev/null 2>&1 \
   || { echo "❌ DMG spctl 未過"; exit 1; }
-hdiutil attach -nobrowse -readonly "$WORK/out.dmg" -mountpoint "$WORK/mnt" -quiet
+hdiutil attach -nobrowse -readonly "$WORK/qtest.dmg" -mountpoint "$WORK/mnt" -quiet
 ditto "$WORK/mnt/STB.app" "$WORK/qapp"
 hdiutil detach "$WORK/mnt" -quiet
 xattr -w com.apple.quarantine "0083;0;Safari;RELEASE-TEST" "$WORK/qapp"
@@ -54,6 +59,7 @@ spctl -a -t exec -vv "$WORK/qapp" 2>&1 | grep -q "Notarized Developer ID" \
   || { echo "❌ app spctl 未過"; exit 1; }
 
 cp "$WORK/out.dmg" "$DMG"
+xattr -c "$DMG" 2>/dev/null || true   # 保險：出貨的 DMG 不帶任何殘留 metadata（不動內容，SHA 不變）
 echo "✅ v$VER 全綠，已蓋 ${DMG}（SHA $(shasum -a 256 "$DMG" | cut -c1-8)…）"
 echo "剩下手動三件："
 echo "  1. git add $DMG && git commit && git push（pre-push hook 會再驗一次）"

@@ -1,11 +1,35 @@
 import { bindEditKeys } from "./editKeys";
 import { bindPointerDrag } from "./pointerDrag";
 import type { Store } from "./store";
-import { computeCutNumbers, chainRundown, hhmmToMin, minToHHMM, BLOCK_TYPE_LABELS } from "./model";
+import { computeCutNumbers, chainRundown, hhmmToMin, minToHHMM, BLOCK_TYPE_LABELS, type RundownBlock } from "./model";
 import { openCutPicker, fileToWorkingImage, pickFiles } from "./cutPicker";
 import { openCropper } from "./cropper";
 import { saveImageAs } from "./persistence";
 import { t, tf } from "./i18n";
+
+// 分頁估高：不分頁的話一頁越排越長，簡報 fitNow() 會把整頁縮到看不見
+//（Armin 2026-08-05 回報）。時段高度差很多（有無縮圖／停車圖），固定「N 個一頁」
+// 會一頁爆滿一頁空，所以按估高打包。單位＝簡報 1560px 設計寬下的 px（版面上限在那條路，
+// 編輯器頁高本來就隨內容捲動）。
+// 常數是 dev-tests/rundown-page-test.html 量出來校準的，改版面就重跑那支。
+const PAGE_BUDGET = 800; // 內容上限：880（簡報框）− 40（.page padding）− 30（頁標）
+function blockHeight(b: RundownBlock, portrait: boolean): number {
+  const thumbRows = Math.ceil(b.cutIds.length / 6);   // 縮圖 96px 寬，媒體欄一列約 6 顆
+  const media = thumbRows * (portrait ? 191 : 74);
+  const text = 78 + (b.parkImage ? 98 : 0);           // 地點/停車/道具三行（＋停車圖）
+  return 54 + Math.max(media, text);                  // 54＝上下留白＋標題列
+}
+function paginate(blocks: RundownBlock[], portrait: boolean): RundownBlock[][] {
+  const pages: RundownBlock[][] = [[]];
+  let used = 0;
+  for (const b of blocks) {
+    const h = blockHeight(b, portrait);
+    if (used && used + h > PAGE_BUDGET) { pages.push([]); used = 0; } // used>0 才換頁＝超高的單塊自己一頁，不留空頁
+    pages[pages.length - 1].push(b);
+    used += h;
+  }
+  return pages;
+}
 
 // 渲染 Rundown 拍攝日程頁：真實時間區塊、地點/停車/道具、指派的 cut（顯示編號）。
 export function renderRundown(store: Store, root: HTMLElement, dayOverride?: import("./model").ShootDay) {
@@ -16,8 +40,7 @@ export function renderRundown(store: Store, root: HTMLElement, dayOverride?: imp
   const times = chainRundown(day.rundown, hhmmToMin(day.callTime));
 
   const portrait = p.aspect === "9:16"; // 指派的分鏡縮圖跟隨整片比例（停車照另計，維持橫式）
-  let html = `<p class="page-label">${t("Rundown · 拍攝日程 · A5 橫")}</p><div class="page rundown">`;
-  day.rundown.forEach((b, i) => {
+  const rowHtml = (b: RundownBlock, i: number) => {
     const tm = times[i];
     let cutsHtml = "";
     for (const cid of b.cutIds) {
@@ -27,7 +50,7 @@ export function renderRundown(store: Store, root: HTMLElement, dayOverride?: imp
       const box = cut?.imageRef ? `<img src="${cut.imageRef}" alt="" draggable="false">` : "▢";
       cutsHtml += `<span class="rd-cut${portrait ? " portrait" : ""}"><span class="rd-cut-box${portrait ? " portrait" : ""}">${box}</span><span class="rd-cut-no">${n.label}</span></span>`;
     }
-    html += `
+    return `
       <div class="rd-row" data-block="${b.id}">
         <span class="rd-grip" data-block="${b.id}" title="${t("拖曳排序")}">⠿</span>
         <div class="rd-time">${minToHHMM(tm.start)}–${minToHHMM(tm.end)}</div>
@@ -65,9 +88,19 @@ export function renderRundown(store: Store, root: HTMLElement, dayOverride?: imp
           <button class="rd-del" data-del="${b.id}" aria-label="${t("刪除時段")}">✕</button>
         </div>
       </div>`;
+  };
+
+  const pages = paginate(day.rundown, portrait);
+  let html = "";
+  let seq = 0;
+  pages.forEach((blocks, pg) => {
+    const pn = pages.length > 1 ? ` · ${tf("頁 {a} / {b}", { a: pg + 1, b: pages.length })}` : "";
+    html += `<p class="page-label">${t("Rundown · 拍攝日程 · A5 橫")}${pn}</p><div class="page rundown">`;
+    for (const b of blocks) html += rowHtml(b, seq++);
+    // 新增鈕只掛最後一頁（時段一律接在最後）
+    if (pg === pages.length - 1) html += `<div class="rd-addrow"><button data-addblock>${t("＋ 新增時段")}</button></div>`;
+    html += `</div>`;
   });
-  html += `<div class="rd-addrow"><button data-addblock>${t("＋ 新增時段")}</button></div>`;
-  html += `</div>`;
   root.innerHTML = html;
 }
 

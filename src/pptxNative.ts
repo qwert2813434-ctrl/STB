@@ -404,9 +404,10 @@ function callSheetSlide(pptx: PptxGenJS, p: Project, day: ShootDay, dayIdx: numb
   ], { x: MX, y: 0.5, w: 6.8, h: 0.42, fontFace: FONT });
   sl.addText(day.date || "", { x: 7.3, y: 0.55, w: W - 7.3 - MX, h: 0.35, fontFace: FONT, fontSize: 12, color: INK2, align: "right" });
 
-  // 上方資訊條：集合／預計收工／製作
+  // 上方資訊條：集合／預計收工／製作（＋統編，沒填就不出格）
   const cells: [string, string][] = [[t("集合"), day.callTime], [t("預計收工"), wrap], [t("製作"), p.meta.client]];
-  const cw = (W - MX * 2 - 0.24) / 3;
+  if (p.meta.taxId) cells.push([t("統編"), p.meta.taxId]);
+  const cw = (W - MX * 2 - 0.12 * (cells.length - 1)) / cells.length;
   cells.forEach(([k, v], i) => {
     const x = MX + i * (cw + 0.12);
     sl.addShape("rect", { x, y: 1.05, w: cw, h: 0.8, fill: { color: "ffffff" }, line: { color: LINE, width: 1 } });

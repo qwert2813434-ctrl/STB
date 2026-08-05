@@ -25,6 +25,7 @@ export function renderCallSheet(store: Store, root: HTMLElement, dayOverride?: i
       <div class="cs-cell"><div class="cs-k">${t("集合")}</div><div class="cs-v cut-edit" contenteditable draggable="false" data-dayf="callTime" data-ph="08:00">${esc(day.callTime)}</div></div>
       <div class="cs-cell"><div class="cs-k">${t("預計收工")}</div><div class="cs-v">${wrap}</div></div>
       <div class="cs-cell"><div class="cs-k">${t("製作")}</div><div class="cs-v cut-edit" contenteditable draggable="false" data-meta="client" data-ph="${t("製作公司")}">${esc(p.meta.client)}</div></div>
+      <div class="cs-cell cs-optional"><div class="cs-k">${t("統編")}</div><div class="cs-v cut-edit" contenteditable draggable="false" data-meta="taxId" data-ph="${t("公司統編")}">${esc(p.meta.taxId ?? "")}</div></div>
     </div>`;
 
   // 聯絡人：上方橫排一列（老通告單格式：製片-姓名 電話 / 監製… / 導演…）
@@ -70,7 +71,7 @@ export function bindCallSheet(store: Store, root: HTMLElement) {
     const el = e.target as HTMLElement;
     if (!el.isContentEditable) return;
     const text = (el.textContent || "").trim();
-    if (el.dataset.meta) { store.editMeta(el.dataset.meta as "title" | "client", text); return; }
+    if (el.dataset.meta) { store.editMeta(el.dataset.meta as "title" | "client" | "taxId", text); return; }
     if (el.dataset.dayf === "date") { store.setDayDate(text); return; }
     if (el.dataset.dayf === "callTime") { store.setDayCallTime(text); return; }
     if (el.dataset.ct !== undefined) { store.editContact(Number(el.dataset.ct), el.dataset.ctf as "role" | "name" | "phone", text); return; }

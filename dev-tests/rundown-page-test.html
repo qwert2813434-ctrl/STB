@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head><meta charset="utf-8"><title>Rundown 分頁與直式縮圖回歸測試</title></head>
+<body style="margin:0;background:#f6f4f0">
+<pre id="out" style="position:fixed;right:8px;top:8px;z-index:9;background:#fff;padding:10px;font:12px monospace;border:1px solid #ccc">running…</pre>
+<div id="stage" class="pv-fit" style="position:static;width:1560px;transform:none;left:auto;top:auto"></div>
+<script type="module">
+// 量的是「簡報那條路」的版面：pv-fit 固定 1560px 設計寬、fitNow 會把整頁縮到入框，
+// 所以只要每頁高度 ≤ 簡報框高（≈880px），比例就不會被越壓越小。
+import "/src/style.css";
+import { renderRundown } from "/src/rundownView.ts";
+
+const IMG = "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="90" height="160"><rect width="90" height="160" fill="#8aa"/></svg>`);
+const BUDGET = 850; // 簡報框可用高 880 −頁標約 30（頁標在 .page 外，也算進投影片高度）
+
+function project(aspect, n, cutsPer, parkEvery) {
+  const cuts = [], rundown = [];
+  for (let i = 0; i < n; i++) {
+    const cutIds = [];
+    for (let c = 0; c < cutsPer; c++) {
+      const id = `c${i}_${c}`;
+      cuts.push({ id, groupId: id, filmId: "f1", shot: "M", desc: "", vo: "", sup: "", imageRef: IMG, prompt: "", props: "", note: "" });
+      cutIds.push(id);
+    }
+    rundown.push({
+      id: `b${i}`, durMin: 30, type: "shoot", title: `第 ${i + 1} 個時段 · 示範`,
+      loc: "台南市中西區某某路 100 號", mapUrl: "", park: "路邊停車格／巷內收費場",
+      parkImage: parkEvery && i % parkEvery === 0 ? IMG : null,
+      props: "反光板、對講機、傘", cutIds, note: "",
+    });
+  }
+  return { p: { meta: { title: "測試", client: "", version: 1 }, contacts: [], films: [{ id: "f1", name: "A路" }], cuts, days: [], milestones: [], refPages: {}, aspect },
+           day: { id: "d1", date: "2026-08-05", callTime: "08:00", callGroups: [], rundown } };
+}
+
+const stage = document.getElementById("stage");
+const lines = [];
+function run(name, aspect, n, cutsPer, parkEvery) {
+  const { p, day } = project(aspect, n, cutsPer, parkEvery);
+  renderRundown({ get: () => p }, stage, day);
+  const pages = [...stage.querySelectorAll(".page.rundown")];
+  const hs = pages.map((el) => Math.round(el.getBoundingClientRect().height));
+  const over = hs.filter((h) => h > BUDGET);
+  lines.push(`${over.length ? "FAIL" : "ok  "} ${name}：${n} 段 → ${pages.length} 頁，頁高 ${hs.join(" / ")}${over.length ? `（超過 ${BUDGET}）` : ""}`);
+}
+
+run("橫式・無圖", "16:9", 14, 0, 0);
+run("橫式・每段 4 圖", "16:9", 14, 4, 0);
+run("橫式・4 圖＋停車圖", "16:9", 14, 4, 2);
+run("直式・每段 4 圖", "9:16", 14, 4, 0);
+run("直式・4 圖＋停車圖", "9:16", 14, 4, 2);
+run("直式・每段 8 圖（縮圖換行）", "9:16", 10, 8, 0);
+
+// 直式縮圖寬＝橫式同寬（Armin：至少 1.5 倍於原本的 64px）
+const { p, day } = project("9:16", 2, 2, 0);
+renderRundown({ get: () => p }, stage, day);
+const w = stage.querySelector(".rd-cut.portrait")?.getBoundingClientRect().width ?? 0;
+lines.push(`${w >= 96 ? "ok  " : "FAIL"} 直式縮圖寬 ${Math.round(w)}px（原 64px，需 ≥96）`);
+
+// 留最後一組在畫面上供目視
+run("直式・4 圖＋停車圖", "9:16", 9, 4, 2);
+document.getElementById("out").textContent = lines.join("\n");
+</script>
+</body>
+</html>

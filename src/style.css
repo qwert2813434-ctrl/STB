@@ -322,7 +322,9 @@ button:active { transform: scale(.98); }
 }
 .rd-cuts { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
 .rd-cut { width: 96px; }
-.rd-cut.portrait { width: 64px; } /* 直式分鏡：縮窄，避免站立縮圖過高 */
+/* 直式分鏡：同橫式寬（原 64px 在 Rundown 上小到看不清畫面，Armin 2026-08-05）——
+   站立縮圖因此變高，分頁估高（rundownView blockHeight）已按 96px 算 */
+.rd-cut.portrait { width: 96px; }
 
 /* Rundown 二分法（Armin 定版）：標題橫跨在上；
    左＝分鏡縮圖（＋工具列）、右＝地點→停車→道具直排＋停車示意圖在下 */
@@ -884,6 +886,7 @@ body:has(.mb-overlay, .crop-overlay, .pv-overlay, .ex-overlay, .sk-overlay, .hub
 .pv-fit .rd-sub:not(:has(.cut-edit:not(:empty))):not(:has(.rd-park)),
 .pv-fit .rd-tools,
 .pv-fit .cs-grip,
+.pv-fit .cs-optional:not(:has(.cut-edit:not(:empty))),
 .pv-fit .cs-gs:not(:has(.cut-edit:not(:empty))),
 .pv-fit .cs-groups:not(:has(.cs-grow)),
 .pv-fit .ref-side:not(:has(.ref-cutrefs)),
@@ -1337,6 +1340,7 @@ body.sel-mode .cut [contenteditable] { pointer-events: none; }
   .print-page .rd-sub:not(:has(.cut-edit:not(:empty))):not(:has(.rd-park)),
   .print-page .rd-tools,
   .print-page .cs-grip,
+  .print-page .cs-optional:not(:has(.cut-edit:not(:empty))),
   .print-page .cs-gs:not(:has(.cut-edit:not(:empty))),
   .print-page .cs-groups:not(:has(.cs-grow)),
   .print-page .ref-side:not(:has(.ref-cutrefs)),

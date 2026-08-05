@@ -23,6 +23,7 @@ export function aspectSpec(a?: string): AspectSpec {
 export interface Meta {
   title: string;
   client: string;
+  taxId?: string;       // 製作公司統編（通告單資訊條；缺欄＝沒填，舊檔序列化後 byte-identical）
   version: number;
   logo?: string | null; // 首頁 LOGO（data URL，透明 PNG 佳）；null＝內建預設（錄人）
 }
@@ -310,6 +311,8 @@ export function normalizeProject(raw: unknown): Project {
     meta: {
       title: meta.title ?? "未命名案子",
       client: meta.client ?? "",
+      // 沒填就整個欄位不寫進 JSON（舊檔存回去仍 byte-identical）
+      ...(meta.taxId ? { taxId: meta.taxId } : {}),
       version: meta.version ?? 1,
       logo: meta.logo ?? null,
     },
