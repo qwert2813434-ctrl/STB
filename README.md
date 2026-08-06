@@ -9,15 +9,16 @@
 
 ## 下載
 
-👉 **[下載 STB for Mac（DMG）](https://raw.githubusercontent.com/qwert2813434-ctrl/STB/main/release/STB_1.0.0_aarch64.dmg)**（檔名固定，內容永遠是最新版）
+👉 **[下載 STB for Mac（DMG）](https://raw.githubusercontent.com/qwert2813434-ctrl/STB/main/release/STB_1.6.2_aarch64.dmg)**（v1.6.2）
 
 📱 **[STB for iPad — App Store](https://apps.apple.com/tw/app/stb-storyboard-to-shoot/id6790075928)**（NT$350 買斷，支援 Apple Pencil 塗鴉分鏡）
 
 **系統需求**：Mac 版需 Apple Silicon（M1 或更新）、macOS 13 Ventura 或更新；iPad 版需 iPadOS 14+。
 
-第一次開啟若跳「無法驗證開發者」（本 App 未購買 Apple 簽章）：
-- macOS 15 以上：系統設定 → 隱私權與安全性 → 最下方「強制打開」
-- 較舊版本：對 STB 按右鍵 → 打開 → 打開
+本 App 已通過 Apple 公證（Developer ID 簽名＋Notarization），下載後直接打開即可，不需要任何繞過步驟。
+
+若跳出「檔案已損壞」，代表你手上是 2026-07-28～08-03 之間下載的舊檔（那段期間曾誤上未公證的包）。
+請把舊檔刪掉、從上面的連結重新下載——注意瀏覽器不會覆蓋同名檔案，可能會存成 `…-1.dmg`。
 
 ## 特色
 

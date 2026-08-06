@@ -1,18 +1,29 @@
 #!/bin/bash
 # 擋未公證 DMG 上線（2026-08-03 事故後加裝；安裝＝git config core.hooksPath scripts/githooks）
-# push 範圍內任何 commit 動到 release/*.dmg → 驗證工作區那顆 DMG 已簽名＋公證＋staple，沒過就擋下
+# push 範圍內任何 commit 動到 release/*.dmg → 逐顆驗證工作區那顆已簽名＋公證＋staple，沒過就擋下。
+#
+# 2026-08-06 修：原本寫死驗 release/STB_1.0.0_aarch64.dmg。改成版本化檔名後那顆變成凍結檔
+# （永遠是綠的），等於推任何未公證的新版都會被放行——防呆網會靜靜失效，
+# 失效方式跟它當初要防的 7/28 事故一模一樣。改成「這次 push 動到哪顆就驗哪顆」。
 ZERO="0000000000000000000000000000000000000000"
+fail=0
+
 while read -r _ local_sha _ remote_sha; do
   [ "$local_sha" = "$ZERO" ] && continue
   if [ "$remote_sha" = "$ZERO" ]; then range="$local_sha"; else range="$remote_sha..$local_sha"; fi
-  if git diff --name-only "$range" 2>/dev/null | grep -q '^release/.*\.dmg$'; then
-    dmg="release/STB_1.0.0_aarch64.dmg"
+  # 內層用 process substitution，避免吃掉 git 餵給外層的 refs stdin
+  while IFS= read -r dmg; do
+    [ -f "$dmg" ] || continue   # 這次 push 是刪舊版瘦身，工作區沒這顆，沒東西可驗
     if ! xcrun stapler validate "$dmg" >/dev/null 2>&1 \
        || ! spctl -a -t open --context context:primary-signature "$dmg" >/dev/null 2>&1; then
-      echo "❌ 擋下 push：$dmg 沒通過公證驗證（stapler/spctl）。"
-      echo "   發版請走 scripts/release-mac.sh，跑完全綠再 push。"
-      exit 1
+      echo "❌ 擋下 push：${dmg} 沒通過公證驗證（stapler/spctl）。"
+      fail=1
     fi
-  fi
+  done < <(git diff --name-only "$range" 2>/dev/null | grep '^release/.*\.dmg$')
 done
+
+if [ "$fail" = 1 ]; then
+  echo "   發版請走 scripts/release-mac.sh，跑完全綠再 push。"
+  exit 1
+fi
 exit 0

@@ -8,13 +8,16 @@ cd "$(dirname "$0")/.."
 
 APP="${1:-src-tauri/target/release/bundle/macos/STB.app}"
 ID="Developer ID Application: WEI-MING KAO (GHCWJ24V46)"
-DMG="release/STB_1.0.0_aarch64.dmg"
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
 [ -d "$APP" ] || { echo "❌ 找不到 ${APP}（先 npm run tauri build，或把 .app 路徑當參數傳入）"; exit 1; }
 VER=$(defaults read "$(cd "$APP" && pwd)/Contents/Info.plist" CFBundleShortVersionString)
-echo "▸ 發版 v${VER}（來源：${APP}）"
+# 2026-08-06 起檔名帶版本：舊做法全部蓋進 STB_1.0.0_aarch64.dmg，使用者下載看到 1.0.0
+# 以為抓到舊版，而且瀏覽器不覆蓋同名檔（會存成 -1.dmg），點到留在下載夾的舊顆＝「檔案已損壞」。
+DMG="release/STB_${VER}_aarch64.dmg"
+FROZEN="release/STB_1.0.0_aarch64.dmg"   # 凍結在 1.6.2，接住舊私訊/外部轉貼，不再更新
+echo "▸ 發版 v${VER}（來源：${APP}）→ ${DMG}"
 
 notarize() { # $1=檔案
   xcrun notarytool submit "$1" --keychain-profile stb-notary --wait 2>&1 | tail -3 \
@@ -60,8 +63,31 @@ spctl -a -t exec -vv "$WORK/qapp" 2>&1 | grep -q "Notarized Developer ID" \
 
 cp "$WORK/out.dmg" "$DMG"
 xattr -c "$DMG" 2>/dev/null || true   # 保險：出貨的 DMG 不帶任何殘留 metadata（不動內容，SHA 不變）
-echo "✅ v$VER 全綠，已蓋 ${DMG}（SHA $(shasum -a 256 "$DMG" | cut -c1-8)…）"
-echo "剩下手動三件："
-echo "  1. git add $DMG && git commit && git push（pre-push hook 會再驗一次）"
-echo "  2. 檢查 releaseNotes.ts APP_VERSION＋工具間 stb-latest.json（notesI18n 三語）是否同版本"
-echo "  3. ditto 蓋 /Applications/STB.app"
+
+echo "▸ 同步下載連結（repo 內三處，外部一律指行銷頁不必動）"
+RAW="https://github.com/qwert2813434-ctrl/STB/raw/main/release/STB_${VER}_aarch64.dmg"
+sync() { # $1=檔案，其餘＝sed 表達式（可多條）
+  local f="$1"; shift
+  [ -f "$f" ] || { echo "  ⚠️ 找不到 ${f}，跳過（連結會留舊版，記得手動改）"; return; }
+  local args=(); local e
+  for e in "$@"; do args+=(-e "$e"); done
+  sed -i '' "${args[@]}" "$f" && echo "  ✓ ${f}"
+}
+LINK="s|release/STB_[0-9.]*_aarch64\.dmg|release/STB_${VER}_aarch64.dmg|g"
+# README 連結後面還帶「（v1.6.2）」字樣，只改網址會對不起來，兩條一起送
+sync README.md         "$LINK" "s|（v[0-9][0-9.]*）|（v${VER}）|g"
+sync docs/index.html   "$LINK"
+FEED="../../../37 - 工具間/上線/stb-latest.json"
+sync "$FEED"           "s|\"url\": \"[^\"]*\"|\"url\": \"${RAW}\"|"
+
+# 版本化檔名會累積（每版一顆 4MB）。凍結檔永遠留著，其餘舊版可自行 git rm 瘦身。
+OLD=$(ls release/STB_*_aarch64.dmg 2>/dev/null | grep -v "$(basename "$FROZEN")" | grep -v "$(basename "$DMG")" || true)
+[ -n "$OLD" ] && { echo "▸ 舊版 DMG 還留在 repo（要瘦身就 git rm，歷史仍保得住）："; echo "$OLD" | sed 's/^/    /'; }
+
+echo "✅ v${VER} 全綠，已產出 ${DMG}（SHA $(shasum -a 256 "$DMG" | cut -c1-8)…）"
+echo "剩下手動四件："
+echo "  1. git add -A && git commit && git push（pre-push hook 會再驗一次）"
+echo "  2. releaseNotes.ts 的 APP_VERSION 是否＝${VER}"
+echo "  3. 工具間 stb-latest.json：url 已自動改好，但 version 與 notesI18n 三語要你自己寫，"
+echo "     然後在「37 - 工具間/上線/」git push 才會生效（沒推＝App 內升級橫幅不會跳）"
+echo "  4. ditto 蓋 /Applications/STB.app"
