@@ -53,6 +53,31 @@ export function renderCallSheet(store: Store, root: HTMLElement, dayOverride?: i
     </div>`;
   });
   html += `</div><div class="cs-addgroup"><button data-cgadd>${t("＋ 新增組別")}</button></div></div>`;
+
+  // 車輛：誰開哪台、誰坐哪台（現場最常被問）。乘客用一格文字，貼名單直接分隔
+  html += `<div class="cs-groups"><div class="cs-gh">${t("車輛")}</div><div class="cs-glist cs-vlist">`;
+  (day.vehicles ?? []).forEach((v, i) => {
+    html += `<div class="cs-vrow">
+      <span class="cs-gl cut-edit" contenteditable draggable="false" data-vh="${i}" data-vhf="label" data-ph="${t("演員車")}">${esc(v.label)}</span>
+      <span class="cs-plate cut-edit" contenteditable draggable="false" data-vh="${i}" data-vhf="plate" data-ph="${t("車牌")}">${esc(v.plate)}</span>
+      <span class="cs-gs"><span class="cs-dot">・</span><span class="cut-edit" contenteditable draggable="false" data-vh="${i}" data-vhf="driver" data-ph="${t("司機")}">${esc(v.driver)}</span></span>
+      <span class="cs-gt cs-phone cut-edit" contenteditable draggable="false" data-vh="${i}" data-vhf="driverPhone" data-ph="0900-000-000">${esc(v.driverPhone)}</span>
+      <span class="cs-vpax cut-edit" contenteditable draggable="false" data-vh="${i}" data-vhf="passengers" data-ph="${t("乘客（逗號分隔）")}">${esc(v.passengers.join("、"))}</span>
+      <button class="cs-gdel" data-vhdel="${i}" aria-label="${t("刪除車輛")}">✕</button>
+    </div>`;
+  });
+  html += `</div><div class="cs-addgroup"><button data-vhadd>${t("＋ 新增車輛")}</button></div></div>`;
+
+  // 注意事項：日層級（區塊各自的備註是另一回事）
+  html += `<div class="cs-groups"><div class="cs-gh">${t("注意事項")}</div><div class="cs-glist cs-nlist">`;
+  (day.notes ?? []).forEach((n, i) => {
+    html += `<div class="cs-nrow">
+      <span class="cs-ndash">—</span>
+      <span class="cs-ntext cut-edit" contenteditable draggable="false" data-nt="${i}" data-ph="${t("寫一條注意事項")}">${esc(n)}</span>
+      <button class="cs-gdel" data-ntdel="${i}" aria-label="${t("刪除注意事項")}">✕</button>
+    </div>`;
+  });
+  html += `</div><div class="cs-addgroup"><button data-ntadd>${t("＋ 新增注意事項")}</button></div></div>`;
   html += `</div>`;
   root.innerHTML = html;
 }
@@ -62,6 +87,12 @@ export function bindCallSheet(store: Store, root: HTMLElement) {
     const t = e.target as HTMLElement;
     if (t.closest("[data-cgadd]")) { store.addCallGroup(); return; }
     if (t.closest("[data-ctadd]")) { store.addContact(); return; }
+    if (t.closest("[data-vhadd]")) { store.addVehicle(); return; }
+    if (t.closest("[data-ntadd]")) { store.addNote(); return; }
+    const vdel = t.closest("[data-vhdel]") as HTMLElement | null;
+    if (vdel) { store.deleteVehicle(Number(vdel.dataset.vhdel)); return; }
+    const ndel = t.closest("[data-ntdel]") as HTMLElement | null;
+    if (ndel) { store.deleteNote(Number(ndel.dataset.ntdel)); return; }
     const cdel = t.closest("[data-ctdel]") as HTMLElement | null;
     if (cdel) { store.deleteContact(Number(cdel.dataset.ctdel)); return; }
     const del = t.closest("[data-cgdel]") as HTMLElement | null;
@@ -75,6 +106,12 @@ export function bindCallSheet(store: Store, root: HTMLElement) {
     if (el.dataset.dayf === "date") { store.setDayDate(text); return; }
     if (el.dataset.dayf === "callTime") { store.setDayCallTime(text); return; }
     if (el.dataset.ct !== undefined) { store.editContact(Number(el.dataset.ct), el.dataset.ctf as "role" | "name" | "phone", text); return; }
+    if (el.dataset.vh !== undefined) {
+      store.editVehicle(Number(el.dataset.vh),
+        el.dataset.vhf as "label" | "plate" | "driver" | "driverPhone" | "passengers", text);
+      return;
+    }
+    if (el.dataset.nt !== undefined) { store.editNote(Number(el.dataset.nt), text); return; }
     if (el.dataset.cg !== undefined) store.editCallGroup(Number(el.dataset.cg), el.dataset.cgf as "label" | "time" | "loc", text);
   }, true);
   bindEditKeys(root); // Enter 留在框內（中文選字友善）、Esc 結束輸入

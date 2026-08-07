@@ -1,11 +1,21 @@
 // 版本與更新紀錄——每次發版在最上面加一段（慣例同 ALIGNED 設定頁：
 // 版本號、日期、使用者看得懂的變更點；工程細節留在 進度與下一步.md）。
 
-export const APP_VERSION = "1.6.2";
+export const APP_VERSION = "1.6.3";
 
 export interface ReleaseNote { version: string; date: string; items: string[]; }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.6.3",
+    date: "2026-08-07",
+    items: [
+      "通告單加「車輛」：一列一台車，填車名、車牌、司機與電話；乘客欄貼名單就好——逗號、頓號、空白都能分隔，離開欄位自動整理成一排",
+      "通告單加「注意事項」：一句一條，印在通告單上給全組看（時段各自的備註仍在 Rundown 裡，兩者不互相干擾）",
+      "沒填車輛或注意事項的案子，檔案內容完全不變——舊案子開了再存回去，一個位元組都不會動",
+      "修正：預覽與列印時，通告單上的刪除鈕與拖曳把手不再印出來",
+    ],
+  },
   {
     version: "1.6.2",
     date: "2026-08-05",

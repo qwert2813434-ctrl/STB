@@ -161,12 +161,26 @@ export interface RundownBlock {
 
 // 拍攝日：一天一份通告（callTime/callGroups）＋該日 Rundown（通告在 Rundown 前）
 export interface CallGroup { label: string; time: string; loc: string; }
+
+// 車輛：每張真實通告單都有——誰開哪台、誰坐哪台，現場最常被問
+export interface Vehicle {
+  id: string;
+  label: string;       // 演員車／製片車／攝影車
+  plate: string;       // 車牌
+  driver: string;
+  driverPhone: string;
+  passengers: string[];
+}
+
 export interface ShootDay {
   id: string;
   date: string;
   callTime: string;      // 集合時間（Rundown 順延起點）
   callGroups: CallGroup[]; // 大組通告時間（組別/演員 → 集合時間＋地點）
   rundown: RundownBlock[];
+  // 以下兩欄同 taxId 慣例：沒填就整個欄位不寫進 JSON（舊檔存回去仍 byte-identical）
+  vehicles?: Vehicle[];
+  notes?: string[];      // 日層級注意事項（區塊各自的 note 是另一回事）
 }
 
 export interface BlockTime { start: number; end: number; }
@@ -365,6 +379,24 @@ export function normalizeProject(raw: unknown): Project {
         cutIds: Array.isArray(b?.cutIds) ? b.cutIds : [],
         note: b?.note ?? "",
       })),
+      // 車輛／注意事項：只在真的有內容時才寫入＝沒填的舊檔 byte-identical
+      ...(Array.isArray(d?.vehicles) && d.vehicles.length
+        ? {
+            vehicles: (d.vehicles as Partial<Vehicle>[]).map((v) => ({
+              id: v?.id ?? newId("v"),
+              label: v?.label ?? "",
+              plate: v?.plate ?? "",
+              driver: v?.driver ?? "",
+              driverPhone: v?.driverPhone ?? "",
+              passengers: Array.isArray(v?.passengers)
+                ? v.passengers.filter((x): x is string => typeof x === "string")
+                : [],
+            })),
+          }
+        : {}),
+      ...(Array.isArray(d?.notes) && d.notes.length
+        ? { notes: (d.notes as unknown[]).filter((x): x is string => typeof x === "string") }
+        : {}),
     })),
     milestones: (Array.isArray(r.milestones) ? r.milestones : []).map((m) => ({
       id: m?.id ?? newId("m"),

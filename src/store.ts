@@ -458,6 +458,69 @@ export class Store {
     this.touched();
   }
 
+  // ---- 車輛（通告單）----
+  // vehicles/notes 是選填欄：空了就把整個欄位刪掉，沒用到這功能的案子存回去仍 byte-identical
+  addVehicle() {
+    this.commit((p) => {
+      const d = p.days.find((x) => x.id === this.currentDayId);
+      if (!d) return;
+      (d.vehicles ??= []).push({
+        id: newId("v"), label: "", plate: "", driver: "", driverPhone: "", passengers: [],
+      });
+    });
+  }
+
+  deleteVehicle(index: number) {
+    this.commit((p) => {
+      const d = p.days.find((x) => x.id === this.currentDayId);
+      if (!d?.vehicles || index < 0 || index >= d.vehicles.length) return;
+      d.vehicles.splice(index, 1);
+      if (!d.vehicles.length) delete d.vehicles;
+    });
+  }
+
+  editVehicle(index: number, field: "label" | "plate" | "driver" | "driverPhone" | "passengers", value: string) {
+    const v = this.currentDay()?.vehicles?.[index];
+    if (!v) return;
+    if (field === "passengers") {
+      // 逗號／頓號／空白都能分隔，貼上名單直接用
+      const list = value.split(/[,，、\s]+/).map((s) => s.trim()).filter(Boolean);
+      if (list.join(" ") === v.passengers.join(" ")) return;
+      this.snapshot();
+      v.passengers = list;
+    } else {
+      if (v[field] === value) return;
+      this.snapshot();
+      v[field] = value;
+    }
+    this.touched();
+  }
+
+  // ---- 注意事項（通告單）----
+  addNote() {
+    this.commit((p) => {
+      const d = p.days.find((x) => x.id === this.currentDayId);
+      if (d) (d.notes ??= []).push("");
+    });
+  }
+
+  deleteNote(index: number) {
+    this.commit((p) => {
+      const d = p.days.find((x) => x.id === this.currentDayId);
+      if (!d?.notes || index < 0 || index >= d.notes.length) return;
+      d.notes.splice(index, 1);
+      if (!d.notes.length) delete d.notes;
+    });
+  }
+
+  editNote(index: number, value: string) {
+    const day = this.currentDay();
+    if (!day?.notes || day.notes[index] === undefined || day.notes[index] === value) return;
+    this.snapshot();
+    day.notes[index] = value;
+    this.touched();
+  }
+
   // ---- 聯絡人（通告單右欄） ----
   addContact() {
     this.commit((p) => { p.contacts.push({ role: "", name: "", phone: "" }); });

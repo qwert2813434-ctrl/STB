@@ -9,7 +9,7 @@
 
 ## 下載
 
-👉 **[下載 STB for Mac（DMG）](https://raw.githubusercontent.com/qwert2813434-ctrl/STB/main/release/STB_1.6.2_aarch64.dmg)**（v1.6.2）
+👉 **[下載 STB for Mac（DMG）](https://raw.githubusercontent.com/qwert2813434-ctrl/STB/main/release/STB_1.6.3_aarch64.dmg)**（v1.6.3）
 
 📱 **[STB for iPad — App Store](https://apps.apple.com/tw/app/stb-storyboard-to-shoot/id6790075928)**（NT$350 買斷，支援 Apple Pencil 塗鴉分鏡）
 

@@ -461,6 +461,16 @@ button:active { transform: scale(.98); }
 .cs-grip:active { cursor: grabbing; }
 .cs-grow.drop-target { box-shadow: 0 -2px 0 var(--ink); }
 
+/* 車輛：欄位多（車名／車牌／司機／電話／乘客），排單欄才不會擠 */
+.cs-vlist { grid-template-columns: 1fr; }
+.cs-vrow { display: flex; align-items: baseline; gap: 4px; padding: 5px 0; border-bottom: 1px solid var(--line2); font-size: 13px; }
+.cs-plate { font-family: var(--mono); color: var(--ink2); letter-spacing: .06em; min-width: 84px; }
+.cs-vpax { color: var(--faint); flex: 1; min-width: 80px; }
+/* 注意事項：一句一條、二分欄；破折號是裝飾不進編輯區 */
+.cs-nrow { display: flex; align-items: baseline; gap: 6px; padding: 5px 0; border-bottom: 1px solid var(--line2); font-size: 13px; }
+.cs-ndash { color: var(--faint); flex: none; }
+.cs-ntext { flex: 1; min-width: 80px; }
+
 /* 拖曳手感 + 分鏡圖 */
 /* 更新提醒橫幅：右下角浮一條，不擋工作區、不強制互動 */
 .upd-bar {
@@ -834,7 +844,8 @@ body:has(.mb-overlay, .crop-overlay, .pv-overlay, .ex-overlay, .sk-overlay, .hub
 :root[data-theme="dark"] .page { box-shadow: none; }
 :root[data-theme="dark"] .topbar { border-bottom: 1px solid var(--line); }
 
-.pv-fit button:not(.ref-play), .pv-fit input, .pv-fit .rd-adj, .pv-fit .ref-addrow, .pv-fit .gt-addrow, .pv-fit .rd-addrow, .pv-fit .thumb-add, .pv-fit .ref-actions, .pv-fit .ref-mini, .pv-fit .ref-del, .pv-fit .gt-del, .pv-fit .rd-del, .pv-fit .cs-addgroup { display: none !important; }
+.pv-fit button:not(.ref-play), .pv-fit input, .pv-fit .rd-adj, .pv-fit .ref-addrow, .pv-fit .gt-addrow, .pv-fit .rd-addrow, .pv-fit .thumb-add, .pv-fit .ref-actions, .pv-fit .ref-mini, .pv-fit .ref-del, .pv-fit .gt-del, .pv-fit .rd-del, .pv-fit .cs-addgroup,
+.pv-fit .cs-gdel, .pv-fit .cs-addinline, .pv-fit .cs-grip { display: none !important; }
 /* 簡報中唯一可互動的元件：▶ 與參考縮圖（有影片就播，沒影片照常換頁） */
 .pv-fit .ref-play { pointer-events: auto; }
 .pv-fit .ref-thumb { pointer-events: auto; }
@@ -1333,7 +1344,8 @@ body.sel-mode .cut [contenteditable] { pointer-events: none; }
   .print-page .ref-addrow, .print-page .gt-addrow, .print-page .rd-addrow,
   .print-page .ref-del, .print-page .gt-del, .print-page .rd-del,
   .print-page .rd-grip, .print-page .cut-grip, .print-page .thumb-add, .print-page .ref-mini,
-  .print-page .cs-addgroup, .print-page .ref-play { display: none !important; }
+  .print-page .cs-addgroup, .print-page .ref-play,
+  .print-page .cs-gdel, .print-page .cs-addinline, .print-page .cs-grip { display: none !important; }
   /* 印刷＝成品版面：空欄位佔位字與空列收掉 */
   .print-page [contenteditable]:empty::before { content: none !important; }
   .print-page .rd-pair:not(:has(.cut-edit:not(:empty))):not(:has(.rd-park)),
