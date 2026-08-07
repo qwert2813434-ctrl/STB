@@ -65,7 +65,12 @@ App 開著時會每 2 秒偵測檔案的外部修改並自動重載。理論上 
 
 **[STB → 網頁通告單](tools/callsheet/)**——把案子變成一份單一 HTML 檔的三分頁通告單
 （通告單時間軸／Rundown 含分鏡縮圖／分鏡圖）。零外部連線、可離線看、能直接傳給劇組。
-把 `tools/callsheet/README.md` 的網址丟給你的 AI，它會自己抓腳本並產出。
+
+把下面這個網址貼給你的 AI，說「照這份文件做」，再把案子資料夾給它，它會自己抓腳本並產出：
+
+```
+https://github.com/qwert2813434-ctrl/STB/tree/main/tools/callsheet
+```
 
 ## 自己改（歡迎魔改）
 
