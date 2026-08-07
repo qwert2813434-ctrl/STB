@@ -61,6 +61,12 @@ STB 的資料就是一份 `project.json`，schema 見 [AI編輯指南_SCHEMA.md]
 App 開著時會每 2 秒偵測檔案的外部修改並自動重載。理論上 AI 改 JSON 就是改案子——
 這條工作流我們還在實測，歡迎嘗試、歡迎回報。
 
+## 周邊工具
+
+**[STB → 網頁通告單](tools/callsheet/)**——把案子變成一份單一 HTML 檔的三分頁通告單
+（通告單時間軸／Rundown 含分鏡縮圖／分鏡圖）。零外部連線、可離線看、能直接傳給劇組。
+把 `tools/callsheet/README.md` 的網址丟給你的 AI，它會自己抓腳本並產出。
+
 ## 自己改（歡迎魔改）
 
 技術棧：[Tauri 2](https://tauri.app)（Rust）＋ TypeScript ＋ Vite，無前端框架。
