@@ -40,7 +40,11 @@ export interface Film { id: string; name: string; }
 export interface SketchStroke { tool: "pen" | "marker"; pts: number[][]; size?: number; color?: string; }
 // 兩層固定圖層：場景（構圖，複製後通常不動）＋人物（表演/運鏡，擦掉重畫）。
 // underlay＝勘景照描圖墊底（半透明顯示沿描；輸出壓平「不含」墊底）。
-export interface CutSketch { scene: SketchStroke[]; figure: SketchStroke[]; underlay?: string | null; }
+// 自訂圖層（2026-08-15 企劃 10）：scene/figure 兩層語意不動（「複製 cut 只改
+// 人物層」工作流的地基），新增層放 extra、一律疊在人物層上方、依陣列順序渲染
+//（index 越大越上面）。extra 空陣列整個欄位不落地＝舊檔 byte-identical。
+export interface SketchLayer { name: string; strokes: SketchStroke[]; hidden?: boolean; }
+export interface CutSketch { scene: SketchStroke[]; figure: SketchStroke[]; underlay?: string | null; extra?: SketchLayer[]; }
 
 // cut = 真相。groupId 相同 = 連續鏡群組（05-1/05-2），移動時整組同行。
 export interface Cut {

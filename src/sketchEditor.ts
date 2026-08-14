@@ -4,6 +4,7 @@ import type { CutSketch, SketchStroke } from "./model";
 import { boardDims } from "./model";
 import { pickFiles, fileToWorkingImage } from "./cutPicker";
 import { bindUndoGestures } from "./touchUndo";
+import { askName } from "./nameDialog";
 
 // 塗鴉分鏡編輯器（04 企劃⑤，技術路線 A：web canvas＋Pointer Events）。
 // 定位：不跟分鏡師比質感——跟「沒有分鏡」比清楚。溝通工具，不是繪畫 App。
@@ -33,6 +34,18 @@ export function openSketchEditor(store: Store, cutId: string) {
   if (cut.imageRef && !cut.sketch) work.underlay = cut.imageRef;
   let underlayImg: HTMLImageElement | null = null; // 墊底的解碼快取
   let tool: "pen" | "marker" | "eraser" = "pen";
+  // 圖層：場景/人物固定（語意層），自訂層在 work.extra（上限 4，疊人物上方）。
+  // layer＝目前作用層："scene"｜"figure"｜extra 的索引。
+  // 橡皮擦/清除/選取都只動作用層——與兩層時代的行為一致。
+  const MAX_EXTRA = 4;
+  const extras = () => work.extra ?? [];
+  const curStrokes = (): SketchStroke[] => (typeof layer === "number" ? extras()[layer].strokes : work[layer]);
+  const setCurStrokes = (arr: SketchStroke[]) => {
+    if (typeof layer === "number") work.extra![layer].strokes = arr;
+    else work[layer] = arr;
+  };
+  const layerName = (): string =>
+    typeof layer === "number" ? extras()[layer]?.name ?? "" : layer === "scene" ? "場景" : "人物";
   // 粗細三檔（倍率乘在筆的基準粗細上，筆/麥克筆各自記住）＋三色
   //（黑／紅＝註記與運鏡箭頭／藍＝呼應 VO 語意色）。檢視偏好存 localStorage，
   // 筆畫上等於預設值（1／黑）就不寫進 JSON——舊檔相容的關鍵。
@@ -50,7 +63,7 @@ export function openSketchEditor(store: Store, cutId: string) {
     return COLORS.includes(v) ? v : INK;
   })();
   // 聰明預設：空白＝先畫場景（構圖）；已有場景＝進來多半是改人物
-  let layer: "scene" | "figure" = work.scene.length ? "figure" : "scene";
+  let layer: "scene" | "figure" | number = work.scene.length ? "figure" : "scene";
   const undoStack: CutSketch[] = [];
   const redoStack: CutSketch[] = [];
   let drawing: number[][] | null = null; // 進行中的筆畫
@@ -73,7 +86,7 @@ export function openSketchEditor(store: Store, cutId: string) {
           `<button data-skcolor="${c}"><i style="background:${c}"></i></button>`).join("")}
         </span>
         <span class="sk-sep"></span>
-        <button data-sklayer title="兩層固定圖層：場景畫構圖、人物畫表演與運鏡——之後複製 cut 只重畫人物層">正在畫：<b></b></button>
+        <button data-sklayer title="圖層清單：場景畫構圖、人物畫表演與運鏡（複製 cut 只重畫人物層）；最多再加 4 層自訂圖層，疊在人物上方">圖層：<b></b></button>
         <button data-skunder title="勘景照半透明墊底沿描——不會畫畫也能構圖正確；輸出的塗鴉不含墊底"></button>
         <span class="spacer"></span>
         <button data-skundo>復原</button>
@@ -83,6 +96,7 @@ export function openSketchEditor(store: Store, cutId: string) {
         <button class="sk-cancel">取消</button>
         <button class="sk-ok">完成</button>
       </div>
+      <div class="sk-layers"></div>
       <div class="sk-stage"><canvas class="sk-canvas${portrait ? " portrait" : ""}" width="${W}" height="${H}"></canvas></div>
       <div class="sk-hint">Apple Pencil／滑鼠作畫，手指不會誤觸 · <b>雙指輕點＝復原、三指輕點＝重做</b> · 橡皮擦＝擦到哪消到哪（只擦目前圖層） · 完成＝存進分鏡格，之後點縮圖可回來繼續改</div>
     </div>`;
@@ -130,6 +144,17 @@ export function openSketchEditor(store: Store, cutId: string) {
         cx.fill(strokePath(s));
       }
     }
+    // 自訂層疊在人物上方，依陣列順序（index 大＝上面）；隱藏層連壓平都不進
+    for (let i = 0; i < extras().length; i++) {
+      const L = extras()[i];
+      if (L.hidden) continue;
+      const dim = editorMode && layer !== i ? 0.4 : 1;
+      for (const s of L.strokes) {
+        cx.fillStyle = s.color ?? INK;
+        cx.globalAlpha = (s.tool === "marker" ? 0.32 : 1) * dim;
+        cx.fill(strokePath(s));
+      }
+    }
     if (drawing && drawing.length > 1) {
       const tl = tool === "eraser" ? "pen" : tool;
       cx.fillStyle = color;
@@ -152,10 +177,107 @@ export function openSketchEditor(store: Store, cutId: string) {
     overlay.querySelectorAll("[data-skcolor]").forEach((b) => b.classList.toggle("on", (b as HTMLElement).dataset.skcolor === color));
     (overlay.querySelector(".sk-sizes") as HTMLElement).classList.toggle("sk-off", tool === "eraser");
     (overlay.querySelector(".sk-colors") as HTMLElement).classList.toggle("sk-off", tool === "eraser");
-    layerLabel.textContent = layer === "scene" ? "場景" : "人物";
+    layerLabel.textContent = layerName();
     (overlay.querySelector("[data-sklayer]") as HTMLElement).classList.toggle("sk-fig", layer === "figure");
     (overlay.querySelector("[data-skunder]") as HTMLElement).textContent = work.underlay ? "✕ 移除墊底" : "＋ 墊底照片";
   };
+
+  // ---- 圖層面板（浮動，點「圖層」開合）----
+  // 列表由上而下＝畫面由上而下：自訂層（index 大在上）→ 人物 → 場景。
+  // 眼睛/刪除/排序只有自訂層有——場景與人物是骨架，永遠在、永遠顯示。
+  const layersEl = overlay.querySelector(".sk-layers") as HTMLElement;
+  let panelOpen = false;
+  const EYE = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>`;
+  const EYE_OFF = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><path d="M4 4l16 16"/></svg>`;
+  const renderLayers = () => {
+    const rows: string[] = [];
+    rows.push(`<button class="sk-ladd" ${extras().length >= MAX_EXTRA ? "disabled" : ""}>＋ 新增圖層${extras().length >= MAX_EXTRA ? "（已達上限）" : ""}</button>`);
+    for (let i = extras().length - 1; i >= 0; i--) {
+      const L = extras()[i];
+      rows.push(`<div class="sk-lrow${layer === i ? " on" : ""}${L.hidden ? " hid" : ""}" data-lid="${i}">
+        <button class="sk-leye" data-leye="${i}" title="${L.hidden ? "顯示" : "隱藏"}">${L.hidden ? EYE_OFF : EYE}</button>
+        <span class="sk-lname" title="點作用中的圖層名稱＝改名">${esc(L.name)}</span>
+        <button class="sk-lmv" data-lup="${i}" ${i === extras().length - 1 ? "disabled" : ""}>↑</button>
+        <button class="sk-lmv" data-ldn="${i}" ${i === 0 ? "disabled" : ""}>↓</button>
+        <button class="sk-ldel" data-ldel="${i}">✕</button>
+      </div>`);
+    }
+    rows.push(`<div class="sk-lrow sk-fixed${layer === "figure" ? " on" : ""}" data-lid="figure"><span class="sk-leye-ph"></span><span class="sk-lname">人物</span></div>`);
+    rows.push(`<div class="sk-lrow sk-fixed${layer === "scene" ? " on" : ""}" data-lid="scene"><span class="sk-leye-ph"></span><span class="sk-lname">場景</span></div>`);
+    layersEl.innerHTML = rows.join("");
+  };
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+  const closePanel = () => { panelOpen = false; layersEl.classList.remove("open"); };
+
+  layersEl.addEventListener("click", (e) => {
+    const t0 = e.target as HTMLElement;
+    if (t0.closest(".sk-ladd")) {
+      if (extras().length >= MAX_EXTRA) return;
+      pushUndo();
+      work.extra = [...extras(), { name: `圖層 ${extras().length + 1}`, strokes: [] }];
+      layer = work.extra.length - 1;
+      renderLayers(); syncBar(); render();
+      return;
+    }
+    const eye = t0.closest("[data-leye]") as HTMLElement | null;
+    if (eye) {
+      const i = +eye.dataset.leye!;
+      pushUndo();
+      work.extra![i].hidden = !work.extra![i].hidden;
+      if (!work.extra![i].hidden) delete work.extra![i].hidden; // false 不落地
+      renderLayers(); render();
+      return;
+    }
+    const up = t0.closest("[data-lup]") as HTMLElement | null;
+    const dn = t0.closest("[data-ldn]") as HTMLElement | null;
+    if (up || dn) {
+      // 列表的「上」＝畫面的上層＝index 變大
+      const i = +((up ?? dn)!.dataset.lup ?? (up ?? dn)!.dataset.ldn!);
+      const j = up ? i + 1 : i - 1;
+      if (j < 0 || j >= extras().length) return;
+      pushUndo();
+      const arr = work.extra!;
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+      if (layer === i) layer = j; else if (layer === j) layer = i;
+      renderLayers(); syncBar(); render();
+      return;
+    }
+    const del = t0.closest("[data-ldel]") as HTMLElement | null;
+    if (del) {
+      const i = +del.dataset.ldel!;
+      const L = extras()[i];
+      if (L.strokes.length && !confirm(`刪除圖層「${L.name}」？上面的筆畫會一起刪（可復原）。`)) return;
+      pushUndo();
+      work.extra!.splice(i, 1);
+      if (!work.extra!.length) delete work.extra;
+      if (layer === i) layer = "figure";
+      else if (typeof layer === "number" && layer > i) layer -= 1;
+      renderLayers(); syncBar(); render();
+      return;
+    }
+    const row = t0.closest("[data-lid]") as HTMLElement | null;
+    if (row) {
+      const id = row.dataset.lid!;
+      const next: typeof layer = id === "scene" || id === "figure" ? id : +id;
+      if (next === layer && typeof layer === "number" && t0.closest(".sk-lname")) {
+        // 點作用中的自訂層名稱＝改名
+        void askName("圖層名稱", extras()[layer].name).then((v) => {
+          if (!v || typeof layer !== "number" || v === extras()[layer].name) return;
+          pushUndo();
+          work.extra![layer].name = v;
+          renderLayers(); syncBar();
+        });
+        return;
+      }
+      layer = next;
+      // 作用中的隱藏層畫了也看不見——選它＝把它打開
+      if (typeof layer === "number" && extras()[layer].hidden) {
+        pushUndo();
+        delete work.extra![layer].hidden;
+      }
+      renderLayers(); syncBar(); render();
+    }
+  });
 
   // 墊底解碼（快取一張 <img>；underlay 變動後呼叫）
   const loadUnderlay = () => {
@@ -177,7 +299,10 @@ export function openSketchEditor(store: Store, cutId: string) {
     to.push(structuredClone(work));
     const underlayChanged = s.underlay !== work.underlay;
     work = s;
+    // 復原可能退掉圖層本身——作用層索引失效就退回人物層
+    if (typeof layer === "number" && layer >= (work.extra?.length ?? 0)) layer = "figure";
     if (underlayChanged) loadUnderlay();
+    if (panelOpen) renderLayers();
     syncBar();
     render();
   };
@@ -243,7 +368,7 @@ export function openSketchEditor(store: Store, cutId: string) {
     const rr = 18 * 18;
     const out: SketchStroke[] = [];
     let changed = false;
-    for (const s of work[layer]) {
+    for (const s of curStrokes()) {
       const runs: number[][][] = [];
       let run: number[][] = [];
       let hit = false;
@@ -256,9 +381,10 @@ export function openSketchEditor(store: Store, cutId: string) {
       if (run.length) runs.push(run);
       if (!hit) { out.push(s); continue; }
       changed = true;
-      for (const r of runs) if (r.length >= 3) out.push({ tool: s.tool, pts: r }); // 太短的碎屑不留
+      // 裂開的段落沿用原筆畫的粗細/顏色（太短的碎屑不留）
+      for (const r of runs) if (r.length >= 3) out.push({ ...s, pts: r });
     }
-    if (changed) { work[layer] = out; erasedAny = true; render(); }
+    if (changed) { setCurStrokes(out); erasedAny = true; render(); }
   };
 
   canvas.addEventListener("pointerdown", (e) => {
@@ -297,12 +423,12 @@ export function openSketchEditor(store: Store, cutId: string) {
     if (drawing.length > 1) {
       pushUndo(); // 快照＝「畫這筆之前」
       const tl = tool as "pen" | "marker";
-      work[layer] = [...work[layer], {
+      setCurStrokes([...curStrokes(), {
         tool: tl, pts: drawing,
         // 等於預設值就不寫＝沒動過粗細/顏色的檔案 byte-identical
         ...(sizes[tl] !== 1 ? { size: sizes[tl] } : {}),
         ...(color !== INK ? { color } : {}),
-      }];
+      }]);
     }
     drawing = null;
     render();
@@ -316,7 +442,8 @@ export function openSketchEditor(store: Store, cutId: string) {
   // 拿觸點做原生手勢——系統手勢一啟動就會 cancel 掉筆的事件流。
   // 小觸點（小拇指側）系統不會自動當手掌，全靠這裡。工具列除外（按鈕要能點）。
   const palmGuard = (e: TouchEvent) => {
-    if (!(e.target as HTMLElement).closest(".sk-bar")) e.preventDefault();
+    // 工具列與圖層面板除外（preventDefault 會吃掉合成 click，按鈕就點不了）
+    if (!(e.target as HTMLElement).closest(".sk-bar, .sk-layers")) e.preventDefault();
   };
   overlay.addEventListener("touchstart", palmGuard, { passive: false });
   overlay.addEventListener("touchmove", palmGuard, { passive: false });
@@ -324,6 +451,11 @@ export function openSketchEditor(store: Store, cutId: string) {
   // ---- 工具列 ----
   overlay.addEventListener("click", (e) => {
     const t = e.target as HTMLElement;
+    // 面板開著時點外面＝先收面板；點的是背板就只收面板不關編輯器
+    if (panelOpen && !t.closest(".sk-layers") && !t.closest("[data-sklayer]")) {
+      closePanel();
+      if (t === overlay) return;
+    }
     const tb = t.closest("[data-sktool]") as HTMLElement | null;
     if (tb) { tool = tb.dataset.sktool as typeof tool; syncBar(); return; }
     const sb = t.closest("[data-sksize]") as HTMLElement | null;
@@ -340,7 +472,12 @@ export function openSketchEditor(store: Store, cutId: string) {
       syncBar();
       return;
     }
-    if (t.closest("[data-sklayer]")) { layer = layer === "scene" ? "figure" : "scene"; syncBar(); render(); return; }
+    if (t.closest("[data-sklayer]")) {
+      panelOpen = !panelOpen;
+      if (panelOpen) renderLayers();
+      layersEl.classList.toggle("open", panelOpen);
+      return;
+    }
     if (t.closest("[data-skunder]")) {
       if (work.underlay) {
         pushUndo();
@@ -364,9 +501,9 @@ export function openSketchEditor(store: Store, cutId: string) {
     if (t.closest("[data-skundo]")) { doUndo(); return; }
     if (t.closest("[data-skredo]")) { doRedo(); return; }
     if (t.closest("[data-skclear]")) {
-      if (!work[layer].length) return;
+      if (!curStrokes().length) return;
       pushUndo();
-      work[layer] = [];
+      setCurStrokes([]);
       render();
       return;
     }
@@ -388,7 +525,10 @@ export function openSketchEditor(store: Store, cutId: string) {
   }
 
   function save() {
-    if (!work.scene.length && !work.figure.length) {
+    // 自訂層全被刪光＝欄位整個拿掉（不留 "extra":[] 髒欄位）
+    if (work.extra && !work.extra.length) delete work.extra;
+    const hasInk = work.scene.length || work.figure.length || work.extra?.some((l) => l.strokes.length);
+    if (!hasInk) {
       // 沒有任何筆畫：有墊底＝照片原樣放回（等於沒描，不動這格）；
       // 全空＝移除塗鴉（連圖一起清空這格）
       if (work.underlay) store.setCutSketch(cutId, null, work.underlay);
@@ -405,8 +545,15 @@ export function openSketchEditor(store: Store, cutId: string) {
     document.removeEventListener("keydown", onKey, true);
   }
   function onKey(e: KeyboardEvent) {
+    // 圖層改名對話框開著＝鍵盤讓給它（這裡是 capture，它自己 stopPropagation 擋不到我們）
+    if (document.querySelector(".nd-overlay")) return;
     // 編輯器開著時鍵盤自己收：Esc 取消、⌘Z 復原（不讓全域 undo 動到案子）
-    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); return; }
+    if (e.key === "Escape") {
+      e.preventDefault(); e.stopPropagation();
+      if (panelOpen) { closePanel(); return; } // 先收圖層面板，再按才關編輯器
+      close();
+      return;
+    }
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
       e.preventDefault(); e.stopPropagation();
       if (e.shiftKey) doRedo(); else doUndo();
