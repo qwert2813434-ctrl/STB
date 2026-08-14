@@ -1103,9 +1103,11 @@ body.sel-mode .cut [contenteditable] { pointer-events: none; }
 .sk-lmv:disabled { opacity: .3; }
 .sk-lrow.sk-fixed { cursor: pointer; }
 .sk-bar {
-  display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+  display: flex; align-items: center; gap: 6px; padding: 10px 12px;
   background: var(--card); border-bottom: 1px solid var(--line);
+  flex-wrap: wrap; /* 按鈕變多（粗細/顏色/選取）後窄螢幕換行，不准把字擠成直排 */
 }
+.sk-bar button { white-space: nowrap; padding: 6px 10px; }
 .sk-bar .spacer { flex: 1; }
 .sk-sep { width: 1px; height: 20px; background: var(--line); margin: 0 4px; }
 .sk-bar button { font-size: 13px; padding: 6px 12px; border-radius: 8px; }

@@ -467,6 +467,13 @@ export function openSketchEditor(store: Store, cutId: string) {
     if (changed) { setCurStrokes(out); erasedAny = true; render(); }
   };
 
+  // getCoalescedEvents：Pencil 240Hz 的中間點全收，線才順。
+  // 回空陣列（合成事件/部分 webdriver）就退回主事件——不然整段 move 一顆點都不進。
+  const coalesced = (e: PointerEvent): PointerEvent[] => {
+    const list = (e as PointerEvent & { getCoalescedEvents?: () => PointerEvent[] }).getCoalescedEvents?.();
+    return list && list.length ? list : [e];
+  };
+
   canvas.addEventListener("pointerdown", (e) => {
     if (e.pointerType === "touch") return; // 手掌/手指不作畫（Pencil 防誤觸）
     e.preventDefault();
@@ -531,16 +538,13 @@ export function openSketchEditor(store: Store, cutId: string) {
       return;
     }
     if (lasso) {
-      const evs = (e as PointerEvent & { getCoalescedEvents?: () => PointerEvent[] }).getCoalescedEvents?.() ?? [e];
-      for (const ev of evs) lasso.push(toPt(ev));
+      for (const ev of coalesced(e)) lasso.push(toPt(ev));
       render();
       return;
     }
     if (erasing) { eraseAt(e); return; }
     if (!drawing) return;
-    // getCoalescedEvents：Pencil 240Hz 的中間點全收，線才順
-    const evs = (e as PointerEvent & { getCoalescedEvents?: () => PointerEvent[] }).getCoalescedEvents?.() ?? [e];
-    for (const ev of evs) drawing.push(toPt(ev));
+    for (const ev of coalesced(e)) drawing.push(toPt(ev));
     render();
   });
   const finishStroke = () => {
@@ -612,7 +616,11 @@ export function openSketchEditor(store: Store, cutId: string) {
     }
     if (t.closest("[data-sklayer]")) {
       panelOpen = !panelOpen;
-      if (panelOpen) renderLayers();
+      if (panelOpen) {
+        renderLayers();
+        // 面板貼在工具列正下方（工具列窄螢幕會換行，高度不固定）
+        layersEl.style.top = `${(overlay.querySelector(".sk-bar") as HTMLElement).offsetHeight + 4}px`;
+      }
       layersEl.classList.toggle("open", panelOpen);
       return;
     }
