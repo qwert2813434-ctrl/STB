@@ -33,6 +33,22 @@ export function openSketchEditor(store: Store, cutId: string) {
   if (cut.imageRef && !cut.sketch) work.underlay = cut.imageRef;
   let underlayImg: HTMLImageElement | null = null; // 墊底的解碼快取
   let tool: "pen" | "marker" | "eraser" = "pen";
+  // 粗細三檔（倍率乘在筆的基準粗細上，筆/麥克筆各自記住）＋三色
+  //（黑／紅＝註記與運鏡箭頭／藍＝呼應 VO 語意色）。檢視偏好存 localStorage，
+  // 筆畫上等於預設值（1／黑）就不寫進 JSON——舊檔相容的關鍵。
+  const SIZES = [0.6, 1, 1.6];
+  const COLORS = ["#141311", "#b3341c", "#185fa5"];
+  const INK = COLORS[0];
+  const sizeKey = (tl: "pen" | "marker") => (tl === "marker" ? "stbSkSizeMarker" : "stbSkSizePen");
+  const loadSize = (tl: "pen" | "marker"): number => {
+    const v = parseFloat(localStorage.getItem(sizeKey(tl)) || "1");
+    return SIZES.includes(v) ? v : 1;
+  };
+  const sizes = { pen: loadSize("pen"), marker: loadSize("marker") };
+  let color = ((): string => {
+    const v = localStorage.getItem("stbSkColor") || INK;
+    return COLORS.includes(v) ? v : INK;
+  })();
   // 聰明預設：空白＝先畫場景（構圖）；已有場景＝進來多半是改人物
   let layer: "scene" | "figure" = work.scene.length ? "figure" : "scene";
   const undoStack: CutSketch[] = [];
@@ -49,6 +65,13 @@ export function openSketchEditor(store: Store, cutId: string) {
         <button data-sktool="pen" class="on">筆</button>
         <button data-sktool="marker">麥克筆</button>
         <button data-sktool="eraser">橡皮擦</button>
+        <span class="sk-sep"></span>
+        <span class="sk-sizes">${SIZES.map((s, i) =>
+          `<button data-sksize="${s}" title="${["細", "中", "粗"][i]}"><i style="width:${4 + i * 3}px;height:${4 + i * 3}px"></i></button>`).join("")}
+        </span>
+        <span class="sk-colors">${COLORS.map((c) =>
+          `<button data-skcolor="${c}"><i style="background:${c}"></i></button>`).join("")}
+        </span>
         <span class="sk-sep"></span>
         <button data-sklayer title="兩層固定圖層：場景畫構圖、人物畫表演與運鏡——之後複製 cut 只重畫人物層">正在畫：<b></b></button>
         <button data-skunder title="勘景照半透明墊底沿描——不會畫畫也能構圖正確；輸出的塗鴉不含墊底"></button>
@@ -73,7 +96,7 @@ export function openSketchEditor(store: Store, cutId: string) {
     // 壓力全相同（滑鼠/未回報）→ 讓演算法用速度模擬筆鋒
     const sim = s.pts.every((p) => p[2] === s.pts[0][2]);
     const outline = getStroke(s.pts, {
-      size: s.tool === "marker" ? 24 : 7,
+      size: (s.tool === "marker" ? 24 : 7) * (s.size ?? 1),
       thinning: s.tool === "marker" ? 0 : 0.55,
       smoothing: 0.5,
       streamline: 0.3, // 低一點＝墨水更貼筆尖（不拖尾）
@@ -99,17 +122,19 @@ export function openSketchEditor(store: Store, cutId: string) {
       cx.drawImage(underlayImg, (W - iw * s) / 2, (H - ih * s) / 2, iw * s, ih * s);
       cx.globalAlpha = 1;
     }
-    cx.fillStyle = "#141311";
     for (const which of ["scene", "figure"] as const) {
       const dim = editorMode && which !== layer ? 0.4 : 1;
       for (const s of work[which]) {
+        cx.fillStyle = s.color ?? INK;
         cx.globalAlpha = (s.tool === "marker" ? 0.32 : 1) * dim;
         cx.fill(strokePath(s));
       }
     }
     if (drawing && drawing.length > 1) {
+      const tl = tool === "eraser" ? "pen" : tool;
+      cx.fillStyle = color;
       cx.globalAlpha = tool === "marker" ? 0.32 : 1;
-      cx.fill(strokePath({ tool: tool === "eraser" ? "pen" : tool, pts: drawing }));
+      cx.fill(strokePath({ tool: tl, pts: drawing, size: sizes[tl] }));
     }
     cx.globalAlpha = 1;
   }
@@ -121,6 +146,12 @@ export function openSketchEditor(store: Store, cutId: string) {
   };
   const syncBar = () => {
     overlay.querySelectorAll("[data-sktool]").forEach((b) => b.classList.toggle("on", (b as HTMLElement).dataset.sktool === tool));
+    // 粗細顯示目前工具記住的檔位；橡皮擦沒有粗細/顏色，兩組打淡不可按
+    const inkTool = tool === "eraser" ? "pen" : tool;
+    overlay.querySelectorAll("[data-sksize]").forEach((b) => b.classList.toggle("on", parseFloat((b as HTMLElement).dataset.sksize!) === sizes[inkTool]));
+    overlay.querySelectorAll("[data-skcolor]").forEach((b) => b.classList.toggle("on", (b as HTMLElement).dataset.skcolor === color));
+    (overlay.querySelector(".sk-sizes") as HTMLElement).classList.toggle("sk-off", tool === "eraser");
+    (overlay.querySelector(".sk-colors") as HTMLElement).classList.toggle("sk-off", tool === "eraser");
     layerLabel.textContent = layer === "scene" ? "場景" : "人物";
     (overlay.querySelector("[data-sklayer]") as HTMLElement).classList.toggle("sk-fig", layer === "figure");
     (overlay.querySelector("[data-skunder]") as HTMLElement).textContent = work.underlay ? "✕ 移除墊底" : "＋ 墊底照片";
@@ -265,7 +296,13 @@ export function openSketchEditor(store: Store, cutId: string) {
     if (!drawing) return;
     if (drawing.length > 1) {
       pushUndo(); // 快照＝「畫這筆之前」
-      work[layer] = [...work[layer], { tool: tool as "pen" | "marker", pts: drawing }];
+      const tl = tool as "pen" | "marker";
+      work[layer] = [...work[layer], {
+        tool: tl, pts: drawing,
+        // 等於預設值就不寫＝沒動過粗細/顏色的檔案 byte-identical
+        ...(sizes[tl] !== 1 ? { size: sizes[tl] } : {}),
+        ...(color !== INK ? { color } : {}),
+      }];
     }
     drawing = null;
     render();
@@ -289,6 +326,20 @@ export function openSketchEditor(store: Store, cutId: string) {
     const t = e.target as HTMLElement;
     const tb = t.closest("[data-sktool]") as HTMLElement | null;
     if (tb) { tool = tb.dataset.sktool as typeof tool; syncBar(); return; }
+    const sb = t.closest("[data-sksize]") as HTMLElement | null;
+    if (sb && tool !== "eraser") {
+      sizes[tool] = parseFloat(sb.dataset.sksize!);
+      localStorage.setItem(sizeKey(tool), sb.dataset.sksize!);
+      syncBar();
+      return;
+    }
+    const cb = t.closest("[data-skcolor]") as HTMLElement | null;
+    if (cb) {
+      color = cb.dataset.skcolor!;
+      localStorage.setItem("stbSkColor", color);
+      syncBar();
+      return;
+    }
     if (t.closest("[data-sklayer]")) { layer = layer === "scene" ? "figure" : "scene"; syncBar(); render(); return; }
     if (t.closest("[data-skunder]")) {
       if (work.underlay) {

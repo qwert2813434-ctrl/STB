@@ -1089,6 +1089,14 @@ body.sel-mode .cut [contenteditable] { pointer-events: none; }
 .sk-sep { width: 1px; height: 20px; background: var(--line); margin: 0 4px; }
 .sk-bar button { font-size: 13px; padding: 6px 12px; border-radius: 8px; }
 .sk-bar button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+/* 粗細三檔＋三色（橡皮擦時整組打淡）。圓點用 currentColor，
+   選中反白時（.on 吃上面那條）點會自動跟著變色。 */
+.sk-sizes, .sk-colors { display: inline-flex; gap: 4px; align-items: center; }
+.sk-sizes button, .sk-colors button { padding: 6px 9px; display: inline-flex; align-items: center; justify-content: center; min-width: 30px; }
+.sk-sizes i { display: block; border-radius: 50%; background: currentColor; }
+.sk-colors i { display: block; width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--line); }
+.sk-bar .sk-colors button.on { background: var(--hover); border-color: var(--ink); color: inherit; }
+.sk-off { opacity: .35; pointer-events: none; }
 .sk-bar [data-sklayer] b { font-weight: 600; }
 .sk-bar [data-sklayer].sk-fig b { color: #2e6e46; } /* 人物層＝語意綠，一眼分層 */
 .sk-ok { background: var(--ink); color: var(--bg); border-color: var(--ink); }
