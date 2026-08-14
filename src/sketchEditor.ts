@@ -43,9 +43,14 @@ export function openSketchEditor(store: Store, cutId: string) {
   const MAX_EXTRA = 4;
   const extras = () => work.extra ?? [];
   const curStrokes = (): SketchStroke[] => (typeof layer === "number" ? extras()[layer].strokes : work[layer]);
+  // 所有筆畫修改的唯一出口：整個陣列（含圖層物件）都換新的不就地改——
+  // 復原快照因此可以淺拷貝共享（見 pushUndo），路徑快取也永遠不會過期。
   const setCurStrokes = (arr: SketchStroke[]) => {
-    if (typeof layer === "number") work.extra![layer].strokes = arr;
-    else work[layer] = arr;
+    if (typeof layer === "number") {
+      const li = layer;
+      work.extra = extras().map((l, i) => (i === li ? { ...l, strokes: arr } : l));
+    } else work[layer] = arr;
+    invalidate();
   };
   const layerName = (): string =>
     typeof layer === "number" ? extras()[layer]?.name ?? "" : layer === "scene" ? "場景" : "人物";
@@ -117,10 +122,13 @@ export function openSketchEditor(store: Store, cutId: string) {
     selPushed = false;
     render();
   };
-  const transformSel = (fn: (p: number[]) => void) => {
+  // 變形＝換新筆畫物件（映射座標），不就地改 pts——
+  // 舊物件可能被復原快照共享，而且路徑快取認物件不認內容
+  const transformSel = (fn: (p: number[]) => number[]) => {
     if (!selPushed) { pushUndo(); selPushed = true; }
-    const arr = curStrokes();
-    for (const i of sel) for (const p of arr[i].pts) fn(p);
+    const arr = [...curStrokes()];
+    for (const i of sel) arr[i] = { ...arr[i], pts: arr[i].pts.map(fn) };
+    setCurStrokes(arr);
     render();
   };
 
@@ -161,7 +169,13 @@ export function openSketchEditor(store: Store, cutId: string) {
   const layerLabel = overlay.querySelector("[data-sklayer] b") as HTMLElement;
 
   // ---- 筆畫外形（perfect-freehand：把點序列變成有筆鋒的封閉外形）----
+  // 效能鐵則（2026-08-15 iPad 發燙事件後定案）：**筆畫物件不可變**——
+  // 所有修改（畫/擦裂/變形）都產生新物件，所以外形可以 WeakMap 快取，
+  // 算一次用到死；物件被換掉＝快取自動失效（GC 順便收走）。
+  const pathCache = new WeakMap<SketchStroke, Path2D>();
   function strokePath(s: SketchStroke): Path2D {
+    const hit = pathCache.get(s);
+    if (hit) return hit;
     // 壓力全相同（滑鼠/未回報）→ 讓演算法用速度模擬筆鋒
     const sim = s.pts.every((p) => p[2] === s.pts[0][2]);
     const outline = getStroke(s.pts, {
@@ -176,11 +190,22 @@ export function openSketchEditor(store: Store, cutId: string) {
     p.moveTo(outline[0][0], outline[0][1]);
     for (let i = 1; i < outline.length; i++) p.lineTo(outline[i][0], outline[i][1]);
     p.closePath();
+    pathCache.set(s, p);
     return p;
   }
 
+  // 靜態內容（背景/墊底/所有已完成筆畫）畫在離屏 canvas，只在內容變動時重建
+  // （staticDirty）。作畫中的每一幀＝貼一張圖＋畫進行中那一筆——成本與筆畫
+  // 總數無關。之前「每幀重算全部筆畫外形」在 iPad 上畫幾層就把 CPU 燒滿
+  //（發燙→降頻→被看門狗砍），M4 都扛不住的是演算法不是機器。
+  const staticCv = document.createElement("canvas");
+  staticCv.width = W; staticCv.height = H;
+  const staticCx = staticCv.getContext("2d")!;
+  let staticDirty = true;
+  const invalidate = () => { staticDirty = true; };
+
   // editorMode＝編輯畫面（顯示墊底、非作用層打淡）；false＝輸出壓平（純塗鴉）
-  function paintInto(cx: CanvasRenderingContext2D, editorMode: boolean) {
+  function paintStatic(cx: CanvasRenderingContext2D, editorMode: boolean) {
     cx.fillStyle = "#ffffff";
     cx.fillRect(0, 0, W, H);
     if (editorMode && underlayImg) {
@@ -210,41 +235,63 @@ export function openSketchEditor(store: Store, cutId: string) {
         cx.fill(strokePath(s));
       }
     }
+    cx.globalAlpha = 1;
+  }
+
+  // 每幀組合：靜態圖＋進行中筆畫＋選取視覺（後兩者每幀都在變，畫在最上面）
+  function paintFrame() {
+    if (staticDirty) { paintStatic(staticCx, true); staticDirty = false; }
+    ctx.drawImage(staticCv, 0, 0);
     if (drawing && drawing.length > 1) {
       const tl: "pen" | "marker" = tool === "marker" ? "marker" : "pen";
-      cx.fillStyle = color;
-      cx.globalAlpha = tool === "marker" ? 0.32 : 1;
-      cx.fill(strokePath({ tool: tl, pts: drawing, size: sizes[tl] }));
+      ctx.fillStyle = color;
+      ctx.globalAlpha = tool === "marker" ? 0.32 : 1;
+      // 進行中的筆畫每幀都在長，不進快取（臨時物件，畫完 GC）
+      const sim = drawing.every((p) => p[2] === drawing![0][2]);
+      const outline = getStroke(drawing, {
+        size: (tl === "marker" ? 24 : 7) * sizes[tl],
+        thinning: tl === "marker" ? 0 : 0.55,
+        smoothing: 0.5,
+        streamline: 0.3,
+        simulatePressure: sim,
+      });
+      if (outline.length) {
+        ctx.beginPath();
+        ctx.moveTo(outline[0][0], outline[0][1]);
+        for (let i = 1; i < outline.length; i++) ctx.lineTo(outline[i][0], outline[i][1]);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
     }
-    cx.globalAlpha = 1;
-    // 選取視覺（只在編輯畫面）：套索虛線、選取框＋四角把手
-    if (editorMode && tool === "select") {
-      cx.save();
-      cx.lineWidth = 2;
-      cx.strokeStyle = "#185fa5";
-      cx.setLineDash([8, 6]);
+    // 選取視覺：套索虛線、選取框＋四角把手
+    if (tool === "select") {
+      ctx.save();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#185fa5";
+      ctx.setLineDash([8, 6]);
       if (lasso && lasso.length > 1) {
-        cx.beginPath();
-        cx.moveTo(lasso[0][0], lasso[0][1]);
-        for (let i = 1; i < lasso.length; i++) cx.lineTo(lasso[i][0], lasso[i][1]);
-        cx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(lasso[0][0], lasso[0][1]);
+        for (let i = 1; i < lasso.length; i++) ctx.lineTo(lasso[i][0], lasso[i][1]);
+        ctx.stroke();
       }
       const bb = selBBox();
       if (bb) {
-        cx.strokeRect(bb[0] - 6, bb[1] - 6, bb[2] - bb[0] + 12, bb[3] - bb[1] + 12);
-        cx.setLineDash([]);
-        cx.fillStyle = "#185fa5";
+        ctx.strokeRect(bb[0] - 6, bb[1] - 6, bb[2] - bb[0] + 12, bb[3] - bb[1] + 12);
+        ctx.setLineDash([]);
+        ctx.fillStyle = "#185fa5";
         const hs: [number, number][] = [[bb[0], bb[1]], [bb[2], bb[1]], [bb[0], bb[3]], [bb[2], bb[3]]];
-        for (const [hx, hy] of hs) cx.fillRect(hx - 7, hy - 7, 14, 14);
+        for (const [hx, hy] of hs) ctx.fillRect(hx - 7, hy - 7, 14, 14);
       }
-      cx.restore();
+      ctx.restore();
     }
   }
 
   let raf = 0;
   const render = () => {
     if (raf) return; // 一幀一畫，move 事件再密也不爆
-    raf = requestAnimationFrame(() => { raf = 0; paintInto(ctx, true); });
+    raf = requestAnimationFrame(() => { raf = 0; paintFrame(); });
   };
   const syncBar = () => {
     overlay.querySelectorAll("[data-sktool]").forEach((b) => b.classList.toggle("on", (b as HTMLElement).dataset.sktool === tool));
@@ -290,11 +337,13 @@ export function openSketchEditor(store: Store, cutId: string) {
   layersEl.addEventListener("click", (e) => {
     const t0 = e.target as HTMLElement;
     clearSel(); // 圖層一動（切層/增刪/排序/顯隱）選取索引就不可信，一律解除
+    // 圖層物件一律換新的不就地改（快照淺拷貝的前提，見 snap()）
     if (t0.closest(".sk-ladd")) {
       if (extras().length >= MAX_EXTRA) return;
       pushUndo();
       work.extra = [...extras(), { name: `圖層 ${extras().length + 1}`, strokes: [] }];
       layer = work.extra.length - 1;
+      invalidate(); // 作用層變了＝打淡的對象變了
       renderLayers(); syncBar(); render();
       return;
     }
@@ -302,8 +351,13 @@ export function openSketchEditor(store: Store, cutId: string) {
     if (eye) {
       const i = +eye.dataset.leye!;
       pushUndo();
-      work.extra![i].hidden = !work.extra![i].hidden;
-      if (!work.extra![i].hidden) delete work.extra![i].hidden; // false 不落地
+      work.extra = extras().map((l, idx) => {
+        if (idx !== i) return l;
+        const n = { ...l };
+        if (n.hidden) delete n.hidden; else n.hidden = true; // false 不落地
+        return n;
+      });
+      invalidate();
       renderLayers(); render();
       return;
     }
@@ -315,9 +369,11 @@ export function openSketchEditor(store: Store, cutId: string) {
       const j = up ? i + 1 : i - 1;
       if (j < 0 || j >= extras().length) return;
       pushUndo();
-      const arr = work.extra!;
+      const arr = [...work.extra!];
       [arr[i], arr[j]] = [arr[j], arr[i]];
+      work.extra = arr;
       if (layer === i) layer = j; else if (layer === j) layer = i;
+      invalidate();
       renderLayers(); syncBar(); render();
       return;
     }
@@ -327,10 +383,11 @@ export function openSketchEditor(store: Store, cutId: string) {
       const L = extras()[i];
       if (L.strokes.length && !confirm(`刪除圖層「${L.name}」？上面的筆畫會一起刪（可復原）。`)) return;
       pushUndo();
-      work.extra!.splice(i, 1);
-      if (!work.extra!.length) delete work.extra;
+      work.extra = extras().filter((_, idx) => idx !== i);
+      if (!work.extra.length) delete work.extra;
       if (layer === i) layer = "figure";
       else if (typeof layer === "number" && layer > i) layer -= 1;
+      invalidate();
       renderLayers(); syncBar(); render();
       return;
     }
@@ -343,7 +400,8 @@ export function openSketchEditor(store: Store, cutId: string) {
         void askName("圖層名稱", extras()[layer].name).then((v) => {
           if (!v || typeof layer !== "number" || v === extras()[layer].name) return;
           pushUndo();
-          work.extra![layer].name = v;
+          const li = layer;
+          work.extra = extras().map((l, idx) => (idx === li ? { ...l, name: v } : l));
           renderLayers(); syncBar();
         });
         return;
@@ -352,22 +410,33 @@ export function openSketchEditor(store: Store, cutId: string) {
       // 作用中的隱藏層畫了也看不見——選它＝把它打開
       if (typeof layer === "number" && extras()[layer].hidden) {
         pushUndo();
-        delete work.extra![layer].hidden;
+        const li = layer;
+        work.extra = extras().map((l, idx) => {
+          if (idx !== li) return l;
+          const n = { ...l };
+          delete n.hidden;
+          return n;
+        });
       }
+      invalidate(); // 作用層變了＝打淡的對象變了
       renderLayers(); syncBar(); render();
     }
   });
 
   // 墊底解碼（快取一張 <img>；underlay 變動後呼叫）
   const loadUnderlay = () => {
-    if (!work.underlay) { underlayImg = null; render(); return; }
+    if (!work.underlay) { underlayImg = null; invalidate(); render(); return; }
     const img = new Image();
-    img.onload = () => { underlayImg = img; render(); };
+    img.onload = () => { underlayImg = img; invalidate(); render(); };
     img.src = work.underlay;
   };
 
+  // 快照＝淺拷貝：筆畫與圖層物件全程不可變（修改一律換新物件），
+  // 50 份快照共享同一批筆畫＝記憶體不再隨筆畫數×50 膨脹，
+  // 每筆結束也不再整份 structuredClone（之前多層多筆時這裡就是卡頓源之一）。
+  const snap = (w: CutSketch): CutSketch => ({ ...w });
   const pushUndo = () => {
-    undoStack.push(structuredClone(work));
+    undoStack.push(snap(work));
     if (undoStack.length > 50) undoStack.shift();
     redoStack.length = 0; // 新動作＝重做線斷掉
   };
@@ -375,9 +444,10 @@ export function openSketchEditor(store: Store, cutId: string) {
   const applySnapshot = (from: CutSketch[], to: CutSketch[]) => {
     const s = from.pop();
     if (!s) return;
-    to.push(structuredClone(work));
+    to.push(snap(work));
     const underlayChanged = s.underlay !== work.underlay;
     work = s;
+    invalidate();
     clearSel(); // 筆畫索引已換了一批，選取框不能留
     // 復原可能退掉圖層本身——作用層索引失效就退回人物層
     if (typeof layer === "number" && layer >= (work.extra?.length ?? 0)) layer = "figure";
@@ -516,7 +586,7 @@ export function openSketchEditor(store: Store, cutId: string) {
       const d = selDrag;
       if (d.mode === "move") {
         const dx = x - d.last[0], dy = y - d.last[1];
-        if (dx || dy) transformSel((p) => { p[0] += dx; p[1] += dy; });
+        if (dx || dy) transformSel((p) => [p[0] + dx, p[1] + dy, p[2]]);
         d.last = [x, y];
       } else {
         // 每步用「離定錨距離的比值」當倍率——連續乘上去，手感跟拉圖片角一樣
@@ -531,7 +601,7 @@ export function openSketchEditor(store: Store, cutId: string) {
             const longSide = Math.max(bb[2] - bb[0], bb[3] - bb[1]);
             if (longSide > 0 && longSide * k < 12) k = 12 / longSide;
           }
-          if (k !== 1) transformSel((p) => { p[0] = ax + (p[0] - ax) * k; p[1] = ay + (p[1] - ay) * k; });
+          if (k !== 1) transformSel((p) => [ax + (p[0] - ax) * k, ay + (p[1] - ay) * k, p[2]]);
         }
         d.last = [x, y];
       }
@@ -629,6 +699,7 @@ export function openSketchEditor(store: Store, cutId: string) {
         pushUndo();
         work.underlay = null;
         underlayImg = null;
+        invalidate();
         syncBar();
         render();
       } else {
@@ -663,9 +734,7 @@ export function openSketchEditor(store: Store, cutId: string) {
     const c = document.createElement("canvas");
     c.width = W; c.height = H;
     const cx = c.getContext("2d")!;
-    const keep = drawing; drawing = null;
-    paintInto(cx, false); // 壓平＝純塗鴉：不含墊底、不打淡
-    drawing = keep;
+    paintStatic(cx, false); // 壓平＝純塗鴉：不含墊底、不打淡、不含進行中筆畫與選取框
     const out = c.toDataURL("image/png"); // 線稿用 PNG：銳利且壓得小
     c.width = c.height = 0;
     return out;

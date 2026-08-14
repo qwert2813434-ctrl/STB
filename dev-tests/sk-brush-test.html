@@ -127,6 +127,21 @@ try {
     say(typeof savedPng === "string" && savedPng.startsWith("data:image/png"), "壓平 PNG 有產出");
   }
 
+  // ── 橡皮擦：擦中段＝裂成前後兩筆（點距 12.5px，擦除半徑 18px 會吃掉中間 3 點） ──
+  savedSketch = null; saveCount = 0;
+  project.cuts[0].sketch = structuredClone(baseSketch);
+  openSketchEditor(store, "c1");
+  const cv2 = $(".sk-canvas");
+  pev("pointerdown", cv2, 400, 400);
+  for (let i = 1; i <= 16; i++) pev("pointermove", cv2, 400 + i * 12.5, 400);
+  pev("pointerup", cv2, 600, 400);
+  click($('[data-sktool="eraser"]'));
+  pev("pointerdown", cv2, 500, 400);
+  pev("pointerup", cv2, 500, 400);
+  click($(".sk-ok"));
+  say(savedSketch && savedSketch.figure.length === 2,
+      `橡皮擦擦中段裂成兩筆（人物層 ${savedSketch?.figure?.length ?? "無"} 筆，期望 2）`);
+
   // ── 相容不變式：舊 sketch（只有 scene/figure）開了就按完成 → 內容一字不差 ──
   savedSketch = null; saveCount = 0;
   project.cuts[0].sketch = structuredClone(baseSketch);
