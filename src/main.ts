@@ -22,7 +22,6 @@ import { importScoutFlow } from "./scoutImport";
 import { checkUpdate } from "./updateCheck";
 import { openHub } from "./hubDialog";
 import { openSketchEditor } from "./sketchEditor";
-import { bindUndoGestures } from "./touchUndo";
 import { pickBoardImages, fileToWorkingImage, pickFiles, bindDropImage } from "./cutPicker";
 import { openBlockPicker } from "./assignDialog";
 
@@ -57,6 +56,8 @@ app.innerHTML = `
     <span class="tag-ppm">PPM</span>
     <span class="save-state" id="save-state"></span>
     <span class="spacer"></span>
+    <button id="btn-undo" class="touch-only">${t("復原")}</button>
+    <button id="btn-redo" class="touch-only">${t("重做")}</button>
     <button id="btn-preview">${t("▶ 預覽")}</button>
     <button id="btn-print">${t("匯出…")}</button>
     <button id="btn-hub">${t("專案…")}</button>
@@ -130,7 +131,7 @@ function renderAll() {
       <span class="k">${t("分鏡")}</span><span class="v">${filmTag}${tf("{n} 顆 cut", { n: filmCuts.length })}</span>
       <span class="k" style="margin-left:8px">${t("頁數")}</span><span class="v">${pageCount(filmCuts.length, store.get().aspect)}</span>
       <span class="spacer"></span><span class="hint">${isMobile()
-        ? t("把手 ⠿ 拖曳重排 · 點文字直接編輯 · 長按卡片＝多選 · 雙指輕點＝上一步")
+        ? t("把手 ⠿ 拖曳重排 · 點文字直接編輯 · 長按卡片＝多選 · 復原鈕在右上")
         : t("把手 ⠿ 拖曳重排 · 點文字直接編輯 · ⌘/Shift 點擊多選")}</span>`;
     renderStb(store, stbArea, pendingFlash, expanded);
     pendingFlash = -1;
@@ -864,9 +865,10 @@ document.getElementById("btn-theme")!.addEventListener("click", () => {
   localStorage.setItem(THEME_KEY, dark ? "dark" : "light");
   applyTheme(dark);
 });
-// iPad 全 App 復原/重做：雙指輕點＝上一步、三指輕點＝下一步
-//（iPadOS 通用手勢；Mac 仍是 ⌘Z／⇧⌘Z）。對話框開著或正在打字時讓位。
-// 手勢是隱形的——跳個小提示確認「剛剛真的退了一步」（Armin：不知道怎麼按）
+// iPad 主畫面復原/重做＝頂欄按鈕（觸控裝置才顯示；Mac 仍是 ⌘Z／⇧⌘Z）。
+// 雙指/三指輕點手勢 2026-08-15 起收斂到塗鴉編輯器內——在表格與 inline 編輯的
+// 畫面上，雙指誤觸退掉的是「整個案子的上一步」，使用者不知道退了什麼。
+// toast 確認「剛剛真的退了一步」（undo 本身常常看不出來動了哪）
 const gestureToast = (msg: string) => {
   const t = document.createElement("div");
   t.className = "pv-toast";
@@ -874,13 +876,11 @@ const gestureToast = (msg: string) => {
   document.body.appendChild(t);
   setTimeout(() => t.remove(), 700);
 };
-bindUndoGestures(document, {
-  onUndo: () => { if (store.canUndo()) { store.undo(); gestureToast(t("↩︎ 上一步")); } },
-  onRedo: () => { if (store.canRedo()) { store.redo(); gestureToast(t("↪︎ 下一步")); } },
-  enabled: () =>
-    !document.querySelector('[class*="overlay"]') &&
-    !(document.activeElement as HTMLElement | null)?.isContentEditable,
-});
+const btnUndo = document.getElementById("btn-undo") as HTMLButtonElement;
+const btnRedo = document.getElementById("btn-redo") as HTMLButtonElement;
+btnUndo.addEventListener("click", () => { if (store.canUndo()) { store.undo(); gestureToast(t("↩︎ 上一步")); } });
+btnRedo.addEventListener("click", () => { if (store.canRedo()) { store.redo(); gestureToast(t("↪︎ 下一步")); } });
+store.subscribe(() => { btnUndo.disabled = !store.canUndo(); btnRedo.disabled = !store.canRedo(); });
 
 // 全域保險：把圖片拖進 App 但「沒對準」放置區時，webview 預設會導航去開那張圖，
 // 整個介面被圖片佔滿又回不去（Tauri 沒有上一頁）。這裡把所有沒被處理的拖放一律

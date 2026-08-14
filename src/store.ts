@@ -485,7 +485,7 @@ export class Store {
     if (field === "passengers") {
       // 逗號／頓號／空白都能分隔，貼上名單直接用
       const list = value.split(/[,，、\s]+/).map((s) => s.trim()).filter(Boolean);
-      if (list.join(" ") === v.passengers.join(" ")) return;
+      if (list.join("\u0000") === v.passengers.join("\u0000")) return;
       this.snapshot();
       v.passengers = list;
     } else {

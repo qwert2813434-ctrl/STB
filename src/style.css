@@ -75,6 +75,11 @@ button:active { transform: scale(.98); }
 .topbar .ver { font-family: var(--mono); font-size: 11px; color: var(--faint); }
 .spacer { flex: 1; }
 
+/* 觸控裝置才顯示（例：頂欄復原/重做——Mac 用 ⌘Z，藏起來省空間） */
+.touch-only { display: none; }
+@media (hover: none) { .touch-only { display: inline-block; } }
+.topbar button:disabled { opacity: .35; }
+
 /* 狀態列 */
 .statusbar {
   display: flex;
