@@ -8,11 +8,14 @@ import { askName } from "./nameDialog";
 
 // 塗鴉分鏡編輯器（04 企劃⑤，技術路線 A：web canvas＋Pointer Events）。
 // 定位：不跟分鏡師比質感——跟「沒有分鏡」比清楚。溝通工具，不是繪畫 App。
-// 工具凍結＝筆／麥克筆／橡皮擦＋復原（不做圖層系統、調色盤、筆刷設定）。
-// 兩層固定圖層：場景（構圖）＋人物（表演/運鏡）——「複製 cut 只改人物層」
-// 工作流的地基。筆跡存資料（可再編輯）；完成時壓平 PNG 走既有 imageRef
-// 管線（簡報/匯出零改動）。Apple Pencil＝pointerType "pen"（手指不作畫＝
-// 防手掌誤觸）；Mac 滑鼠同一條路，桌面也能畫能測。
+// 工具＝筆／麥克筆／橡皮擦／選取＋復原。2026-08-15（企劃 10）解凍三件：
+// 粗細三檔＋黑紅藍三色、自訂圖層（上限 4）、套索選取移動縮放——擴充守著
+// 「讓溝通更清楚」一句話原則，調色盤/筆刷引擎這類繪畫 App 的東西仍不做。
+// 圖層：場景（構圖）＋人物（表演/運鏡）固定——「複製 cut 只改人物層」
+// 工作流的地基；自訂層放 extra 疊人物上方。筆跡存資料（可再編輯）；
+// 完成時壓平 PNG 走既有 imageRef 管線（簡報/匯出零改動）。
+// Apple Pencil＝pointerType "pen"（手指不作畫＝防手掌誤觸）；
+// Mac 滑鼠同一條路，桌面也能畫能測。
 
 export function openSketchEditor(store: Store, cutId: string) {
   const cut = store.get().cuts.find((c) => c.id === cutId);
@@ -33,7 +36,7 @@ export function openSketchEditor(store: Store, cutId: string) {
   // 照片收進 sketch.underlay，不會消失；輸出壓平不含墊底
   if (cut.imageRef && !cut.sketch) work.underlay = cut.imageRef;
   let underlayImg: HTMLImageElement | null = null; // 墊底的解碼快取
-  let tool: "pen" | "marker" | "eraser" = "pen";
+  let tool: "pen" | "marker" | "eraser" | "select" = "pen";
   // 圖層：場景/人物固定（語意層），自訂層在 work.extra（上限 4，疊人物上方）。
   // layer＝目前作用層："scene"｜"figure"｜extra 的索引。
   // 橡皮擦/清除/選取都只動作用層——與兩層時代的行為一致。
@@ -70,6 +73,57 @@ export function openSketchEditor(store: Store, cutId: string) {
   let erasing = false;
   let erasedAny = false;
 
+  // ---- 選取工具：套索圈選 → 框內拖＝移動、角把手＝等比縮放（定錨對角）----
+  // 只動作用層（與橡皮擦一致）；變形直接改 pts＝筆跡仍是資料，落定後照常可擦可再選。
+  // 整輪選取的所有變形算一步復原（第一次動到才 pushUndo）。
+  let sel: number[] = [];                 // 選中筆畫在作用層的索引
+  let lasso: number[][] | null = null;    // 進行中的套索（畫布座標）
+  let selDrag: { mode: "move" | "scale"; last: [number, number]; anchor: [number, number] } | null = null;
+  let selPushed = false;
+  const HANDLE_HIT = 30;                  // 把手命中半徑（畫布 px）
+  const clearSel = () => { sel = []; lasso = null; selDrag = null; selPushed = false; };
+  const selBBox = (): [number, number, number, number] | null => {
+    if (!sel.length) return null;
+    const arr = curStrokes();
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const i of sel) for (const p of arr[i]?.pts ?? []) {
+      if (p[0] < x0) x0 = p[0];
+      if (p[0] > x1) x1 = p[0];
+      if (p[1] < y0) y0 = p[1];
+      if (p[1] > y1) y1 = p[1];
+    }
+    return x1 < x0 ? null : [x0, y0, x1, y1];
+  };
+  const inPoly = (x: number, y: number, poly: number[][]): boolean => {
+    let ins = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) ins = !ins;
+    }
+    return ins;
+  };
+  const finishLasso = () => {
+    if (!lasso) return;
+    const poly = lasso;
+    lasso = null;
+    sel = [];
+    if (poly.length >= 3) {
+      curStrokes().forEach((s, i) => {
+        let inside = 0;
+        for (const p of s.pts) if (inPoly(p[0], p[1], poly)) inside++;
+        if (inside > s.pts.length / 2) sel.push(i); // 過半制：橫貫全圖的長線不會被順手抓走
+      });
+    }
+    selPushed = false;
+    render();
+  };
+  const transformSel = (fn: (p: number[]) => void) => {
+    if (!selPushed) { pushUndo(); selPushed = true; }
+    const arr = curStrokes();
+    for (const i of sel) for (const p of arr[i].pts) fn(p);
+    render();
+  };
+
   const overlay = document.createElement("div");
   overlay.className = "sk-overlay";
   overlay.innerHTML = `
@@ -78,6 +132,7 @@ export function openSketchEditor(store: Store, cutId: string) {
         <button data-sktool="pen" class="on">筆</button>
         <button data-sktool="marker">麥克筆</button>
         <button data-sktool="eraser">橡皮擦</button>
+        <button data-sktool="select" title="圈起來＝選取（只選目前圖層）；框內拖＝移動、角把手＝等比縮放">選取</button>
         <span class="sk-sep"></span>
         <span class="sk-sizes">${SIZES.map((s, i) =>
           `<button data-sksize="${s}" title="${["細", "中", "粗"][i]}"><i style="width:${4 + i * 3}px;height:${4 + i * 3}px"></i></button>`).join("")}
@@ -98,7 +153,7 @@ export function openSketchEditor(store: Store, cutId: string) {
       </div>
       <div class="sk-layers"></div>
       <div class="sk-stage"><canvas class="sk-canvas${portrait ? " portrait" : ""}" width="${W}" height="${H}"></canvas></div>
-      <div class="sk-hint">Apple Pencil／滑鼠作畫，手指不會誤觸 · <b>雙指輕點＝復原、三指輕點＝重做</b> · 橡皮擦＝擦到哪消到哪（只擦目前圖層） · 完成＝存進分鏡格，之後點縮圖可回來繼續改</div>
+      <div class="sk-hint">Apple Pencil／滑鼠作畫，手指不會誤觸 · <b>雙指輕點＝復原、三指輕點＝重做</b> · 橡皮擦＝擦到哪消到哪（只擦目前圖層） · 選取＝圈起來拖著走、拉角落等比縮放 · 完成＝存進分鏡格，之後點縮圖可回來繼續改</div>
     </div>`;
   document.body.appendChild(overlay);
   const canvas = overlay.querySelector(".sk-canvas") as HTMLCanvasElement;
@@ -156,12 +211,34 @@ export function openSketchEditor(store: Store, cutId: string) {
       }
     }
     if (drawing && drawing.length > 1) {
-      const tl = tool === "eraser" ? "pen" : tool;
+      const tl: "pen" | "marker" = tool === "marker" ? "marker" : "pen";
       cx.fillStyle = color;
       cx.globalAlpha = tool === "marker" ? 0.32 : 1;
       cx.fill(strokePath({ tool: tl, pts: drawing, size: sizes[tl] }));
     }
     cx.globalAlpha = 1;
+    // 選取視覺（只在編輯畫面）：套索虛線、選取框＋四角把手
+    if (editorMode && tool === "select") {
+      cx.save();
+      cx.lineWidth = 2;
+      cx.strokeStyle = "#185fa5";
+      cx.setLineDash([8, 6]);
+      if (lasso && lasso.length > 1) {
+        cx.beginPath();
+        cx.moveTo(lasso[0][0], lasso[0][1]);
+        for (let i = 1; i < lasso.length; i++) cx.lineTo(lasso[i][0], lasso[i][1]);
+        cx.stroke();
+      }
+      const bb = selBBox();
+      if (bb) {
+        cx.strokeRect(bb[0] - 6, bb[1] - 6, bb[2] - bb[0] + 12, bb[3] - bb[1] + 12);
+        cx.setLineDash([]);
+        cx.fillStyle = "#185fa5";
+        const hs: [number, number][] = [[bb[0], bb[1]], [bb[2], bb[1]], [bb[0], bb[3]], [bb[2], bb[3]]];
+        for (const [hx, hy] of hs) cx.fillRect(hx - 7, hy - 7, 14, 14);
+      }
+      cx.restore();
+    }
   }
 
   let raf = 0;
@@ -171,12 +248,13 @@ export function openSketchEditor(store: Store, cutId: string) {
   };
   const syncBar = () => {
     overlay.querySelectorAll("[data-sktool]").forEach((b) => b.classList.toggle("on", (b as HTMLElement).dataset.sktool === tool));
-    // 粗細顯示目前工具記住的檔位；橡皮擦沒有粗細/顏色，兩組打淡不可按
-    const inkTool = tool === "eraser" ? "pen" : tool;
+    // 粗細顯示目前工具記住的檔位；橡皮擦/選取沒有粗細/顏色，兩組打淡不可按
+    const inkTool: "pen" | "marker" = tool === "marker" ? "marker" : "pen";
+    const noInk = tool === "eraser" || tool === "select";
     overlay.querySelectorAll("[data-sksize]").forEach((b) => b.classList.toggle("on", parseFloat((b as HTMLElement).dataset.sksize!) === sizes[inkTool]));
     overlay.querySelectorAll("[data-skcolor]").forEach((b) => b.classList.toggle("on", (b as HTMLElement).dataset.skcolor === color));
-    (overlay.querySelector(".sk-sizes") as HTMLElement).classList.toggle("sk-off", tool === "eraser");
-    (overlay.querySelector(".sk-colors") as HTMLElement).classList.toggle("sk-off", tool === "eraser");
+    (overlay.querySelector(".sk-sizes") as HTMLElement).classList.toggle("sk-off", noInk);
+    (overlay.querySelector(".sk-colors") as HTMLElement).classList.toggle("sk-off", noInk);
     layerLabel.textContent = layerName();
     (overlay.querySelector("[data-sklayer]") as HTMLElement).classList.toggle("sk-fig", layer === "figure");
     (overlay.querySelector("[data-skunder]") as HTMLElement).textContent = work.underlay ? "✕ 移除墊底" : "＋ 墊底照片";
@@ -211,6 +289,7 @@ export function openSketchEditor(store: Store, cutId: string) {
 
   layersEl.addEventListener("click", (e) => {
     const t0 = e.target as HTMLElement;
+    clearSel(); // 圖層一動（切層/增刪/排序/顯隱）選取索引就不可信，一律解除
     if (t0.closest(".sk-ladd")) {
       if (extras().length >= MAX_EXTRA) return;
       pushUndo();
@@ -299,6 +378,7 @@ export function openSketchEditor(store: Store, cutId: string) {
     to.push(structuredClone(work));
     const underlayChanged = s.underlay !== work.underlay;
     work = s;
+    clearSel(); // 筆畫索引已換了一批，選取框不能留
     // 復原可能退掉圖層本身——作用層索引失效就退回人物層
     if (typeof layer === "number" && layer >= (work.extra?.length ?? 0)) layer = "figure";
     if (underlayChanged) loadUnderlay();
@@ -393,6 +473,24 @@ export function openSketchEditor(store: Store, cutId: string) {
     rectK = measureK(); // 起筆時量一次倍率
     calibrate(e);       // 起筆時定原點
     try { canvas.setPointerCapture(e.pointerId); } catch { /* 合成事件 */ }
+    if (tool === "select") {
+      const [x, y] = toPt(e);
+      const bb = selBBox();
+      if (bb) {
+        // 角把手優先（0↔3、1↔2 互為對角＝縮放定錨）
+        const corners: [number, number][] = [[bb[0], bb[1]], [bb[2], bb[1]], [bb[0], bb[3]], [bb[2], bb[3]]];
+        const hit = corners.findIndex((c) => Math.hypot(c[0] - x, c[1] - y) < HANDLE_HIT);
+        if (hit >= 0) { selDrag = { mode: "scale", last: [x, y], anchor: corners[3 - hit] }; return; }
+        if (x >= bb[0] - 8 && x <= bb[2] + 8 && y >= bb[1] - 8 && y <= bb[3] + 8) {
+          selDrag = { mode: "move", last: [x, y], anchor: [0, 0] };
+          return;
+        }
+      }
+      sel = [];
+      lasso = [[x, y]];
+      render();
+      return;
+    }
     if (tool === "eraser") {
       pushUndo();
       erasedAny = false;
@@ -406,6 +504,38 @@ export function openSketchEditor(store: Store, cutId: string) {
   canvas.addEventListener("pointermove", (e) => {
     if (e.pointerType === "touch") return;
     calibrate(e); // 每顆真事件重校原點＝畫到一半捲動／轉向也會自己修回來
+    if (selDrag) {
+      const [x, y] = toPt(e);
+      const d = selDrag;
+      if (d.mode === "move") {
+        const dx = x - d.last[0], dy = y - d.last[1];
+        if (dx || dy) transformSel((p) => { p[0] += dx; p[1] += dy; });
+        d.last = [x, y];
+      } else {
+        // 每步用「離定錨距離的比值」當倍率——連續乘上去，手感跟拉圖片角一樣
+        const ax = d.anchor[0], ay = d.anchor[1];
+        const d0 = Math.hypot(d.last[0] - ax, d.last[1] - ay);
+        const d1 = Math.hypot(x - ax, y - ay);
+        if (d0 > 4 && d1 > 4) {
+          let k = d1 / d0;
+          const bb = selBBox();
+          if (bb && k < 1) {
+            // 防縮到消失：整組最長邊縮到 12px 就停
+            const longSide = Math.max(bb[2] - bb[0], bb[3] - bb[1]);
+            if (longSide > 0 && longSide * k < 12) k = 12 / longSide;
+          }
+          if (k !== 1) transformSel((p) => { p[0] = ax + (p[0] - ax) * k; p[1] = ay + (p[1] - ay) * k; });
+        }
+        d.last = [x, y];
+      }
+      return;
+    }
+    if (lasso) {
+      const evs = (e as PointerEvent & { getCoalescedEvents?: () => PointerEvent[] }).getCoalescedEvents?.() ?? [e];
+      for (const ev of evs) lasso.push(toPt(ev));
+      render();
+      return;
+    }
     if (erasing) { eraseAt(e); return; }
     if (!drawing) return;
     // getCoalescedEvents：Pencil 240Hz 的中間點全收，線才順
@@ -414,6 +544,8 @@ export function openSketchEditor(store: Store, cutId: string) {
     render();
   });
   const finishStroke = () => {
+    if (selDrag) { selDrag = null; return; }
+    if (lasso) { finishLasso(); return; }
     if (erasing) {
       erasing = false;
       if (!erasedAny) undoStack.pop(); // 沒擦到東西＝不佔一步復原
@@ -457,9 +589,15 @@ export function openSketchEditor(store: Store, cutId: string) {
       if (t === overlay) return;
     }
     const tb = t.closest("[data-sktool]") as HTMLElement | null;
-    if (tb) { tool = tb.dataset.sktool as typeof tool; syncBar(); return; }
+    if (tb) {
+      tool = tb.dataset.sktool as typeof tool;
+      clearSel(); // 換工具＝選取解除
+      syncBar();
+      render();
+      return;
+    }
     const sb = t.closest("[data-sksize]") as HTMLElement | null;
-    if (sb && tool !== "eraser") {
+    if (sb && (tool === "pen" || tool === "marker")) {
       sizes[tool] = parseFloat(sb.dataset.sksize!);
       localStorage.setItem(sizeKey(tool), sb.dataset.sksize!);
       syncBar();
@@ -504,6 +642,7 @@ export function openSketchEditor(store: Store, cutId: string) {
       if (!curStrokes().length) return;
       pushUndo();
       setCurStrokes([]);
+      clearSel();
       render();
       return;
     }
@@ -550,8 +689,9 @@ export function openSketchEditor(store: Store, cutId: string) {
     // 編輯器開著時鍵盤自己收：Esc 取消、⌘Z 復原（不讓全域 undo 動到案子）
     if (e.key === "Escape") {
       e.preventDefault(); e.stopPropagation();
-      if (panelOpen) { closePanel(); return; } // 先收圖層面板，再按才關編輯器
-      close();
+      if (panelOpen) { closePanel(); return; }            // 先收圖層面板
+      if (sel.length || lasso) { clearSel(); render(); return; } // 再解除選取
+      close();                                            // 都沒有才關編輯器
       return;
     }
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
@@ -565,7 +705,7 @@ export function openSketchEditor(store: Store, cutId: string) {
   bindUndoGestures(overlay, {
     onUndo: doUndo,
     onRedo: doRedo,
-    enabled: () => !drawing && !erasing,
+    enabled: () => !drawing && !erasing && !selDrag && !lasso,
   });
 
   syncBar();
