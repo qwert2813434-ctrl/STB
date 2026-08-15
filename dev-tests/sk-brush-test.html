@@ -55,11 +55,10 @@ if (location.search.includes("visual")) {
   openSketchEditor(store, "c1");
   const cv = $(".sk-canvas");
   click($('[data-sktool="select"]'));
-  // 圈人物層的三角形（作用層＝人物，套索只選作用層）
-  pev("pointerdown", cv, 500, 280);
-  pev("pointermove", cv, 760, 280);
-  pev("pointermove", cv, 760, 520);
-  pev("pointermove", cv, 500, 520);
+  // 圈人物層的三角形（作用層＝人物，套索只選作用層；步距 ≤130px 別觸發髒起點防禦）
+  const vring = [[500, 280], [630, 280], [760, 280], [760, 400], [760, 520], [630, 520], [500, 520]];
+  pev("pointerdown", cv, vring[0][0], vring[0][1]);
+  for (const [x, y] of vring.slice(1)) pev("pointermove", cv, x, y);
   pev("pointerup", cv, 500, 520);
   click($("[data-sklayer]"));
   document.getElementById("out").textContent = "VISUAL";
@@ -96,11 +95,14 @@ try {
 
   // ── 選取：圈住新層那筆 → 拖移 100,0 ──
   click($('[data-sktool="select"]'));
-  // 套索繞 (150,550)-(550,650) 一圈
-  pev("pointerdown", cv, 150, 550);
-  pev("pointermove", cv, 550, 550);
-  pev("pointermove", cv, 550, 650);
-  pev("pointermove", cv, 150, 650);
+  // 套索繞 (150,550)-(550,650) 一圈——步距 ≤80px（真筆是密集點流；
+  // 跳太大會觸發「髒起點防禦」，那是給開檔第一拍髒 origin 用的）
+  const ring = [];
+  for (let x = 150; x <= 550; x += 80) ring.push([x, 550]);
+  for (let y = 600; y <= 650; y += 50) ring.push([550, y]);
+  for (let x = 470; x >= 150; x -= 80) ring.push([x, 650]);
+  pev("pointerdown", cv, ring[0][0], ring[0][1]);
+  for (const [x, y] of ring.slice(1)) pev("pointermove", cv, x, y);
   pev("pointerup", cv, 150, 650);
   // 框內拖：從 (350,600) 拖到 (450,600)
   pev("pointerdown", cv, 350, 600);
@@ -141,6 +143,22 @@ try {
   click($(".sk-ok"));
   say(savedSketch && savedSketch.figure.length === 2,
       `橡皮擦擦中段裂成兩筆（人物層 ${savedSketch?.figure?.length ?? "無"} 筆，期望 2）`);
+
+  // ── 髒起點防禦：第一拍離群（>200 畫布px）會被丟掉，不會拉出橫貫直線 ──
+  savedSketch = null; saveCount = 0;
+  project.cuts[0].sketch = structuredClone(baseSketch);
+  openSketchEditor(store, "c1");
+  const cv3 = $(".sk-canvas");
+  pev("pointerdown", cv3, 1150, 650); // 模擬髒 origin：起點被算到離群位置
+  for (let i = 0; i <= 6; i++) pev("pointermove", cv3, 300 + i * 15, 650);
+  pev("pointerup", cv3, 390, 650);
+  click($(".sk-ok"));
+  {
+    const st = savedSketch?.figure?.[0];
+    const maxX = st ? Math.max(...st.pts.map((p) => p[0])) : NaN;
+    say(!!st && maxX < 450 && st.pts.length >= 6,
+        `髒起點被丟掉（最大 x ${st ? maxX.toFixed(0) : "無"}，應 <450）`);
+  }
 
   // ── 相容不變式：舊 sketch（只有 scene/figure）開了就按完成 → 內容一字不差 ──
   savedSketch = null; saveCount = 0;

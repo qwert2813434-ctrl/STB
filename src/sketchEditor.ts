@@ -696,15 +696,26 @@ export function openSketchEditor(store: Store, cutId: string) {
       return;
     }
     if (lasso) {
+      dropGhostStart(lasso, e);
       for (const ev of coalesced(e)) lasso.push(toPt(ev));
       render();
       return;
     }
     if (erasing) { eraseAt(e); return; }
     if (!drawing) return;
+    dropGhostStart(drawing, e);
     for (const ev of coalesced(e)) drawing.push(toPt(ev));
     render();
   });
+  // 髒起點防禦（2026-08-16 實機）：剛開編輯器立刻落筆，第一拍事件的 offset
+  // 原點偶爾是髒的——起點被算到畫布左緣，跟第二拍連成一條橫貫直線。
+  // 物理常識當守門：連續兩個取樣（4–8ms）不可能差 200 畫布px，第二拍
+  // 進來發現起點離群就把它丟掉（calibrate 已用本拍重校過原點，本拍是準的）。
+  const dropGhostStart = (pts: number[][], e: PointerEvent) => {
+    if (pts.length !== 1) return;
+    const p1 = toPt(e);
+    if (Math.hypot(p1[0] - pts[0][0], p1[1] - pts[0][1]) > 200) pts.length = 0;
+  };
   const finishStroke = () => {
     if (selDrag) { selDrag = null; return; }
     if (lasso) { finishLasso(); return; }
