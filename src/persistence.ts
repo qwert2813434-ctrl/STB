@@ -29,14 +29,18 @@ export function isMobile(): boolean {
 
 let projectDir: string | null = null;
 
+// 路徑分隔符：Mac/iOS 給 `/`、Windows 選檔器給 `C:\…\project.json`。
+// 只認 `/` 會在 Windows 切不掉檔名＝把整個檔案路徑當成資料夾傳給後端（開檔全滅）。
+const parentDir = (p: string) => p.replace(/[/\\][^/\\]*$/, "");
+const baseName = (p: string) => p.split(/[/\\]/).pop() ?? "";
+
 export function currentDir(): string | null {
   return projectDir;
 }
 
 export function dirName(): string {
   if (!projectDir) return "";
-  const parts = projectDir.split("/");
-  return parts[parts.length - 1] || projectDir;
+  return baseName(projectDir) || projectDir;
 }
 
 // 從指定資料夾載入案子（開啟對話框、專案管理頁、啟動自動開回共用）
@@ -121,10 +125,10 @@ export function asFsPath(p: string): string {
 // （iPad 從 iCloud 選檔：來源唯讀，要解進 Documents 案子家）
 export async function unpackPacked(rawPath: string, destParent?: string): Promise<string> {
   const path = asFsPath(rawPath);
-  const parent = destParent ?? path.replace(/\/[^/]*$/, "");
-  const stem = (path.split("/").pop() ?? "案子").replace(/\.stb$/i, "").trim() || "案子";
+  const parent = destParent ?? parentDir(path);
+  const stem = (baseName(path) || "案子").replace(/\.stb$/i, "").trim() || "案子";
   for (let i = 0; i < 50; i++) {
-    const dst = `${parent}/${stem}${i ? ` ${i + 1}` : ""}`;
+    const dst = `${parent}${parent.includes("\\") ? "\\" : "/"}${stem}${i ? ` ${i + 1}` : ""}`;
     try {
       await invoke("unpack_project", { src: path, dstDir: dst });
       return dst;
@@ -170,8 +174,7 @@ export async function chooseFolderAndLoad(): Promise<Project | null> {
     const dir = await unpackPacked(path);
     return loadFromDir(dir);
   }
-  const dir = path.replace(/\/[^/]*$/, "");
-  return loadFromDir(dir);
+  return loadFromDir(parentDir(path));
 }
 
 // 看示範案用：脫離目前案子資料夾（避免自動存檔把示範內容寫進真案子），
