@@ -1153,6 +1153,10 @@ body.sel-mode .cut [contenteditable] { pointer-events: none; }
 .sk-cprev { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 .sk-cprev i { display: block; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--line); }
 .sk-cprev span { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.sk-csaved { display: none; }
+.sk-csaved.has { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.sk-csaved span { font-size: 11px; color: var(--muted); margin-right: 2px; }
+.sk-csaved button { width: 21px; height: 21px; border-radius: 50%; border: 1px solid rgba(0,0,0,.15); padding: 0; }
 .sk-cok { width: 100%; margin-top: 10px; padding: 8px 0; border-radius: 8px; font-size: 13px; background: var(--ink); color: var(--bg); border-color: var(--ink); }
 /* 筆刷大小即時預覽：拖拉桿時浮在下方，圓點＝實際螢幕粗細 */
 .sk-sizeprev {

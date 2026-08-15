@@ -211,6 +211,7 @@ export function openSketchEditor(store: Store, cutId: string) {
         <input type="range" class="sk-csat" min="0" max="100" step="1" aria-label="飽和度">
         <input type="range" class="sk-clig" min="8" max="92" step="1" aria-label="明度">
         <div class="sk-cprev"><i></i><span></span></div>
+        <div class="sk-csaved"></div>
         <button class="sk-cok">使用這個顏色</button>
       </div>
       <div class="sk-sizeprev"><i></i></div>
@@ -533,9 +534,31 @@ export function openSketchEditor(store: Store, cutId: string) {
     ligEl.value = String(Math.max(8, Math.min(92, l)));
     syncPop();
   };
+  // 「我的顏色」：按過「使用這個顏色」的自訂色存起來，之後開面板點一下就能用。
+  // 速選格與筆桿三色本來就在畫面上，不重複存；最多 8 顆、最新在前。
+  const savedEl = overlay.querySelector(".sk-csaved") as HTMLElement;
+  let savedColors: string[] = ((): string[] => {
+    try {
+      const a = JSON.parse(localStorage.getItem("stbSkColorSaved") || "[]");
+      return Array.isArray(a) ? a.filter((c) => typeof c === "string" && HEX_RE.test(c)).slice(0, 8) : [];
+    } catch { return []; }
+  })();
+  const renderSaved = () => {
+    savedEl.classList.toggle("has", savedColors.length > 0);
+    savedEl.innerHTML = savedColors.length
+      ? `<span>我的顏色</span>${savedColors.map((c) => `<button data-skpick="${c}" style="background:${c}"></button>`).join("")}`
+      : "";
+  };
+  renderSaved();
+  const saveRecent = (hex: string) => {
+    if (COLORS.includes(hex) || CGRID.includes(hex)) return;
+    savedColors = [hex, ...savedColors.filter((c) => c !== hex)].slice(0, 8);
+    localStorage.setItem("stbSkColorSaved", JSON.stringify(savedColors));
+    renderSaved();
+  };
   colorPop.addEventListener("click", (e) => {
     const t0 = e.target as HTMLElement;
-    if (t0.closest(".sk-cok")) { closeColorPop(); return; } // 底部「使用這個顏色」＝收面板開始畫
+    if (t0.closest(".sk-cok")) { saveRecent(color); closeColorPop(); return; } // 底部「使用這個顏色」＝存進我的顏色＋收面板開始畫
     const pick = t0.closest("[data-skpick]") as HTMLElement | null;
     if (!pick) return;
     applyCustom(pick.dataset.skpick!); // 點格子＝套用但不收，可再用滑桿微調

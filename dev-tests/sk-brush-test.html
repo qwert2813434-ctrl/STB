@@ -65,6 +65,7 @@ if (location.search.includes("visual")) {
   document.getElementById("out").textContent = "VISUAL";
 } else
 try {
+  localStorage.removeItem("stbSkColorSaved"); // 「我的顏色」斷言要從空清單起跑
   openSketchEditor(store, "c1");
   const cv = $(".sk-canvas");
 
@@ -117,6 +118,22 @@ try {
   click($(".sk-cok"));
   say(!$(".sk-colorpop").classList.contains("open"), "「使用這個顏色」收面板");
   drawLine(cv, 400, 560, 600, 560);
+
+  // ── 我的顏色：速選格不存、滑桿自訂色會存、點色塊直接套用、同色不重複 ──
+  say(!$(".sk-csaved").classList.contains("has"), "速選格色不進「我的顏色」（格子上已看得到）");
+  click($("[data-skcustom]"));
+  const chue = $(".sk-chue");
+  chue.value = "200"; chue.dispatchEvent(new Event("input", { bubbles: true }));
+  const savedHex = localStorage.getItem("stbSkColor"); // 滑桿即時套用，這就是確認當下的色
+  click($(".sk-cok"));
+  say($(".sk-csaved").classList.contains("has"), "滑桿自訂色確認後出現在「我的顏色」");
+  say($(".sk-csaved button")?.dataset.skpick === savedHex, "存的就是確認當下那顆色");
+  click($("[data-skcustom]"));
+  click($(".sk-cgrid [data-skpick]")); // 先切去速選第一格
+  click($(".sk-csaved button"));       // 再點「我的顏色」切回來
+  say(localStorage.getItem("stbSkColor") === savedHex, "點「我的顏色」色塊直接套用");
+  click($(".sk-cok"));
+  say(document.querySelectorAll(".sk-csaved button").length === 1, "同色再確認不重複存");
 
   // ── 圖層面板：開面板、加一層、畫一筆到新層 ──
   click($("[data-sklayer]"));
