@@ -1,7 +1,7 @@
 import { bindEditKeys } from "./editKeys";
 import { bindPointerDrag } from "./pointerDrag";
 import type { Store } from "./store";
-import { CHAPTERS, PORTRAIT_CHAPTERS, computeCutNumbers, type Aspect } from "./model";
+import { CHAPTERS, PORTRAIT_CHAPTERS, computeCutNumbers, type Aspect, type RefItem } from "./model";
 import { openCropper } from "./cropper";
 import { openExternal, chooseVideoImport, chooseMediaImport, mountInlineVideo, isTauri, isMobile, saveImageAs } from "./persistence";
 import { openCutPicker, cutRefLabel, fileToWorkingImage, pickFiles, bindDropImage } from "./cutPicker";
@@ -55,61 +55,90 @@ function gridClass(chapterId: string, count: number, chPortrait: boolean): strin
   return "";
 }
 
+// 一頁幾項＝版型的必然結果：單項最大化章（REFERENCES）一項一頁，
+// 其餘四格版型（2×2 或 4 欄直式）四項一頁。
+// ⚠️ `pptxNative.ts` 的 refSlides() 有同一份規則（原生物件手排，不吃這裡的 DOM）。
+// 兩邊必須一致，否則「預覽＝輸出」破功——2026-08-16 這個 bug 就是這樣來的
+// （PPTX 早就分頁、DOM 這條路整章擠成一頁）。回歸測試：dev-tests/refpage-page-test.html。
+export function refPerPage(chapterId: string): number {
+  return SIDE_CHAPTERS.has(chapterId) ? 1 : 4;
+}
+
+// 一章的頁數（空章也算一頁：要有地方放「＋ 新增項目」）
+export function refPageCount(chapterId: string, itemCount: number): number {
+  return Math.max(1, Math.ceil(itemCount / refPerPage(chapterId)));
+}
+
 export function renderRefPage(store: Store, root: HTMLElement, chapterId: string) {
   while (activeCleanups.length) activeCleanups.pop()!(); // 重繪前先收掉播放中的影片
   const ch = CHAPTERS.find((c) => c.id === chapterId);
-  const perItem = AUTO_ASPECT_CHAPTERS.has(chapterId);       // 逐項依素材方向（rhythm/references）
   const chPortrait = chapterPortrait(chapterId, store.get().aspect); // 章節統一直式（actor/wardrobe/tone）
-  const side = SIDE_CHAPTERS.has(chapterId);
   const items = store.get().refPages[chapterId] || [];
-  let html = `<p class="page-label">${ch?.en || ""} · ${t("A5 橫")}</p><div class="page refpage">`;
-  if (!items.length) {
-    html += `<div class="ref-empty">${t("此章尚無內容。按「＋ 新增項目」貼上參考圖與說明。")}</div>`;
-  }
-  html += `<div class="ref-grid${gridClass(chapterId, items.length, chPortrait)}">`;
-  for (const it of items) {
-    const itPortrait = perItem ? !!it.portrait : chPortrait; // 混排章看每項旗標，其餘看章節
-    const showVideo = (it.videoUrl ?? "") !== "" || expandedVideo.has(it.id);
-    const hasVideo = (it.videoUrl ?? "") !== "" || (it.videoFile ?? "") !== "";
-    const addLabel = VIDEO_CHAPTERS.has(chapterId) ? t("＋ 加入檔案（圖片／影片）") : t("＋ 圖片");
-    const dark = it.videoFile && !it.imageRef; // 有影片但沒封面：暗底佔位
-    // 徽章：本機影片＝▶（區塊內播）；只有連結＝↗（開瀏覽器，地圖/網頁都適用）
-    const badge = it.videoFile ? "▶" : "↗";
-    const main = `
-        <div class="ref-thumb${itPortrait ? " portrait" : ""}${dark ? " dark" : ""}" data-refimg="${it.id}">
-          ${it.imageRef ? `<img src="${it.imageRef}" alt="" draggable="false">` : `<span class="thumb-add">${dark ? t("影片") : addLabel}</span>`}
-          ${hasVideo ? `<button class="ref-play" data-refplay="${it.id}" aria-label="${t("播放／開啟")}">${badge}</button>` : ""}
-          ${it.imageRef ? `<button class="ref-save" data-refsave="${it.id}" title="${t("把這張圖存成檔案")}">⬇</button>` : ""}
-        </div>
-        <div class="ref-title cut-line" contenteditable draggable="false" data-ritem="${it.id}" data-rf="title" data-ph="${t("標題")}">${esc(it.title)}</div>
-        <div class="ref-note cut-line" contenteditable draggable="false" data-ritem="${it.id}" data-rf="note" data-ph="${t("說明／備註")}">${esc(it.note)}</div>
-        ${side ? "" : renderCutRefs(store, it.id, it.cutRefs ?? [])}
-        ${showVideo ? `<div class="ref-video"><span class="tag">${badge}</span><span class="cut-edit" contenteditable draggable="false" data-ritem="${it.id}" data-rf="videoUrl" data-ph="${VIDEO_CHAPTERS.has(chapterId) ? t("影片連結（YouTube／Vimeo／雲端）") : t("連結（地圖／網頁／雲端）")}">${esc(it.videoUrl ?? "")}</span></div>` : ""}
-        <div class="ref-actions">
-          ${!showVideo ? `<button class="ref-mini" data-refvideo="${it.id}">${VIDEO_CHAPTERS.has(chapterId) ? t("＋ 影片連結") : t("＋ 連結")}</button>` : ""}
-          ${chapterId === "actor" && !isMobile() ? `<button class="ref-mini" data-refvidfile="${it.id}">${t("＋ 本機影片")}</button>` : ""}
-        </div>`;
-    if (side) {
-      html += `
-      <div class="ref-item side" data-item="${it.id}">
-        <div class="ref-main">${main}</div>
-        <div class="ref-side">
-          <div class="ref-side-h">${t("對照 CUT")}</div>
-          ${renderCutRefs(store, it.id, it.cutRefs ?? [])}
-        </div>
-        <button class="ref-grip" data-grip="${it.id}" aria-label="${t("拖曳調整順序")}" title="${t("拖曳調整順序")}">⠿</button>
-        <button class="ref-del" data-refdel="${it.id}" aria-label="${t("刪除項目")}">✕</button>
-      </div>`;
-    } else {
-      html += `
-      <div class="ref-item" data-item="${it.id}">${main}
-        <button class="ref-grip" data-grip="${it.id}" aria-label="${t("拖曳調整順序")}" title="${t("拖曳調整順序")}">⠿</button>
-        <button class="ref-del" data-refdel="${it.id}" aria-label="${t("刪除項目")}">✕</button>
-      </div>`;
+  const per = refPerPage(chapterId);
+  const pages = refPageCount(chapterId, items.length);
+  // 欄數看「整章項數」不看單頁項數：最後一頁只剩 1 項時，版型要跟前幾頁一樣（比照 PPTX）
+  const grid = gridClass(chapterId, items.length, chPortrait);
+  let html = "";
+  for (let pg = 0; pg < pages; pg++) {
+    html += `<p class="page-label">${ch?.en || ""} · ${tf("頁 {a} / {b}", { a: pg + 1, b: pages })} · ${t("A5 橫")}</p><div class="page refpage">`;
+    if (!items.length) {
+      html += `<div class="ref-empty">${t("此章尚無內容。按「＋ 新增項目」貼上參考圖與說明。")}</div>`;
     }
+    html += `<div class="ref-grid${grid}">`;
+    for (const it of items.slice(pg * per, pg * per + per)) html += refItemHtml(store, chapterId, it, chPortrait);
+    html += `</div>`;
+    // 「＋ 新增項目」只放最後一頁（預覽／列印本來就會隱藏它）
+    if (pg === pages - 1) html += `<div class="ref-addrow"><button data-refadd="${chapterId}">${t("＋ 新增項目")}</button></div>`;
+    html += `</div>`;
   }
-  html += `</div><div class="ref-addrow"><button data-refadd="${chapterId}">${t("＋ 新增項目")}</button></div></div>`;
   root.innerHTML = html;
+}
+
+// 單一參考項目的 HTML（從 renderRefPage 抽出來，好讓外層專心切頁）
+function refItemHtml(store: Store, chapterId: string, it: RefItem, chPortrait: boolean): string {
+  const perItem = AUTO_ASPECT_CHAPTERS.has(chapterId);       // 逐項依素材方向（rhythm/references）
+  const side = SIDE_CHAPTERS.has(chapterId);
+  let html = "";
+  const itPortrait = perItem ? !!it.portrait : chPortrait; // 混排章看每項旗標，其餘看章節
+  const showVideo = (it.videoUrl ?? "") !== "" || expandedVideo.has(it.id);
+  const hasVideo = (it.videoUrl ?? "") !== "" || (it.videoFile ?? "") !== "";
+  const addLabel = VIDEO_CHAPTERS.has(chapterId) ? t("＋ 加入檔案（圖片／影片）") : t("＋ 圖片");
+  const dark = it.videoFile && !it.imageRef; // 有影片但沒封面：暗底佔位
+  // 徽章：本機影片＝▶（區塊內播）；只有連結＝↗（開瀏覽器，地圖/網頁都適用）
+  const badge = it.videoFile ? "▶" : "↗";
+  const main = `
+      <div class="ref-thumb${itPortrait ? " portrait" : ""}${dark ? " dark" : ""}" data-refimg="${it.id}">
+        ${it.imageRef ? `<img src="${it.imageRef}" alt="" draggable="false">` : `<span class="thumb-add">${dark ? t("影片") : addLabel}</span>`}
+        ${hasVideo ? `<button class="ref-play" data-refplay="${it.id}" aria-label="${t("播放／開啟")}">${badge}</button>` : ""}
+        ${it.imageRef ? `<button class="ref-save" data-refsave="${it.id}" title="${t("把這張圖存成檔案")}">⬇</button>` : ""}
+      </div>
+      <div class="ref-title cut-line" contenteditable draggable="false" data-ritem="${it.id}" data-rf="title" data-ph="${t("標題")}">${esc(it.title)}</div>
+      <div class="ref-note cut-line" contenteditable draggable="false" data-ritem="${it.id}" data-rf="note" data-ph="${t("說明／備註")}">${esc(it.note)}</div>
+      ${side ? "" : renderCutRefs(store, it.id, it.cutRefs ?? [])}
+      ${showVideo ? `<div class="ref-video"><span class="tag">${badge}</span><span class="cut-edit" contenteditable draggable="false" data-ritem="${it.id}" data-rf="videoUrl" data-ph="${VIDEO_CHAPTERS.has(chapterId) ? t("影片連結（YouTube／Vimeo／雲端）") : t("連結（地圖／網頁／雲端）")}">${esc(it.videoUrl ?? "")}</span></div>` : ""}
+      <div class="ref-actions">
+        ${!showVideo ? `<button class="ref-mini" data-refvideo="${it.id}">${VIDEO_CHAPTERS.has(chapterId) ? t("＋ 影片連結") : t("＋ 連結")}</button>` : ""}
+        ${chapterId === "actor" && !isMobile() ? `<button class="ref-mini" data-refvidfile="${it.id}">${t("＋ 本機影片")}</button>` : ""}
+      </div>`;
+  if (side) {
+    html += `
+    <div class="ref-item side" data-item="${it.id}">
+      <div class="ref-main">${main}</div>
+      <div class="ref-side">
+        <div class="ref-side-h">${t("對照 CUT")}</div>
+        ${renderCutRefs(store, it.id, it.cutRefs ?? [])}
+      </div>
+      <button class="ref-grip" data-grip="${it.id}" aria-label="${t("拖曳調整順序")}" title="${t("拖曳調整順序")}">⠿</button>
+      <button class="ref-del" data-refdel="${it.id}" aria-label="${t("刪除項目")}">✕</button>
+    </div>`;
+  } else {
+    html += `
+    <div class="ref-item" data-item="${it.id}">${main}
+      <button class="ref-grip" data-grip="${it.id}" aria-label="${t("拖曳調整順序")}" title="${t("拖曳調整順序")}">⠿</button>
+      <button class="ref-del" data-refdel="${it.id}" aria-label="${t("刪除項目")}">✕</button>
+    </div>`;
+  }
+  return html;
 }
 
 // 對照 cut 區：有選就顯示縮圖列＋範圍標籤；沒選給一個「＋ 對照 cut」按鈕

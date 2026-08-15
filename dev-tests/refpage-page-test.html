@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head><meta charset="utf-8"><title>參考章分頁回歸測試</title></head>
+<body style="margin:0;background:#f6f4f0">
+<pre id="out" style="position:fixed;right:8px;top:8px;z-index:9;background:#fff;padding:10px;font:12px monospace;border:1px solid #ccc">running…</pre>
+<div id="stage" class="pv-fit" style="position:static;width:1560px;transform:none;left:auto;top:auto"></div>
+<script type="module">
+// 2026-08-16 的 bug：參考類七章在 DOM 這條路（編輯器／簡報／PDF）整章擠成一頁——
+// renderRefPage 只吐一個 .page。PPTX（pptxNative.refSlides）早就分頁，兩條路分岔了。
+// 這支測「頁數對不對」＋「每頁高度沒爆框」，兩者都是當初設計四格版型的理由。
+import "/src/style.css";
+import { renderRefPage, refPerPage } from "/src/refPageView.ts";
+
+const IMG = "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><rect width="320" height="180" fill="#8aa"/></svg>`);
+// 高度兩條線（1560px 設計寬下量）：
+//   CEILING＝回歸線，超過就是今天之後改壞了，硬性 FAIL。
+//   IDEAL  ＝分鏡頁 738px／演員頁 771px 那個檔次；2×2 版型（tone/setting/location 1078px）與
+//            單項最大化（rhythm/references 984px）目前超標＝**既有版面偏高，非本次分頁修正造成**
+//            （4 項一頁時新舊程式碼產生的 DOM 完全相同）。超標只 WARN，待版面另案處理。
+const CEILING = 1100;
+const IDEAL = 850;
+
+// pptxNative.refSlides() 的規則（這份是驗收標準，不是從程式碼抄的）：
+//   REFERENCES＝一項一頁；其餘（TONE／RHYTHM／ACTOR／WARDROBE／SETTING／LOCATION）＝四項一頁
+const SPEC = { tone: 4, rhythm: 4, references: 1, actor: 4, wardrobe: 4, setting: 4, location: 4 };
+
+function project(chapterId, n, aspect) {
+  const items = [];
+  for (let i = 0; i < n; i++) {
+    items.push({ id: `${chapterId}${i}`, imageRef: IMG, title: `參考項目 ${i + 1}`,
+                 note: "說明文字：這是壓力測試用的參考項目，用來確認分頁與版面高度。", cutRefs: [] });
+  }
+  return { meta: { title: "測試", client: "", version: 1 }, contacts: [], films: [{ id: "f1", name: "A路" }],
+           cuts: [], days: [], milestones: [], refPages: { [chapterId]: items }, aspect };
+}
+
+const stage = document.getElementById("stage");
+const lines = [];
+let fail = 0, warn = 0;
+
+function run(chapterId, n, aspect = "16:9") {
+  const p = project(chapterId, n, aspect);
+  renderRefPage({ get: () => p }, stage, chapterId);
+  const pages = [...stage.querySelectorAll(".page")];
+  const labels = [...stage.querySelectorAll(".page-label")];
+  const want = Math.max(1, Math.ceil(n / SPEC[chapterId]));
+  const tallest = Math.max(0, ...pages.map((el) => Math.round(el.getBoundingClientRect().height)));
+  const okCount = pages.length === want;
+  const okLabel = labels.length === pages.length;      // 每頁一個頁標（collectChapters 靠 previousElementSibling 配對）
+  const okHeight = tallest <= CEILING;
+  const okPerPage = refPerPage(chapterId) === SPEC[chapterId];
+  const ok = okCount && okLabel && okHeight && okPerPage;
+  if (!ok) fail++; else if (tallest > IDEAL) warn++;
+  lines.push(`${ok ? (tallest > IDEAL ? "WARN" : "PASS") : "FAIL"} ${chapterId.padEnd(11)} ${String(n).padStart(3)} 項 → ${pages.length}/${want} 頁　最高 ${tallest}px${okHeight ? (tallest > IDEAL ? " △版面偏高" : "") : " ✗超過回歸線"}${okLabel ? "" : " ✗頁標數不符"}${okPerPage ? "" : " ✗每頁項數不符規格"}`);
+}
+
+for (const [ch, per] of Object.entries(SPEC)) {
+  for (const n of [0, 1, per, per + 1, per * 3, 20]) run(ch, n);
+}
+run("tone", 8, "9:16");     // 直式案的 TONE 走 4 欄直式格
+run("actor", 9, "9:16");
+
+stage.innerHTML = "";
+lines.push(fail ? `\n${fail} FAILED` : `\n全部通過${warn ? `（${warn} 項版面偏高，既有問題非本次造成）` : ""}`);
+document.getElementById("out").textContent = lines.join("\n");
+document.title = fail ? `FAIL(${fail})` : "PASS";
+</script>
+</body>
+</html>
