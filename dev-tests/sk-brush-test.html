@@ -60,7 +60,7 @@ if (location.search.includes("visual")) {
   pev("pointerdown", cv, vring[0][0], vring[0][1]);
   for (const [x, y] of vring.slice(1)) pev("pointermove", cv, x, y);
   pev("pointerup", cv, 500, 520);
-  click($("[data-sklayer]"));
+  click($("[data-skcustom]")); // 這輪看自訂色面板（圖層面板前幾輪已截過）
   document.getElementById("out").textContent = "VISUAL";
 } else
 try {
@@ -94,10 +94,11 @@ try {
   click(document.querySelectorAll("[data-skcolor]")[1]);
   drawLine(cv, 400, 500, 600, 500);
 
-  // ── 自訂色：模擬系統調色盤回傳 → 畫一筆帶自訂色 ──
-  const ci = $(".sk-colorinput");
-  ci.value = "#123456";
-  ci.dispatchEvent(new Event("input", { bubbles: true }));
+  // ── 自訂色：開自訂面板 → 點速選格 → 畫一筆帶自訂色 ──
+  click($("[data-skcustom]"));
+  say($(".sk-colorpop").classList.contains("open"), "自訂色面板打開");
+  click($('[data-skpick="#8e4ec6"]'));
+  say(!$(".sk-colorpop").classList.contains("open"), "點格子選定後面板收起");
   drawLine(cv, 400, 560, 600, 560);
 
   // ── 圖層面板：開面板、加一層、畫一筆到新層 ──
@@ -140,7 +141,7 @@ try {
     const [a, b, c2] = sk.figure;
     say(a && !("size" in a) && !("color" in a), "預設檔位那筆沒寫 size/color");
     say(b && Math.abs(b.size - 2.2) < 0.05 && b.color === "#b3341c", `拉到最粗＋紅那筆有寫 size/color（${b?.size?.toFixed(2)}/${b?.color}）`);
-    say(c2 && c2.color === "#123456", `自訂色那筆寫入色碼（${c2?.color}）`);
+    say(c2 && c2.color === "#8e4ec6", `自訂色那筆寫入色碼（${c2?.color}）`);
     say(Array.isArray(sk.extra) && sk.extra.length === 1 && sk.extra[0].name === "圖層 1", "自訂層存進 extra");
     const mv = sk.extra?.[0]?.strokes?.[0];
     // 拖移 +100：起點 x 應從 200 變 ~300（座標經像素換算，容差 6px）

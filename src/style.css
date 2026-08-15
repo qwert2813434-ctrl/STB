@@ -1125,8 +1125,31 @@ body.sel-mode .cut [contenteditable] { pointer-events: none; }
 .sk-colors button { padding: 6px 7px; display: inline-flex; align-items: center; justify-content: center; min-width: 26px; }
 .sk-colors i { display: block; width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--line); }
 .sk-bar .sk-colors button.on { background: var(--hover); border-color: var(--ink); color: inherit; }
-/* 系統調色盤的觸發 input：要在文件流裡才能開原生面板，但不佔版面 */
-.sk-colorinput { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+/* 自訂色面板：16 色速選格＋HSL 三滑桿（自建；iPad WKWebView 開原生 input[type=color] 會靜默失敗） */
+.sk-colorpop {
+  display: none;
+  position: absolute; top: 48px; left: 260px; z-index: 10;
+  width: 236px; padding: 12px;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 10px 32px rgba(0,0,0,.22);
+}
+.sk-colorpop.open { display: block; }
+.sk-cgrid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; margin-bottom: 10px; }
+.sk-cgrid button { width: 21px; height: 21px; border-radius: 50%; border: 1px solid rgba(0,0,0,.15); padding: 0; }
+.sk-colorpop input[type="range"] {
+  -webkit-appearance: none; appearance: none;
+  display: block; width: 100%; height: 14px; border-radius: 7px;
+  border: 1px solid var(--line); margin: 8px 0; padding: 0;
+}
+.sk-colorpop input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--bg); border: 2px solid var(--ink);
+}
+.sk-chue { background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); }
+.sk-cprev { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.sk-cprev i { display: block; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--line); }
+.sk-cprev span { font-family: var(--mono); font-size: 11px; color: var(--muted); }
 /* icon 鈕（復原/重做）：SVG 置中，行高歸零免得撐高工具列 */
 .sk-bar [data-skundo], .sk-bar [data-skredo] { line-height: 0; padding: 7px 9px; }
 .sk-off { opacity: .35; pointer-events: none; }

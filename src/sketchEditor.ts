@@ -78,6 +78,33 @@ export function openSketchEditor(store: Store, cutId: string) {
     const v = localStorage.getItem("stbSkColorCustom");
     return v && HEX_RE.test(v) ? v : null;
   })();
+  // 自訂色面板的 16 色速選（黑紅藍語意色之外的常用溝通色）
+  const CGRID = ["#e5484d", "#d6702c", "#e2a336", "#8c6d3f", "#46a758", "#2f7c57", "#0e7a70", "#5cabff",
+                 "#3f7ad6", "#2c5e9e", "#8e4ec6", "#c65c9c", "#7a5c49", "#666461", "#8a8578", "#b8b2a7"];
+  // HSL↔HEX（自訂色滑桿用）
+  const hslToHex = (h: number, s: number, l: number): string => {
+    s /= 100; l /= 100;
+    const k = (n: number) => (n + h / 30) % 12;
+    const a = s * Math.min(l, 1 - l);
+    const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+    const to = (x: number) => Math.round(x * 255).toString(16).padStart(2, "0");
+    return `#${to(f(0))}${to(f(8))}${to(f(4))}`;
+  };
+  const hexToHsl = (hex: string): [number, number, number] => {
+    const r = parseInt(hex.slice(1, 3), 16) / 255, g = parseInt(hex.slice(3, 5), 16) / 255, b = parseInt(hex.slice(5, 7), 16) / 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+    const l = (mx + mn) / 2;
+    const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+    let h = 0;
+    if (d) {
+      if (mx === r) h = ((g - b) / d) % 6;
+      else if (mx === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h *= 60;
+      if (h < 0) h += 360;
+    }
+    return [Math.round(h), Math.round(s * 100), Math.round(l * 100)];
+  };
   let color = ((): string => {
     const v = localStorage.getItem("stbSkColor") || INK;
     return COLORS.includes(v) || HEX_RE.test(v) ? v : INK;
@@ -165,7 +192,6 @@ export function openSketchEditor(store: Store, cutId: string) {
         <span class="sk-colors">${COLORS.map((c) =>
           `<button data-skcolor="${c}"><i style="background:${c}"></i></button>`).join("")}<button data-skcustom title="自訂顏色"><i class="sk-customdot"></i></button>
         </span>
-        <input type="color" class="sk-colorinput" aria-hidden="true" tabindex="-1">
         <span class="sk-sep"></span>
         <button data-sklayer title="圖層清單：場景畫構圖、人物畫表演與運鏡（複製 cut 只重畫人物層）；最多再加 4 層自訂圖層，疊在人物上方">圖層：<b></b></button>
         <button data-skunder title="勘景照半透明墊底沿描——不會畫畫也能構圖正確；輸出的塗鴉不含墊底"></button>
@@ -179,6 +205,13 @@ export function openSketchEditor(store: Store, cutId: string) {
         <button class="sk-ok">完成</button>
       </div>
       <div class="sk-layers"></div>
+      <div class="sk-colorpop">
+        <div class="sk-cgrid">${CGRID.map((c) => `<button data-skpick="${c}" style="background:${c}"></button>`).join("")}</div>
+        <input type="range" class="sk-chue" min="0" max="360" step="1" aria-label="色相">
+        <input type="range" class="sk-csat" min="0" max="100" step="1" aria-label="飽和度">
+        <input type="range" class="sk-clig" min="8" max="92" step="1" aria-label="明度">
+        <div class="sk-cprev"><i></i><span></span></div>
+      </div>
       <div class="sk-helppop">
         <p>Apple Pencil／滑鼠作畫，手指不會誤觸</p>
         <p><b>雙指輕點＝復原、三指輕點＝重做</b>（塗鴉內專用）</p>
@@ -454,16 +487,50 @@ export function openSketchEditor(store: Store, cutId: string) {
   let helpOpen = false;
   const closeHelp = () => { helpOpen = false; helpEl.classList.remove("open"); };
 
-  // ---- 自訂色：系統原生調色盤（input[type=color]，iPad＝原生取色面板含吸管）----
-  const colorInput = overlay.querySelector(".sk-colorinput") as HTMLInputElement;
-  colorInput.addEventListener("input", () => {
-    if (!HEX_RE.test(colorInput.value)) return;
-    customColor = colorInput.value;
-    localStorage.setItem("stbSkColorCustom", customColor);
-    color = customColor;
-    localStorage.setItem("stbSkColor", color);
+  // ---- 自訂色面板：16 色速選＋HSL 三滑桿（自建，不用 input[type=color]——
+  // iPad WKWebView 對隱形 input 程式觸發原生調色盤會靜默失敗，2026-08-16 實機踩到）----
+  const colorPop = overlay.querySelector(".sk-colorpop") as HTMLElement;
+  const hueEl = overlay.querySelector(".sk-chue") as HTMLInputElement;
+  const satEl = overlay.querySelector(".sk-csat") as HTMLInputElement;
+  const ligEl = overlay.querySelector(".sk-clig") as HTMLInputElement;
+  const prevDot = overlay.querySelector(".sk-cprev i") as HTMLElement;
+  const prevHex = overlay.querySelector(".sk-cprev span") as HTMLElement;
+  let colorPopOpen = false;
+  const closeColorPop = () => { colorPopOpen = false; colorPop.classList.remove("open"); };
+  const applyCustom = (hex: string) => {
+    customColor = hex;
+    localStorage.setItem("stbSkColorCustom", hex);
+    color = hex;
+    localStorage.setItem("stbSkColor", hex);
     syncBar();
+  };
+  // 滑桿軌道底色跟著現值變（飽和/明度的漸層要用當下色相算）
+  const syncPop = () => {
+    const h = +hueEl.value, s = +satEl.value, l = +ligEl.value;
+    satEl.style.background = `linear-gradient(to right, ${hslToHex(h, 0, l)}, ${hslToHex(h, 100, l)})`;
+    ligEl.style.background = `linear-gradient(to right, #141311, ${hslToHex(h, s, 50)}, #ffffff)`;
+    const hex = hslToHex(h, s, l);
+    prevDot.style.background = hex;
+    prevHex.textContent = hex;
+    return hex;
+  };
+  const setPopFromHex = (hex: string) => {
+    const [h, s, l] = hexToHsl(hex);
+    hueEl.value = String(h);
+    satEl.value = String(s);
+    ligEl.value = String(Math.max(8, Math.min(92, l)));
+    syncPop();
+  };
+  colorPop.addEventListener("click", (e) => {
+    const pick = (e.target as HTMLElement).closest("[data-skpick]") as HTMLElement | null;
+    if (!pick) return;
+    applyCustom(pick.dataset.skpick!);
+    setPopFromHex(customColor!);
+    closeColorPop(); // 點格子＝選定收面板（快路徑）；要微調用滑桿
   });
+  for (const el of [hueEl, satEl, ligEl]) {
+    el.addEventListener("input", () => applyCustom(syncPop())); // 滑桿＝即時套用，點外面收
+  }
 
   // ---- 粗細拉桿：拖到哪倍率跟到哪（手指或筆都可拖）----
   const slider = overlay.querySelector(".sk-sizeslider") as HTMLElement;
@@ -823,8 +890,8 @@ export function openSketchEditor(store: Store, cutId: string) {
   // 拿觸點做原生手勢——系統手勢一啟動就會 cancel 掉筆的事件流。
   // 小觸點（小拇指側）系統不會自動當手掌，全靠這裡。工具列除外（按鈕要能點）。
   const palmGuard = (e: TouchEvent) => {
-    // 工具列與圖層面板除外（preventDefault 會吃掉合成 click，按鈕就點不了）
-    if (!(e.target as HTMLElement).closest(".sk-bar, .sk-layers")) e.preventDefault();
+    // 工具列與各彈窗除外（preventDefault 會吃掉合成 click 與滑桿拖曳）
+    if (!(e.target as HTMLElement).closest(".sk-bar, .sk-layers, .sk-colorpop, .sk-helppop")) e.preventDefault();
   };
   overlay.addEventListener("touchstart", palmGuard, { passive: false });
   overlay.addEventListener("touchmove", palmGuard, { passive: false });
@@ -839,6 +906,10 @@ export function openSketchEditor(store: Store, cutId: string) {
     }
     if (helpOpen && !t.closest(".sk-helppop") && !t.closest("[data-skhelp]")) {
       closeHelp();
+      if (t === overlay) return;
+    }
+    if (colorPopOpen && !t.closest(".sk-colorpop") && !t.closest("[data-skcustom]")) {
+      closeColorPop();
       if (t === overlay) return;
     }
     const tb = t.closest("[data-sktool]") as HTMLElement | null;
@@ -857,21 +928,26 @@ export function openSketchEditor(store: Store, cutId: string) {
       return;
     }
     if (t.closest("[data-skcustom]")) {
-      // 已有自訂色：點一下＝切回它；再點（或還沒選過）＝開系統調色盤
+      // 已有自訂色：點一下＝切回它；再點（或還沒選過）＝開自訂色面板
       if (customColor && color !== customColor) {
         color = customColor;
         localStorage.setItem("stbSkColor", color);
         syncBar();
-      } else {
-        colorInput.value = customColor ?? "#8e4ec6";
-        colorInput.click();
+        return;
       }
+      colorPopOpen = !colorPopOpen;
+      if (colorPopOpen) {
+        closePanel(); closeHelp(); // 跟其他彈窗互斥
+        setPopFromHex(customColor ?? "#8e4ec6");
+        colorPop.style.top = `${(overlay.querySelector(".sk-bar") as HTMLElement).offsetHeight + 4}px`;
+      }
+      colorPop.classList.toggle("open", colorPopOpen);
       return;
     }
     if (t.closest("[data-skhelp]")) {
       helpOpen = !helpOpen;
       if (helpOpen) {
-        closePanel(); // 跟圖層面板互斥
+        closePanel(); closeColorPop(); // 跟其他彈窗互斥
         helpEl.style.top = `${(overlay.querySelector(".sk-bar") as HTMLElement).offsetHeight + 4}px`;
       }
       helpEl.classList.toggle("open", helpOpen);
@@ -880,7 +956,7 @@ export function openSketchEditor(store: Store, cutId: string) {
     if (t.closest("[data-sklayer]")) {
       panelOpen = !panelOpen;
       if (panelOpen) {
-        closeHelp(); // 跟說明彈窗互斥
+        closeHelp(); closeColorPop(); // 跟其他彈窗互斥
         renderLayers();
         // 面板貼在工具列正下方（工具列窄螢幕會換行，高度不固定）
         layersEl.style.top = `${(overlay.querySelector(".sk-bar") as HTMLElement).offsetHeight + 4}px`;
@@ -960,7 +1036,7 @@ export function openSketchEditor(store: Store, cutId: string) {
     // 編輯器開著時鍵盤自己收：Esc 取消、⌘Z 復原（不讓全域 undo 動到案子）
     if (e.key === "Escape") {
       e.preventDefault(); e.stopPropagation();
-      if (panelOpen || helpOpen) { closePanel(); closeHelp(); return; } // 先收面板/說明
+      if (panelOpen || helpOpen || colorPopOpen) { closePanel(); closeHelp(); closeColorPop(); return; } // 先收各彈窗
       if (sel.length || lasso) { clearSel(); render(); return; }        // 再解除選取
       close();                                                          // 都沒有才關編輯器
       return;
