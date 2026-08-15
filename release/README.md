@@ -2,7 +2,8 @@
 
 ## 現行下載檔＝版本化檔名
 
-`STB_<版本>_aarch64.dmg`（目前＝`STB_1.6.2_aarch64.dmg`）。
+Mac＝`STB_<版本>_aarch64.dmg`；Windows＝`STB_<版本>_x64-setup.exe`（1.7.0 起，NSIS 安裝檔，
+由 `.github/workflows/windows-build.yml` 在 CI 編出、未簽章——SmartScreen 會提示屬正常）。
 每次發版產生**新檔名**，不再蓋舊檔——`scripts/release-mac.sh` 會自動命名並同步
 `README.md`、`docs/index.html`、工具間 `stb-latest.json` 三處連結。
 
