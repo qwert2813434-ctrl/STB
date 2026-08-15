@@ -221,6 +221,7 @@ export function openSketchEditor(store: Store, cutId: string) {
         <p>橡皮擦＝擦到哪消到哪（只擦目前圖層）</p>
         <p>選取＝圈起來拖著走、拉角落等比縮放</p>
         <p>粗細拉桿與顏色＝筆／麥克筆各自記住</p>
+        <p>自訂色按確認會存進「我的顏色」，長按色塊可刪除</p>
         <p>完成＝存進分鏡格，之後點縮圖可回來繼續改</p>
       </div>
       <div class="sk-stage"><canvas class="sk-canvas${portrait ? " portrait" : ""}" width="${W}" height="${H}"></canvas></div>
@@ -509,13 +510,14 @@ export function openSketchEditor(store: Store, cutId: string) {
   const prevDot = overlay.querySelector(".sk-cprev i") as HTMLElement;
   const prevHex = overlay.querySelector(".sk-cprev span") as HTMLElement;
   let colorPopOpen = false;
-  const closeColorPop = () => { colorPopOpen = false; colorPop.classList.remove("open"); };
+  const closeColorPop = () => { colorPopOpen = false; colorPop.classList.remove("open"); clearDel(); };
   const applyCustom = (hex: string) => {
     customColor = hex;
     localStorage.setItem("stbSkColorCustom", hex);
     color = hex;
     localStorage.setItem("stbSkColor", hex);
     syncBar();
+    syncPicks();
   };
   // 滑桿軌道底色跟著現值變（飽和/明度的漸層要用當下色相算）
   const syncPop = () => {
@@ -543,11 +545,16 @@ export function openSketchEditor(store: Store, cutId: string) {
       return Array.isArray(a) ? a.filter((c) => typeof c === "string" && HEX_RE.test(c)).slice(0, 8) : [];
     } catch { return []; }
   })();
+  // 面板裡跟「現在用的顏色」相同的色塊加高亮圈——狀態一目了然
+  const syncPicks = () => {
+    overlay.querySelectorAll<HTMLElement>("[data-skpick]").forEach((b) => b.classList.toggle("cur", b.dataset.skpick === color));
+  };
   const renderSaved = () => {
     savedEl.classList.toggle("has", savedColors.length > 0);
     savedEl.innerHTML = savedColors.length
       ? `<span>我的顏色</span>${savedColors.map((c) => `<button data-skpick="${c}" style="background:${c}"></button>`).join("")}`
       : "";
+    syncPicks();
   };
   renderSaved();
   const saveRecent = (hex: string) => {
@@ -556,10 +563,30 @@ export function openSketchEditor(store: Store, cutId: string) {
     localStorage.setItem("stbSkColorSaved", JSON.stringify(savedColors));
     renderSaved();
   };
+  const removeSaved = (hex: string) => {
+    savedColors = savedColors.filter((c) => c !== hex);
+    localStorage.setItem("stbSkColorSaved", JSON.stringify(savedColors));
+    renderSaved();
+  };
+  // 長按色塊＝浮出 × 危險態（STB 觸控語法：長按 chip 長出危險鈕），再點一下才真的刪
+  let lpTimer = 0, lpFired = false;
+  const clearDel = () => savedEl.querySelectorAll(".del").forEach((b) => b.classList.remove("del"));
+  colorPop.addEventListener("pointerdown", () => { lpFired = false; }, true);
+  savedEl.addEventListener("pointerdown", (e) => {
+    const b = (e.target as HTMLElement).closest("[data-skpick]") as HTMLElement | null;
+    if (!b) return;
+    lpTimer = window.setTimeout(() => { clearDel(); b.classList.add("del"); lpFired = true; }, 450);
+    const cancel = () => clearTimeout(lpTimer);
+    for (const t of ["pointerup", "pointerleave", "pointercancel"]) b.addEventListener(t, cancel, { once: true });
+  });
   colorPop.addEventListener("click", (e) => {
     const t0 = e.target as HTMLElement;
-    if (t0.closest(".sk-cok")) { saveRecent(color); closeColorPop(); return; } // 底部「使用這個顏色」＝存進我的顏色＋收面板開始畫
+    if (lpFired) { lpFired = false; return; } // 長按抬手附帶的 click 吞掉——不然剛長出 × 就被自己點掉
     const pick = t0.closest("[data-skpick]") as HTMLElement | null;
+    const del = pick && pick.classList.contains("del") ? pick : null;
+    clearDel(); // 點到危險態以外的任何地方＝先收掉危險態
+    if (del) { removeSaved(del.dataset.skpick!); return; }
+    if (t0.closest(".sk-cok")) { saveRecent(color); closeColorPop(); return; } // 底部「使用這個顏色」＝存進我的顏色＋收面板開始畫
     if (!pick) return;
     applyCustom(pick.dataset.skpick!); // 點格子＝套用但不收，可再用滑桿微調
     setPopFromHex(customColor!);
@@ -1053,6 +1080,7 @@ export function openSketchEditor(store: Store, cutId: string) {
       if (colorPopOpen) {
         closePanel(); closeHelp(); // 跟其他彈窗互斥
         setPopFromHex(customColor ?? "#8e4ec6");
+        syncPicks(); // 面板關著時可能從筆桿換過色，開面板時高亮圈要追上
         placePop(colorPop, overlay.querySelector("[data-skcustom]") as HTMLElement);
       }
       return;

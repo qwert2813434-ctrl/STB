@@ -135,6 +135,24 @@ try {
   click($(".sk-cok"));
   say(document.querySelectorAll(".sk-csaved button").length === 1, "同色再確認不重複存");
 
+  // ── 高亮圈＋長按刪除（STB 觸控語法：長按長出危險鈕）──
+  click($("[data-skcustom]"));
+  say($(".sk-csaved button").classList.contains("cur"), "目前用的色在面板裡有高亮圈");
+  {
+    const sw = $(".sk-csaved button");
+    const swp = (t) => sw.dispatchEvent(new PointerEvent(t, { bubbles: true, pointerId: 9, pointerType: "touch", isPrimary: true }));
+    swp("pointerdown");
+    await new Promise((r) => setTimeout(r, 600)); // 450ms 長按門檻，虛擬時間下瞬跳
+    say(sw.classList.contains("del"), "長按色塊浮出 × 危險態");
+    swp("pointerup");
+    click(sw); // 真機抬手會附帶一次 click，必須被吞掉（不然 × 剛長出來就被自己點掉）
+    say(sw.classList.contains("del"), "抬手附帶的 click 被吞、危險態還在");
+    click(sw); // 再點一下＝真的刪
+    say(!$(".sk-csaved").classList.contains("has"), "點 × 刪除後清單清空、區塊收起");
+  }
+  click(cv); // 點外面收面板（不走確認鈕，別把現值又存回去）
+  say(!$(".sk-colorpop").classList.contains("open"), "點外面收自訂色面板");
+
   // ── 圖層面板：開面板、加一層、畫一筆到新層 ──
   click($("[data-sklayer]"));
   say($(".sk-layers").classList.contains("open"), "圖層面板打開");
