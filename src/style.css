@@ -1098,9 +1098,12 @@ body.sel-mode .cut [contenteditable] { pointer-events: none; }
 .sk-lrow.hid .sk-lname { color: var(--faint); }
 .sk-lname { flex: 1; font-size: 13px; color: var(--ink); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sk-lrow.on .sk-lname { font-weight: 600; }
-.sk-leye, .sk-lmv, .sk-ldel { padding: 5px 7px; border-radius: 6px; font-size: 12px; line-height: 1; display: inline-flex; align-items: center; }
+.sk-leye, .sk-ldel { padding: 5px 7px; border-radius: 6px; font-size: 12px; line-height: 1; display: inline-flex; align-items: center; }
 .sk-leye-ph { width: 29px; flex: none; } /* 固定層沒有眼睛，佔位讓名稱對齊 */
-.sk-lmv:disabled { opacity: .3; }
+.sk-lgrip { cursor: grab; touch-action: none; color: var(--faint); font-size: 13px; padding: 4px 5px; flex: none; user-select: none; -webkit-user-select: none; }
+.sk-lgrip-ph { width: 23px; flex: none; } /* 固定層不能拖，佔位對齊 */
+.sk-lrow { transition: transform .12s; }
+.sk-lrow.dragging { transition: none; position: relative; z-index: 2; background: var(--hover); box-shadow: 0 4px 14px rgba(0,0,0,.15); }
 .sk-lrow.sk-fixed { cursor: pointer; }
 .sk-bar {
   display: flex; align-items: center; gap: 6px; padding: 10px 12px;
@@ -1150,6 +1153,18 @@ body.sel-mode .cut [contenteditable] { pointer-events: none; }
 .sk-cprev { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 .sk-cprev i { display: block; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--line); }
 .sk-cprev span { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.sk-cok { width: 100%; margin-top: 10px; padding: 8px 0; border-radius: 8px; font-size: 13px; background: var(--ink); color: var(--bg); border-color: var(--ink); }
+/* 筆刷大小即時預覽：拖拉桿時浮在下方，圓點＝實際螢幕粗細 */
+.sk-sizeprev {
+  display: none;
+  position: absolute; z-index: 10;
+  width: 84px; height: 84px;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 10px 32px rgba(0,0,0,.22);
+  align-items: center; justify-content: center;
+}
+.sk-sizeprev.open { display: flex; }
+.sk-sizeprev i { display: block; border-radius: 50%; }
 /* icon 鈕（復原/重做）：SVG 置中，行高歸零免得撐高工具列 */
 .sk-bar [data-skundo], .sk-bar [data-skredo] { line-height: 0; padding: 7px 9px; }
 .sk-off { opacity: .35; pointer-events: none; }

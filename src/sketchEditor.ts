@@ -211,7 +211,9 @@ export function openSketchEditor(store: Store, cutId: string) {
         <input type="range" class="sk-csat" min="0" max="100" step="1" aria-label="飽和度">
         <input type="range" class="sk-clig" min="8" max="92" step="1" aria-label="明度">
         <div class="sk-cprev"><i></i><span></span></div>
+        <button class="sk-cok">使用這個顏色</button>
       </div>
+      <div class="sk-sizeprev"><i></i></div>
       <div class="sk-helppop">
         <p>Apple Pencil／滑鼠作畫，手指不會誤觸</p>
         <p><b>雙指輕點＝復原、三指輕點＝重做</b>（塗鴉內專用）</p>
@@ -468,19 +470,29 @@ export function openSketchEditor(store: Store, cutId: string) {
     for (let i = extras().length - 1; i >= 0; i--) {
       const L = extras()[i];
       rows.push(`<div class="sk-lrow${layer === i ? " on" : ""}${L.hidden ? " hid" : ""}" data-lid="${i}">
+        <span class="sk-lgrip" data-lgrip="${i}" title="拖曳調整圖層順序">⠿</span>
         <button class="sk-leye" data-leye="${i}" title="${L.hidden ? "顯示" : "隱藏"}">${L.hidden ? EYE_OFF : EYE}</button>
         <span class="sk-lname" title="點作用中的圖層名稱＝改名">${esc(L.name)}</span>
-        <button class="sk-lmv" data-lup="${i}" ${i === extras().length - 1 ? "disabled" : ""}>↑</button>
-        <button class="sk-lmv" data-ldn="${i}" ${i === 0 ? "disabled" : ""}>↓</button>
         <button class="sk-ldel" data-ldel="${i}">✕</button>
       </div>`);
     }
-    rows.push(`<div class="sk-lrow sk-fixed${layer === "figure" ? " on" : ""}" data-lid="figure"><span class="sk-leye-ph"></span><span class="sk-lname">人物</span></div>`);
-    rows.push(`<div class="sk-lrow sk-fixed${layer === "scene" ? " on" : ""}" data-lid="scene"><span class="sk-leye-ph"></span><span class="sk-lname">場景</span></div>`);
+    rows.push(`<div class="sk-lrow sk-fixed${layer === "figure" ? " on" : ""}" data-lid="figure"><span class="sk-lgrip-ph"></span><span class="sk-leye-ph"></span><span class="sk-lname">人物</span></div>`);
+    rows.push(`<div class="sk-lrow sk-fixed${layer === "scene" ? " on" : ""}" data-lid="scene"><span class="sk-lgrip-ph"></span><span class="sk-leye-ph"></span><span class="sk-lname">場景</span></div>`);
     layersEl.innerHTML = rows.join("");
   };
   const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
   const closePanel = () => { panelOpen = false; layersEl.classList.remove("open"); };
+
+  // 彈窗一律開在自己按鈕的正下方（Armin 直覺需求）。
+  // 用 offsetLeft（版面 px、不受 iPad 整頁 zoom 的 rect 語意雷影響），
+  // 超出面板右緣就往回夾。要在加上 .open 之後呼叫（display:none 時量不到寬）。
+  const placePop = (pop: HTMLElement, anchor: HTMLElement) => {
+    const panel = overlay.querySelector(".sk-panel") as HTMLElement;
+    const bar = overlay.querySelector(".sk-bar") as HTMLElement;
+    pop.style.top = `${bar.offsetHeight + 4}px`;
+    pop.style.left = `${Math.max(12, Math.min(anchor.offsetLeft, panel.clientWidth - pop.offsetWidth - 12))}px`;
+    pop.style.right = "auto";
+  };
 
   // ---- 說明彈窗（? 鈕開合，取代原本常駐的底部說明列——中文看久礙眼）----
   const helpEl = overlay.querySelector(".sk-helppop") as HTMLElement;
@@ -522,19 +534,32 @@ export function openSketchEditor(store: Store, cutId: string) {
     syncPop();
   };
   colorPop.addEventListener("click", (e) => {
-    const pick = (e.target as HTMLElement).closest("[data-skpick]") as HTMLElement | null;
+    const t0 = e.target as HTMLElement;
+    if (t0.closest(".sk-cok")) { closeColorPop(); return; } // 底部「使用這個顏色」＝收面板開始畫
+    const pick = t0.closest("[data-skpick]") as HTMLElement | null;
     if (!pick) return;
-    applyCustom(pick.dataset.skpick!);
+    applyCustom(pick.dataset.skpick!); // 點格子＝套用但不收，可再用滑桿微調
     setPopFromHex(customColor!);
-    closeColorPop(); // 點格子＝選定收面板（快路徑）；要微調用滑桿
   });
   for (const el of [hueEl, satEl, ligEl]) {
     el.addEventListener("input", () => applyCustom(syncPop())); // 滑桿＝即時套用，點外面收
   }
 
-  // ---- 粗細拉桿：拖到哪倍率跟到哪（手指或筆都可拖）----
+  // ---- 粗細拉桿：拖到哪倍率跟到哪（手指或筆都可拖）＋即時大小預覽 ----
+  // 預覽泡泡浮在拉桿下方，圓點直徑＝這個粗細畫在畫布上的實際螢幕大小
+  //（含麥克筆的半透明），拖的時候看得到「大概多粗」。
   const slider = overlay.querySelector(".sk-sizeslider") as HTMLElement;
+  const sizePrev = overlay.querySelector(".sk-sizeprev") as HTMLElement;
+  const sizePrevDot = sizePrev.querySelector("i") as HTMLElement;
   let sliderDrag = false;
+  const syncSizePrev = () => {
+    const tl: "pen" | "marker" = tool === "marker" ? "marker" : "pen";
+    // 畫布座標的筆徑 × 畫布在螢幕上的縮放 ＝ 所見即所得的直徑
+    const d = (tl === "marker" ? 24 : 7) * sizes[tl] * (canvas.clientWidth / W);
+    sizePrevDot.style.width = sizePrevDot.style.height = `${d.toFixed(1)}px`;
+    sizePrevDot.style.background = color;
+    sizePrevDot.style.opacity = tl === "marker" ? "0.32" : "1";
+  };
   const sizeFromEvent = (ev: PointerEvent) => {
     const r = slider.getBoundingClientRect();
     const t0 = SL_IN / SL_W, t1 = (SL_W - SL_IN * 2) / SL_W; // 與 syncBar 的滑塊定位同一套內縮
@@ -544,6 +569,7 @@ export function openSketchEditor(store: Store, cutId: string) {
     const tl: "pen" | "marker" = tool === "marker" ? "marker" : "pen";
     sizes[tl] = v;
     localStorage.setItem(sizeKey(tl), String(v));
+    syncSizePrev();
     syncBar();
   };
   slider.addEventListener("pointerdown", (e) => {
@@ -551,14 +577,18 @@ export function openSketchEditor(store: Store, cutId: string) {
     e.preventDefault();
     try { slider.setPointerCapture(e.pointerId); } catch { /* 合成事件 */ }
     sliderDrag = true;
+    sizePrev.classList.add("open");
+    placePop(sizePrev, slider);
     sizeFromEvent(e);
   });
   slider.addEventListener("pointermove", (e) => { if (sliderDrag) sizeFromEvent(e); });
-  slider.addEventListener("pointerup", () => { sliderDrag = false; });
-  slider.addEventListener("pointercancel", () => { sliderDrag = false; });
+  const endSlider = () => { sliderDrag = false; sizePrev.classList.remove("open"); };
+  slider.addEventListener("pointerup", endSlider);
+  slider.addEventListener("pointercancel", endSlider);
 
   layersEl.addEventListener("click", (e) => {
     const t0 = e.target as HTMLElement;
+    if (t0.closest(".sk-lgrip")) return; // 把手的事（拖曳排序）在 pointer 事件處理，click 讓位
     clearSel(); // 圖層一動（切層/增刪/排序/顯隱）選取索引就不可信，一律解除
     // 圖層物件一律換新的不就地改（快照淺拷貝的前提，見 snap()）
     if (t0.closest(".sk-ladd")) {
@@ -582,22 +612,6 @@ export function openSketchEditor(store: Store, cutId: string) {
       });
       invalidate();
       renderLayers(); render();
-      return;
-    }
-    const up = t0.closest("[data-lup]") as HTMLElement | null;
-    const dn = t0.closest("[data-ldn]") as HTMLElement | null;
-    if (up || dn) {
-      // 列表的「上」＝畫面的上層＝index 變大
-      const i = +((up ?? dn)!.dataset.lup ?? (up ?? dn)!.dataset.ldn!);
-      const j = up ? i + 1 : i - 1;
-      if (j < 0 || j >= extras().length) return;
-      pushUndo();
-      const arr = [...work.extra!];
-      [arr[i], arr[j]] = [arr[j], arr[i]];
-      work.extra = arr;
-      if (layer === i) layer = j; else if (layer === j) layer = i;
-      invalidate();
-      renderLayers(); syncBar(); render();
       return;
     }
     const del = t0.closest("[data-ldel]") as HTMLElement | null;
@@ -645,6 +659,77 @@ export function openSketchEditor(store: Store, cutId: string) {
       renderLayers(); syncBar(); render();
     }
   });
+
+  // ---- 圖層拖曳排序（⠿ 把手；只有自訂層能拖，場景/人物固定最底）----
+  // 拖曳中只動 CSS transform（不重建 DOM——innerHTML 一換把手就沒了、
+  // pointer capture 跟著斷），放手才真正搬資料；整段拖曳＝一步復原。
+  let lDrag: { ei: number; startY: number; rowH: number; row: HTMLElement; moved: boolean; slots: number; before: CutSketch } | null = null;
+  const extraRows = () => [...layersEl.querySelectorAll(".sk-lrow:not(.sk-fixed)")] as HTMLElement[];
+  layersEl.addEventListener("pointerdown", (e) => {
+    const g = (e.target as HTMLElement).closest("[data-lgrip]") as HTMLElement | null;
+    if (!g) return;
+    e.preventDefault();
+    const row = g.closest(".sk-lrow") as HTMLElement;
+    const rows = extraRows();
+    lDrag = {
+      ei: +g.dataset.lgrip!,
+      startY: e.clientY,
+      rowH: rows.length > 1
+        ? rows[1].getBoundingClientRect().top - rows[0].getBoundingClientRect().top
+        : row.getBoundingClientRect().height,
+      row, moved: false, slots: 0,
+      before: { ...work }, // 拖曳前快照（放手有搬才進 undo）
+    };
+    try { layersEl.setPointerCapture(e.pointerId); } catch { /* 合成事件 */ }
+    row.classList.add("dragging");
+  });
+  layersEl.addEventListener("pointermove", (e) => {
+    if (!lDrag) return;
+    const dy = e.clientY - lDrag.startY;
+    if (Math.abs(dy) > 4) lDrag.moved = true;
+    const n = extras().length;
+    const disp = n - 1 - lDrag.ei; // 顯示位置（0＝最上；index 大＝畫面上層）
+    const slots = Math.max(-disp, Math.min(n - 1 - disp, Math.round(dy / lDrag.rowH)));
+    lDrag.slots = slots;
+    lDrag.row.style.transform = `translateY(${dy}px)`;
+    extraRows().forEach((r, di) => {
+      if (r === lDrag!.row) return;
+      let t = 0;
+      if (slots > 0 && di > disp && di <= disp + slots) t = -lDrag!.rowH; // 讓位往上
+      else if (slots < 0 && di < disp && di >= disp + slots) t = lDrag!.rowH; // 讓位往下
+      r.style.transform = t ? `translateY(${t}px)` : "";
+    });
+  });
+  const endLayerDrag = () => {
+    if (!lDrag) return;
+    const { ei, slots, before, moved } = lDrag;
+    layersEl.querySelectorAll(".sk-lrow").forEach((r) => {
+      (r as HTMLElement).style.transform = "";
+      r.classList.remove("dragging");
+    });
+    lDrag = null;
+    if (!moved || !slots) return;
+    const newE = ei - slots; // 顯示往下 slots 格＝storage 索引減 slots
+    const arr = [...work.extra!];
+    const [mv] = arr.splice(ei, 1);
+    arr.splice(newE, 0, mv);
+    // 整段拖曳＝一步復原（比照 pushUndo：推快照、斷重做線）
+    undoStack.push(before);
+    if (undoStack.length > 50) undoStack.shift();
+    redoStack.length = 0;
+    work.extra = arr;
+    // 作用層指標跟著搬
+    if (layer === ei) layer = newE;
+    else if (typeof layer === "number") {
+      if (ei < layer && newE >= layer) layer -= 1;
+      else if (ei > layer && newE <= layer) layer += 1;
+    }
+    clearSel();
+    invalidate();
+    renderLayers(); syncBar(); render();
+  };
+  layersEl.addEventListener("pointerup", endLayerDrag);
+  layersEl.addEventListener("pointercancel", endLayerDrag);
 
   // 墊底解碼（快取一張 <img>；underlay 變動後呼叫）
   const loadUnderlay = () => {
@@ -899,18 +984,23 @@ export function openSketchEditor(store: Store, cutId: string) {
   // ---- 工具列 ----
   overlay.addEventListener("click", (e) => {
     const t = e.target as HTMLElement;
-    // 面板/說明開著時點外面＝先收起來；點的是背板就只收面板不關編輯器
-    if (panelOpen && !t.closest(".sk-layers") && !t.closest("[data-sklayer]")) {
-      closePanel();
-      if (t === overlay) return;
-    }
-    if (helpOpen && !t.closest(".sk-helppop") && !t.closest("[data-skhelp]")) {
-      closeHelp();
-      if (t === overlay) return;
-    }
-    if (colorPopOpen && !t.closest(".sk-colorpop") && !t.closest("[data-skcustom]")) {
-      closeColorPop();
-      if (t === overlay) return;
+    // 面板/說明開著時點外面＝先收起來；點的是背板就只收面板不關編輯器。
+    // ⚠️ target 已離線（面板內按鈕觸發 renderLayers 重建 DOM，冒泡上來時
+    // 祖先鏈已斷、closest 找不到 .sk-layers）＝來自面板內部，不做點外判定
+    //——不然點「新增圖層」面板會被自己關掉。
+    if (t.isConnected) {
+      if (panelOpen && !t.closest(".sk-layers") && !t.closest("[data-sklayer]")) {
+        closePanel();
+        if (t === overlay) return;
+      }
+      if (helpOpen && !t.closest(".sk-helppop") && !t.closest("[data-skhelp]")) {
+        closeHelp();
+        if (t === overlay) return;
+      }
+      if (colorPopOpen && !t.closest(".sk-colorpop") && !t.closest("[data-skcustom]")) {
+        closeColorPop();
+        if (t === overlay) return;
+      }
     }
     const tb = t.closest("[data-sktool]") as HTMLElement | null;
     if (tb) {
@@ -936,32 +1026,31 @@ export function openSketchEditor(store: Store, cutId: string) {
         return;
       }
       colorPopOpen = !colorPopOpen;
+      colorPop.classList.toggle("open", colorPopOpen);
       if (colorPopOpen) {
         closePanel(); closeHelp(); // 跟其他彈窗互斥
         setPopFromHex(customColor ?? "#8e4ec6");
-        colorPop.style.top = `${(overlay.querySelector(".sk-bar") as HTMLElement).offsetHeight + 4}px`;
+        placePop(colorPop, overlay.querySelector("[data-skcustom]") as HTMLElement);
       }
-      colorPop.classList.toggle("open", colorPopOpen);
       return;
     }
     if (t.closest("[data-skhelp]")) {
       helpOpen = !helpOpen;
+      helpEl.classList.toggle("open", helpOpen);
       if (helpOpen) {
         closePanel(); closeColorPop(); // 跟其他彈窗互斥
-        helpEl.style.top = `${(overlay.querySelector(".sk-bar") as HTMLElement).offsetHeight + 4}px`;
+        placePop(helpEl, overlay.querySelector("[data-skhelp]") as HTMLElement);
       }
-      helpEl.classList.toggle("open", helpOpen);
       return;
     }
     if (t.closest("[data-sklayer]")) {
       panelOpen = !panelOpen;
+      layersEl.classList.toggle("open", panelOpen);
       if (panelOpen) {
         closeHelp(); closeColorPop(); // 跟其他彈窗互斥
         renderLayers();
-        // 面板貼在工具列正下方（工具列窄螢幕會換行，高度不固定）
-        layersEl.style.top = `${(overlay.querySelector(".sk-bar") as HTMLElement).offsetHeight + 4}px`;
+        placePop(layersEl, overlay.querySelector("[data-sklayer]") as HTMLElement);
       }
-      layersEl.classList.toggle("open", panelOpen);
       return;
     }
     if (t.closest("[data-skunder]")) {

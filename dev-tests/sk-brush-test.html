@@ -60,7 +60,8 @@ if (location.search.includes("visual")) {
   pev("pointerdown", cv, vring[0][0], vring[0][1]);
   for (const [x, y] of vring.slice(1)) pev("pointermove", cv, x, y);
   pev("pointerup", cv, 500, 520);
-  click($("[data-skcustom]")); // 這輪看自訂色面板（圖層面板前幾輪已截過）
+  // ?visual=color 看自訂色面板，其餘看圖層面板
+  click($(location.search.includes("color") ? "[data-skcustom]" : "[data-sklayer]"));
   document.getElementById("out").textContent = "VISUAL";
 } else
 try {
@@ -86,6 +87,20 @@ try {
     sp("pointerdown"); sp("pointerup");
   };
 
+  // ── 拉桿拖曳時要有大小預覽泡泡 ──
+  {
+    const sl = $(".sk-sizeslider");
+    const r = sl.getBoundingClientRect();
+    const sp = (t) => sl.dispatchEvent(new PointerEvent(t, {
+      bubbles: true, pointerId: 8, pointerType: "mouse", isPrimary: true,
+      clientX: r.left + r.width * 0.8, clientY: r.top + 5, buttons: 1 }));
+    sp("pointerdown");
+    say($(".sk-sizeprev").classList.contains("open"), "拖拉桿時出現大小預覽");
+    sp("pointerup");
+    say(!$(".sk-sizeprev").classList.contains("open"), "放手預覽收起");
+    dragSizeTo(1); // 還原預設粗細，後面「預設檔位不寫 size」的斷言才成立
+  }
+
   // ── 預設檔位畫一筆（人物層，因為 scene 已有筆畫）→ 不寫 size/color ──
   drawLine(cv, 400, 400, 600, 400);
 
@@ -94,11 +109,13 @@ try {
   click(document.querySelectorAll("[data-skcolor]")[1]);
   drawLine(cv, 400, 500, 600, 500);
 
-  // ── 自訂色：開自訂面板 → 點速選格 → 畫一筆帶自訂色 ──
+  // ── 自訂色：開自訂面板 → 點速選格（面板留著可微調）→ 確認鈕收面板 → 畫一筆 ──
   click($("[data-skcustom]"));
   say($(".sk-colorpop").classList.contains("open"), "自訂色面板打開");
   click($('[data-skpick="#8e4ec6"]'));
-  say(!$(".sk-colorpop").classList.contains("open"), "點格子選定後面板收起");
+  say($(".sk-colorpop").classList.contains("open"), "點格子套用但面板留著（可微調）");
+  click($(".sk-cok"));
+  say(!$(".sk-colorpop").classList.contains("open"), "「使用這個顏色」收面板");
   drawLine(cv, 400, 560, 600, 560);
 
   // ── 圖層面板：開面板、加一層、畫一筆到新層 ──
@@ -180,6 +197,28 @@ try {
     say(!!st && maxX < 450 && st.pts.length >= 6,
         `髒起點被丟掉（最大 x ${st ? maxX.toFixed(0) : "無"}，應 <450）`);
   }
+
+  // ── 圖層 ⠿ 拖曳排序：最上層往下拖一格 → 順序交換 ──
+  savedSketch = null; saveCount = 0;
+  project.cuts[0].sketch = structuredClone(baseSketch);
+  openSketchEditor(store, "c1");
+  click($("[data-sklayer]"));
+  click($(".sk-ladd")); // 圖層 1
+  click($(".sk-ladd")); // 圖層 2（列表最上）
+  {
+    const grip = $('[data-lgrip="1"]');
+    const gr = grip.getBoundingClientRect();
+    const rowH = $(".sk-lrow").getBoundingClientRect().height;
+    const gp = (t, y) => grip.dispatchEvent(new PointerEvent(t, {
+      bubbles: true, pointerId: 5, pointerType: "mouse", isPrimary: true,
+      clientX: gr.left + 2, clientY: y, buttons: 1 }));
+    gp("pointerdown", gr.top + 4);
+    gp("pointermove", gr.top + 4 + rowH);
+    gp("pointerup", gr.top + 4 + rowH);
+  }
+  click($(".sk-ok"));
+  say(savedSketch?.extra?.map((l) => l.name).join(",") === "圖層 2,圖層 1",
+      `⠿ 拖曳排序生效（存回順序 ${savedSketch?.extra?.map((l) => l.name).join(",")}，期望 圖層 2,圖層 1）`);
 
   // ── 相容不變式：舊 sketch（只有 scene/figure）開了就按完成 → 內容一字不差 ──
   savedSketch = null; saveCount = 0;
