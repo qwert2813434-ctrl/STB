@@ -19,8 +19,12 @@ DMG="release/STB_${VER}_aarch64.dmg"
 FROZEN="release/STB_1.0.0_aarch64.dmg"   # 凍結在 1.6.2，接住舊私訊/外部轉貼，不再更新
 echo "▸ 發版 v${VER}（來源：${APP}）→ ${DMG}"
 
+# 公證認證走 .p8 直連（2026-08-16 改，同 ALIGNED 2026-08-14）：鑰匙圈 profile（stb-notary）
+# 會無預警讀不到（store-credentials 寫得進去、history 卻 not found），.p8 直連在 headless／排程下也穩。
+NOTARY_AUTH=(--key "$HOME/.appstoreconnect/private_keys/AuthKey_J63NP838KQ.p8"
+             --key-id J63NP838KQ --issuer f1386394-19c4-4163-aa40-504dac653053)
 notarize() { # $1=檔案
-  xcrun notarytool submit "$1" --keychain-profile stb-notary --wait 2>&1 | tail -3 \
+  xcrun notarytool submit "$1" "${NOTARY_AUTH[@]}" --wait 2>&1 | tail -3 \
     | grep -q "Accepted" || { echo "❌ 公證失敗：${1}（xcrun notarytool log 查詳情）"; exit 1; }
 }
 
