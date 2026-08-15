@@ -1,0 +1,36 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>sketchEditor 開關成本基準</title></head>
+<body>
+<pre id="out" style="font:11px monospace">running…</pre>
+<script type="module">
+// 量「開編輯器」的同步阻塞成本（＝下筆前主執行緒被佔用的時間）。
+// 跑法＝vite dev 起著，headless Chrome **不帶 --virtual-time-budget**（虛擬時間
+// 會讓 performance.now 歸零）直接 --dump-dom 本頁。
+// open#1＝冷池（App 首開）、open#2＝暖池＋暖外形快取（換卡快切的真實情境）；
+// save 走 flatten（全筆畫同步重畫）＝順便量 pathCache 冷暖差。
+import "/src/style.css";
+import { openSketchEditor } from "/src/sketchEditor.ts";
+
+const out = [];
+// 重卡：500 筆 × 24 點（比一般實案重，數字取上界）
+const mk = (n) => Array.from({ length: n }, (_, i) => ({
+  tool: i % 4 ? "pen" : "marker",
+  pts: Array.from({ length: 24 }, (_, j) => [40 + ((i * 29) % 1200), 40 + j * 5 + ((i * 13) % 600), 0.5]),
+}));
+const project = { aspect: undefined, cuts: [{ id: "c1", imageRef: null, sketch: { scene: mk(200), figure: mk(300) } }] };
+const store = { get: () => project, setCutSketch: () => {} };
+
+const t = (label, fn) => {
+  const t0 = performance.now();
+  fn();
+  out.push(`${label}: ${(performance.now() - t0).toFixed(1)}ms`);
+};
+t("open#1 冷池", () => openSketchEditor(store, "c1"));
+t("save#1 冷外形快取（flatten 全筆畫）", () => document.querySelector(".sk-ok").click());
+t("open#2 暖池", () => openSketchEditor(store, "c1"));
+t("save#2 暖外形快取", () => document.querySelector(".sk-ok").click());
+document.getElementById("out").textContent = out.join("\n") + "\nDONE";
+</script>
+</body>
+</html>

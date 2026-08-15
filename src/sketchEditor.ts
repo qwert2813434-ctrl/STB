@@ -17,6 +17,26 @@ import { askName } from "./nameDialog";
 // Apple Pencil＝pointerType "pen"（手指不作畫＝防手掌誤觸）；
 // Mac 滑鼠同一條路，桌面也能畫能測。
 
+// ---- 模組層快取（活過編輯器的開與關）——2026-08-16「換卡快切剛開落筆頓」對策 ----
+// 筆畫物件全程不可變（見 strokePath 註解）＝外形快取可以用物件身份當 key；
+// 放模組層讓「關掉再開同一格」不必整批重算外形。
+const pathCache = new WeakMap<SketchStroke, Path2D>();
+// 離屏畫布池：以前每次開編輯器都現配 6 張大 canvas（1280×720×6≈22MB）＋
+// WKWebView 首次合成的 IOSurface 配置，是開卡頓的另一半。池化＝App 首開付一次。
+// 安全前提＝同時間只有一個塗鴉編輯器（openSketchEditor 開頭有擋重複開）。
+const cvPool: { cv: HTMLCanvasElement; cx: CanvasRenderingContext2D }[] = [];
+const pooledCv = (i: number, w: number, h: number) => {
+  let b = cvPool[i];
+  if (!b) {
+    const cv = document.createElement("canvas");
+    cvPool[i] = b = { cv, cx: cv.getContext("2d")! };
+  }
+  if (b.cv.width !== w) b.cv.width = w;
+  if (b.cv.height !== h) b.cv.height = h;
+  b.cx.clearRect(0, 0, w, h); // 尺寸沒變不會自動清空＝手動清掉上一格的殘影
+  return b;
+};
+
 export function openSketchEditor(store: Store, cutId: string) {
   const cut = store.get().cuts.find((c) => c.id === cutId);
   if (!cut) return;
@@ -74,6 +94,21 @@ export function openSketchEditor(store: Store, cutId: string) {
     return Number.isFinite(v) ? Math.max(SIZE_MIN, Math.min(SIZE_MAX, v)) : 1;
   };
   const sizes = { pen: loadSize("pen"), marker: loadSize("marker") };
+  // WKWebView 的 localStorage.setItem 是同步 IPC——滑桿類「每顆 move 都寫」＝
+  // 快速調完馬上下筆會頓（寫入積壓）。偏好一律延遲寫：記憶體即時生效、
+  // 300ms 沒新值才落盤；收面板/放開拉桿/關編輯器強制沖掉。
+  const lsPending = new Map<string, string>();
+  let lsTimer = 0;
+  const flushPrefs = () => {
+    if (lsTimer) { clearTimeout(lsTimer); lsTimer = 0; }
+    for (const [k, v] of lsPending) localStorage.setItem(k, v);
+    lsPending.clear();
+  };
+  const lsWrite = (k: string, v: string) => {
+    lsPending.set(k, v);
+    if (lsTimer) clearTimeout(lsTimer);
+    lsTimer = window.setTimeout(flushPrefs, 300);
+  };
   let customColor: string | null = ((): string | null => {
     const v = localStorage.getItem("stbSkColorCustom");
     return v && HEX_RE.test(v) ? v : null;
@@ -224,18 +259,25 @@ export function openSketchEditor(store: Store, cutId: string) {
         <p>自訂色按確認會存進「我的顏色」，長按色塊可刪除</p>
         <p>完成＝存進分鏡格，之後點縮圖可回來繼續改</p>
       </div>
-      <div class="sk-stage"><canvas class="sk-canvas${portrait ? " portrait" : ""}" width="${W}" height="${H}"></canvas></div>
+      <div class="sk-stage"></div>
     </div>`;
   document.body.appendChild(overlay);
-  const canvas = overlay.querySelector(".sk-canvas") as HTMLCanvasElement;
-  const ctx = canvas.getContext("2d")!;
+  // 主畫布也從池拿（重開不重配 backing store）；每開重設 class＝直橫式跟著這一格
+  const main = pooledCv(5, W, H);
+  const canvas = main.cv;
+  canvas.className = `sk-canvas${portrait ? " portrait" : ""}`;
+  (overlay.querySelector(".sk-stage") as HTMLElement).appendChild(canvas);
+  const ctx = main.cx;
+  // 池化的 canvas 是同一顆 DOM 元素反覆用——事件監聽全掛 signal，關編輯器
+  // 一次斷乾淨，不然上一輪的閉包還活著、會把舊格的內容畫回共用畫布
+  const ac = new AbortController();
   const layerLabel = overlay.querySelector("[data-sklayer] b") as HTMLElement;
 
   // ---- 筆畫外形（perfect-freehand：把點序列變成有筆鋒的封閉外形）----
   // 效能鐵則（2026-08-15 iPad 發燙事件後定案）：**筆畫物件不可變**——
   // 所有修改（畫/擦裂/變形）都產生新物件，所以外形可以 WeakMap 快取，
   // 算一次用到死；物件被換掉＝快取自動失效（GC 順便收走）。
-  const pathCache = new WeakMap<SketchStroke, Path2D>();
+  // 快取本體在模組層（pathCache）＝重開編輯器也不必重算。
   function strokePath(s: SketchStroke): Path2D {
     const hit = pathCache.get(s);
     if (hit) return hit;
@@ -267,14 +309,9 @@ export function openSketchEditor(store: Store, cutId: string) {
   // 畫新筆＝只把那一筆補進 active（一筆成本）；擦除/變形/清除＝只重建 active
   //（同步，作用層筆數等級）；換層/圖層操作/undo/墊底才重建 below+above
   //（分幀預算＋雙緩衝：蓋完才換前台，重建中不閃；首建直接秀進度）。
-  const mkCv = () => {
-    const cv = document.createElement("canvas");
-    cv.width = W; cv.height = H;
-    return { cv, cx: cv.getContext("2d")! };
-  };
-  let belowFront = mkCv(), belowBuild = mkCv();
-  let aboveFront = mkCv(), aboveBuild = mkCv();
-  const active = mkCv();
+  let belowFront = pooledCv(0, W, H), belowBuild = pooledCv(1, W, H);
+  let aboveFront = pooledCv(2, W, H), aboveBuild = pooledCv(3, W, H);
+  const active = pooledCv(4, W, H);
   const BUILD_BUDGET_MS = 12;
   let dirtyAll = true;      // below+above 全重建（分幀）＋active 同步重建
   let dirtyActive = false;  // 只重建 active（同步）
@@ -510,12 +547,12 @@ export function openSketchEditor(store: Store, cutId: string) {
   const prevDot = overlay.querySelector(".sk-cprev i") as HTMLElement;
   const prevHex = overlay.querySelector(".sk-cprev span") as HTMLElement;
   let colorPopOpen = false;
-  const closeColorPop = () => { colorPopOpen = false; colorPop.classList.remove("open"); clearDel(); };
+  const closeColorPop = () => { colorPopOpen = false; colorPop.classList.remove("open"); clearDel(); flushPrefs(); };
   const applyCustom = (hex: string) => {
     customColor = hex;
-    localStorage.setItem("stbSkColorCustom", hex);
+    lsWrite("stbSkColorCustom", hex); // 滑桿每顆 input 都進來——延遲寫，別打 IPC
     color = hex;
-    localStorage.setItem("stbSkColor", hex);
+    lsWrite("stbSkColor", hex);
     syncBar();
     syncPicks();
   };
@@ -537,12 +574,12 @@ export function openSketchEditor(store: Store, cutId: string) {
     syncPop();
   };
   // 「我的顏色」：按過「使用這個顏色」的自訂色存起來，之後開面板點一下就能用。
-  // 速選格與筆桿三色本來就在畫面上，不重複存；最多 8 顆、最新在前。
+  // 速選格與筆桿三色本來就在畫面上，不重複存；最多 6 顆（面板寬正好一列）、最新在前。
   const savedEl = overlay.querySelector(".sk-csaved") as HTMLElement;
   let savedColors: string[] = ((): string[] => {
     try {
       const a = JSON.parse(localStorage.getItem("stbSkColorSaved") || "[]");
-      return Array.isArray(a) ? a.filter((c) => typeof c === "string" && HEX_RE.test(c)).slice(0, 8) : [];
+      return Array.isArray(a) ? a.filter((c) => typeof c === "string" && HEX_RE.test(c)).slice(0, 6) : [];
     } catch { return []; }
   })();
   // 面板裡跟「現在用的顏色」相同的色塊加高亮圈——狀態一目了然
@@ -559,7 +596,7 @@ export function openSketchEditor(store: Store, cutId: string) {
   renderSaved();
   const saveRecent = (hex: string) => {
     if (COLORS.includes(hex) || CGRID.includes(hex)) return;
-    savedColors = [hex, ...savedColors.filter((c) => c !== hex)].slice(0, 8);
+    savedColors = [hex, ...savedColors.filter((c) => c !== hex)].slice(0, 6);
     localStorage.setItem("stbSkColorSaved", JSON.stringify(savedColors));
     renderSaved();
   };
@@ -618,7 +655,7 @@ export function openSketchEditor(store: Store, cutId: string) {
     if (Math.abs(v - 1) < 0.07) v = 1; // 預設粗細（1.0）有吸附
     const tl: "pen" | "marker" = tool === "marker" ? "marker" : "pen";
     sizes[tl] = v;
-    localStorage.setItem(sizeKey(tl), String(v));
+    lsWrite(sizeKey(tl), String(v)); // 拖曳中每顆 move 都進來——延遲寫
     syncSizePrev();
     syncBar();
   };
@@ -632,7 +669,7 @@ export function openSketchEditor(store: Store, cutId: string) {
     sizeFromEvent(e);
   });
   slider.addEventListener("pointermove", (e) => { if (sliderDrag) sizeFromEvent(e); });
-  const endSlider = () => { sliderDrag = false; sizePrev.classList.remove("open"); };
+  const endSlider = () => { sliderDrag = false; sizePrev.classList.remove("open"); flushPrefs(); };
   slider.addEventListener("pointerup", endSlider);
   slider.addEventListener("pointercancel", endSlider);
 
@@ -935,7 +972,7 @@ export function openSketchEditor(store: Store, cutId: string) {
     }
     drawing = [toPt(e)];
     render();
-  });
+  }, { signal: ac.signal });
   canvas.addEventListener("pointermove", (e) => {
     if (e.pointerType === "touch") return;
     calibrate(e); // 每顆真事件重校原點＝畫到一半捲動／轉向也會自己修回來
@@ -976,7 +1013,7 @@ export function openSketchEditor(store: Store, cutId: string) {
     dropGhostStart(drawing, e);
     for (const ev of coalesced(e)) drawing.push(toPt(ev));
     render();
-  });
+  }, { signal: ac.signal });
   // 髒起點防禦（2026-08-16 實機）：剛開編輯器立刻落筆，第一拍事件的 offset
   // 原點偶爾是髒的——起點被算到畫布左緣，跟第二拍連成一條橫貫直線。
   // 物理常識當守門：連續兩個取樣（4–8ms）不可能差 200 畫布px，第二拍
@@ -1016,10 +1053,10 @@ export function openSketchEditor(store: Store, cutId: string) {
     drawing = null;
     render();
   };
-  canvas.addEventListener("pointerup", finishStroke);
+  canvas.addEventListener("pointerup", finishStroke, { signal: ac.signal });
   // pointercancel＝iOS 因手掌/手勢中止筆的事件流——已畫的部分「收下」
   // 不丟棄（丟棄＝手掌一放筆畫整段蒸發，Armin 平放 iPad 實測的失效感）
-  canvas.addEventListener("pointercancel", finishStroke);
+  canvas.addEventListener("pointercancel", finishStroke, { signal: ac.signal });
 
   // 真・防手掌：手掌壓在編輯器任何地方（畫布＋周邊面板）都擋掉 WebKit
   // 拿觸點做原生手勢——系統手勢一啟動就會 cancel 掉筆的事件流。
@@ -1167,6 +1204,9 @@ export function openSketchEditor(store: Store, cutId: string) {
   }
 
   function close() {
+    flushPrefs();                              // 延遲中的偏好落盤
+    if (raf) { cancelAnimationFrame(raf); raf = 0; } // 池化畫布共用——別讓舊 session 的待畫幀畫到下一格
+    ac.abort();                                // 池化 canvas 的監聽斷乾淨
     overlay.remove();
     document.removeEventListener("keydown", onKey, true);
   }

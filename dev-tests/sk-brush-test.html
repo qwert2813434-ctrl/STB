@@ -124,15 +124,16 @@ try {
   click($("[data-skcustom]"));
   const chue = $(".sk-chue");
   chue.value = "200"; chue.dispatchEvent(new Event("input", { bubbles: true }));
-  const savedHex = localStorage.getItem("stbSkColor"); // 滑桿即時套用，這就是確認當下的色
+  const savedHex = $(".sk-cprev span").textContent; // 面板預覽的色碼＝確認當下的色（localStorage 是延遲寫，不能馬上讀）
   click($(".sk-cok"));
   say($(".sk-csaved").classList.contains("has"), "滑桿自訂色確認後出現在「我的顏色」");
   say($(".sk-csaved button")?.dataset.skpick === savedHex, "存的就是確認當下那顆色");
   click($("[data-skcustom]"));
   click($(".sk-cgrid [data-skpick]")); // 先切去速選第一格
   click($(".sk-csaved button"));       // 再點「我的顏色」切回來
-  say(localStorage.getItem("stbSkColor") === savedHex, "點「我的顏色」色塊直接套用");
+  say($(".sk-csaved button").classList.contains("cur"), "點「我的顏色」色塊直接套用（高亮圈跟上）");
   click($(".sk-cok"));
+  say(localStorage.getItem("stbSkColor") === savedHex, "收面板時延遲寫的偏好有落盤");
   say(document.querySelectorAll(".sk-csaved button").length === 1, "同色再確認不重複存");
 
   // ── 高亮圈＋長按刪除（STB 觸控語法：長按長出危險鈕）──
