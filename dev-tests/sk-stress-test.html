@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>怪獸案子載入驗證</title></head>
+<body>
+<pre id="out" style="position:fixed;left:0;top:0;z-index:9999;font:11px monospace;background:#fff">running…</pre>
+<script type="module">
+// 效能壓力案子的載入驗證：700 筆六層開得起來、畫得出東西、還能再畫一筆。
+import "/src/style.css";
+import { openSketchEditor } from "/src/sketchEditor.ts";
+const out = [];
+const say = (ok, msg) => out.push(`${ok ? "PASS" : "FAIL"} ${msg}`);
+try {
+  const project = await (await fetch("/dev-tests/stress-project.json")).json();
+  let saved = null;
+  const store = { get: () => project, setCutSketch: (id, sk) => { saved = sk; } };
+  const t0 = performance.now();
+  openSketchEditor(store, "c1");
+  const openMs = performance.now() - t0;
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const cv = document.querySelector(".sk-canvas");
+  const px = cv.getContext("2d").getImageData(0, 0, 1280, 720).data;
+  let ink = 0;
+  for (let i = 0; i < px.length; i += 40) if (px[i] < 240) ink++;
+  say(ink > 5000, `怪獸 cut 畫得出來（取樣墨水 ${ink}）`);
+  say(true, `openSketchEditor 耗時 ${openMs.toFixed(0)}ms（含 26 萬點 structuredClone）`);
+  // 再畫一筆（人物層）確認互動路徑活著
+  const r = cv.getBoundingClientRect();
+  const pev = (type, x, y) => cv.dispatchEvent(new PointerEvent(type, {
+    bubbles: true, pointerId: 1, pointerType: "mouse", isPrimary: true,
+    clientX: r.left + (x / 1280) * r.width, clientY: r.top + (y / 720) * r.height, pressure: 0.5, buttons: 1 }));
+  pev("pointerdown", 100, 100);
+  for (let i = 1; i <= 8; i++) pev("pointermove", 100 + i * 20, 100);
+  pev("pointerup", 260, 100);
+  document.querySelector(".sk-ok").click();
+  say(saved && saved.figure.length === 151, `畫一筆存回（人物層 ${saved?.figure?.length}，期望 151）`);
+  say(saved && saved.extra?.length === 4 && saved.extra.every((l) => l.strokes.length === 100), "四個自訂層原封不動");
+} catch (err) { say(false, "例外：" + (err && err.stack || err)); }
+document.getElementById("out").textContent = out.join("\n") + "\nDONE";
+</script>
+</body>
+</html>
