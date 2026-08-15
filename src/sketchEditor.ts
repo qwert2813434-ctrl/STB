@@ -48,12 +48,13 @@ export function openSketchEditor(store: Store, cutId: string) {
   const curStrokes = (): SketchStroke[] => (typeof layer === "number" ? extras()[layer].strokes : work[layer]);
   // 所有筆畫修改的唯一出口：整個陣列（含圖層物件）都換新的不就地改——
   // 復原快照因此可以淺拷貝共享（見 pushUndo），路徑快取也永遠不會過期。
+  // 只動作用層 → 只標作用層重建（below/above 兩張大圖不動）。
   const setCurStrokes = (arr: SketchStroke[]) => {
     if (typeof layer === "number") {
       const li = layer;
       work.extra = extras().map((l, i) => (i === li ? { ...l, strokes: arr } : l));
     } else work[layer] = arr;
-    invalidate();
+    invalidateActive();
   };
   const layerName = (): string =>
     typeof layer === "number" ? extras()[layer]?.name ?? "" : layer === "scene" ? "場景" : "人物";
@@ -197,31 +198,59 @@ export function openSketchEditor(store: Store, cutId: string) {
     return p;
   }
 
-  // 靜態內容（背景/墊底/所有已完成筆畫）畫在離屏 canvas，只在內容變動時重建
-  // （staticDirty）。作畫中的每一幀＝貼一張圖＋畫進行中那一筆——成本與筆畫
-  // 總數無關。之前「每幀重算全部筆畫外形」在 iPad 上畫幾層就把 CPU 燒滿
-  //（發燙→降頻→被看門狗砍），M4 都扛不住的是演算法不是機器。
+  // 靜態內容畫在離屏 canvas，內容變動才重建——之前「每幀重算全部筆畫外形」
+  // 在 iPad 上畫幾層就把 CPU 燒滿（發燙→降頻→被看門狗砍）。
   //
-  // 建構本身走「分幀預算制」（2026-08-16，Armin 回報「剛打開零點幾秒筆沒反應」）：
-  // 一次同步蓋完幾百筆會把主執行緒堵死、筆的事件全被排隊。改成每幀最多
-  // 花 BUILD_BUDGET_MS 蓋進後台 buildCv，蓋完才換上前台 staticCv——
-  // 首開內容在幾幀內長出來（首建期間直接秀進度），重建（擦除/變形）期間
-  // 前台維持舊圖不閃爍；筆從第一刻就有反應。
-  const staticCv = document.createElement("canvas");
-  staticCv.width = W; staticCv.height = H;
-  const staticCx = staticCv.getContext("2d")!;
-  staticCx.fillStyle = "#ffffff";
-  staticCx.fillRect(0, 0, W, H);
-  const buildCv = document.createElement("canvas");
-  buildCv.width = W; buildCv.height = H;
-  const buildCx = buildCv.getContext("2d")!;
+  // 2026-08-16 二修（Armin：剛打開落筆，筆有收到但畫面等一下才全部冒出來）：
+  // 第一版單張快取圖有個互動缺陷——每畫完一筆就整張重建，冷建構要幾十幀，
+  // 而連續作畫的每一筆都讓它從頭來＝建構永遠蓋不完。改**三層離屏**：
+  //   below（作用層下方＋背景/墊底）／active（作用層）／above（作用層上方）
+  // 畫新筆＝只把那一筆補進 active（一筆成本）；擦除/變形/清除＝只重建 active
+  //（同步，作用層筆數等級）；換層/圖層操作/undo/墊底才重建 below+above
+  //（分幀預算＋雙緩衝：蓋完才換前台，重建中不閃；首建直接秀進度）。
+  const mkCv = () => {
+    const cv = document.createElement("canvas");
+    cv.width = W; cv.height = H;
+    return { cv, cx: cv.getContext("2d")! };
+  };
+  let belowFront = mkCv(), belowBuild = mkCv();
+  let aboveFront = mkCv(), aboveBuild = mkCv();
+  const active = mkCv();
   const BUILD_BUDGET_MS = 12;
-  let staticDirty = true;
+  let dirtyAll = true;      // below+above 全重建（分幀）＋active 同步重建
+  let dirtyActive = false;  // 只重建 active（同步）
   let building = false;
-  let frontReady = false; // 前台是否曾經完整過（首建期間直接秀後台當進度）
-  let buildQueue: { s: SketchStroke; a: number }[] = [];
+  let pairReady = false;    // below/above 前台是否完整過（首建期間直接秀後台當進度）
+  let buildQueue: { cx: CanvasRenderingContext2D; s: SketchStroke; a: number }[] = [];
   let buildPos = 0;
-  const invalidate = () => { staticDirty = true; };
+  const invalidate = () => { dirtyAll = true; };
+  const invalidateActive = () => { dirtyActive = true; };
+
+  // 各層依渲染順序（scene=0、figure=1、extra=2+i；index 大＝上面）
+  const layerSeq = (): { strokes: SketchStroke[]; idx: number; hidden?: boolean }[] => [
+    { strokes: work.scene, idx: 0 },
+    { strokes: work.figure, idx: 1 },
+    ...extras().map((l, i) => ({ strokes: l.strokes, idx: 2 + i, hidden: l.hidden })),
+  ];
+  const activeIdx = (): number => (layer === "scene" ? 0 : layer === "figure" ? 1 : 2 + layer);
+  const strokeAlpha = (s: SketchStroke): number => (s.tool === "marker" ? 0.32 : 1);
+  const paintStrokeInto = (cx: CanvasRenderingContext2D, s: SketchStroke, a: number) => {
+    cx.fillStyle = s.color ?? INK;
+    cx.globalAlpha = a;
+    cx.fill(strokePath(s));
+    cx.globalAlpha = 1;
+  };
+
+  // 作用層永遠同步重建：成本只跟這一層的筆數走，擦除/變形回饋才不遲到
+  const rebuildActive = () => {
+    dirtyActive = false;
+    active.cx.clearRect(0, 0, W, H);
+    const li = activeIdx();
+    for (const L of layerSeq()) {
+      if (L.idx !== li || L.hidden) continue;
+      for (const s of L.strokes) paintStrokeInto(active.cx, s, strokeAlpha(s));
+    }
+  };
 
   // 依渲染順序攤平所有要畫的筆畫（含各層打淡係數）
   const orderedStrokes = (editorMode: boolean): { s: SketchStroke; a: number }[] => {
@@ -264,36 +293,43 @@ export function openSketchEditor(store: Store, cutId: string) {
     cx.globalAlpha = 1;
   }
 
-  // 每幀組合：靜態圖＋進行中筆畫＋選取視覺（後兩者每幀都在變，畫在最上面）
+  // 每幀組合：below＋active＋above＋進行中筆畫＋選取視覺
   function paintFrame() {
-    if (staticDirty) { // 開新一輪後台建構（前台留舊圖，不閃）
-      staticDirty = false;
+    if (dirtyAll) { // 開新一輪 below/above 後台建構（前台留舊圖，不閃）
+      dirtyAll = false;
       building = true;
-      buildQueue = orderedStrokes(true);
       buildPos = 0;
-      paintBg(buildCx, true);
-    }
-    if (building) {
-      // 擦除/變形中＝回饋不能遲到，當幀同步蓋完（路徑快取是熱的，本來就快）；
-      // 其他情況（開檔冷建構）才分幀，筆才不會「剛打開沒反應」
-      const budget = erasing || selDrag ? Infinity : BUILD_BUDGET_MS;
-      const t0 = performance.now();
-      while (buildPos < buildQueue.length && performance.now() - t0 < budget) {
-        const { s, a } = buildQueue[buildPos++];
-        buildCx.fillStyle = s.color ?? INK;
-        buildCx.globalAlpha = a;
-        buildCx.fill(strokePath(s));
+      paintBg(belowBuild.cx, true);
+      aboveBuild.cx.clearRect(0, 0, W, H);
+      const li = activeIdx();
+      buildQueue = [];
+      for (const L of layerSeq()) {
+        if (L.hidden || L.idx === li) continue;
+        const target = L.idx < li ? belowBuild.cx : aboveBuild.cx;
+        for (const s of L.strokes) buildQueue.push({ cx: target, s, a: strokeAlpha(s) * 0.4 });
       }
-      buildCx.globalAlpha = 1;
+      rebuildActive();
+    } else if (dirtyActive) rebuildActive();
+    if (building) {
+      const t0 = performance.now();
+      while (buildPos < buildQueue.length && performance.now() - t0 < BUILD_BUDGET_MS) {
+        const it = buildQueue[buildPos++];
+        paintStrokeInto(it.cx, it.s, it.a);
+      }
       if (buildPos >= buildQueue.length) {
         building = false;
-        frontReady = true;
-        staticCx.drawImage(buildCv, 0, 0); // 蓋完才上前台
+        pairReady = true;
+        [belowFront, belowBuild] = [belowBuild, belowFront]; // 蓋完才換前台
+        [aboveFront, aboveBuild] = [aboveBuild, aboveFront];
       } else {
         render(); // 還沒蓋完，下一幀繼續（預算制＝主執行緒每幀都有空檔收筆的事件）
       }
     }
-    ctx.drawImage(frontReady ? staticCv : buildCv, 0, 0);
+    // 首建（前台從沒完整過）直接秀後台當進度；之後的重建都等蓋完才換
+    const showProgress = building && !pairReady;
+    ctx.drawImage((showProgress ? belowBuild : belowFront).cv, 0, 0);
+    ctx.drawImage(active.cv, 0, 0);
+    ctx.drawImage((showProgress ? aboveBuild : aboveFront).cv, 0, 0);
     if (drawing && drawing.length > 1) {
       const tl: "pen" | "marker" = tool === "marker" ? "marker" : "pen";
       ctx.fillStyle = color;
@@ -681,12 +717,20 @@ export function openSketchEditor(store: Store, cutId: string) {
     if (drawing.length > 1) {
       pushUndo(); // 快照＝「畫這筆之前」
       const tl = tool as "pen" | "marker";
-      setCurStrokes([...curStrokes(), {
+      const stroke: SketchStroke = {
         tool: tl, pts: drawing,
         // 等於預設值就不寫＝沒動過粗細/顏色的檔案 byte-identical
         ...(sizes[tl] !== 1 ? { size: sizes[tl] } : {}),
         ...(color !== INK ? { color } : {}),
-      }]);
+      };
+      setCurStrokes([...curStrokes(), stroke]);
+      // 新筆是作用層最上面一筆＝直接補畫進 active，免整層重建
+      //（開檔冷建構期間連續作畫也不會把建構打掉重來）；作用層被眼睛
+      // 藏起來的邊角＝不畫（與隱藏語義一致，rebuildActive 也會跳過）
+      if (!(typeof layer === "number" && extras()[layer]?.hidden)) {
+        paintStrokeInto(active.cx, stroke, strokeAlpha(stroke));
+        dirtyActive = false;
+      }
     }
     drawing = null;
     render();
