@@ -58,21 +58,29 @@ export function openSketchEditor(store: Store, cutId: string) {
   };
   const layerName = (): string =>
     typeof layer === "number" ? extras()[layer]?.name ?? "" : layer === "scene" ? "場景" : "人物";
-  // 粗細三檔（倍率乘在筆的基準粗細上，筆/麥克筆各自記住）＋三色
-  //（黑／紅＝註記與運鏡箭頭／藍＝呼應 VO 語意色）。檢視偏好存 localStorage，
-  // 筆畫上等於預設值（1／黑）就不寫進 JSON——舊檔相容的關鍵。
-  const SIZES = [0.6, 1, 1.6];
+  // 粗細＝連續拉桿（楔形，0.5–2.2 倍率乘在筆的基準粗細上，1.0 有吸附；
+  // 筆/麥克筆各自記住）＋三顆語意色快選（黑／紅＝註記與運鏡箭頭／藍＝VO）
+  // ＋自訂色（系統原生調色盤，2026-08-16 Armin 拍板開放）。
+  // 檢視偏好存 localStorage；筆畫上等於預設值（1／黑）就不寫進 JSON——
+  // 舊檔相容的關鍵。舊版三檔偏好（0.6/1/1.6）是合法浮點數，直接沿用。
+  const SIZE_MIN = 0.5, SIZE_MAX = 2.2;
+  const SL_W = 112, SL_IN = 10; // 拉桿寬與兩端內縮（CSS .sk-sizeslider 的 width 要同步）
   const COLORS = ["#141311", "#b3341c", "#185fa5"];
   const INK = COLORS[0];
+  const HEX_RE = /^#[0-9a-fA-F]{6}$/;
   const sizeKey = (tl: "pen" | "marker") => (tl === "marker" ? "stbSkSizeMarker" : "stbSkSizePen");
   const loadSize = (tl: "pen" | "marker"): number => {
     const v = parseFloat(localStorage.getItem(sizeKey(tl)) || "1");
-    return SIZES.includes(v) ? v : 1;
+    return Number.isFinite(v) ? Math.max(SIZE_MIN, Math.min(SIZE_MAX, v)) : 1;
   };
   const sizes = { pen: loadSize("pen"), marker: loadSize("marker") };
+  let customColor: string | null = ((): string | null => {
+    const v = localStorage.getItem("stbSkColorCustom");
+    return v && HEX_RE.test(v) ? v : null;
+  })();
   let color = ((): string => {
     const v = localStorage.getItem("stbSkColor") || INK;
-    return COLORS.includes(v) ? v : INK;
+    return COLORS.includes(v) || HEX_RE.test(v) ? v : INK;
   })();
   // 聰明預設：空白＝先畫場景（構圖）；已有場景＝進來多半是改人物
   let layer: "scene" | "figure" | number = work.scene.length ? "figure" : "scene";
@@ -136,6 +144,10 @@ export function openSketchEditor(store: Store, cutId: string) {
     render();
   };
 
+  // icon 一律單色 SVG 線稿（Armin 定律：不用 emoji 當 icon）
+  const SVG_UNDO = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>`;
+  const SVG_REDO = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>`;
+
   const overlay = document.createElement("div");
   overlay.className = "sk-overlay";
   overlay.innerHTML = `
@@ -146,26 +158,36 @@ export function openSketchEditor(store: Store, cutId: string) {
         <button data-sktool="eraser">橡皮擦</button>
         <button data-sktool="select" title="圈起來＝選取（只選目前圖層）；框內拖＝移動、角把手＝等比縮放">選取</button>
         <span class="sk-sep"></span>
-        <span class="sk-sizes">${SIZES.map((s, i) =>
-          `<button data-sksize="${s}" title="${["細", "中", "粗"][i]}"><i style="width:${4 + i * 3}px;height:${4 + i * 3}px"></i></button>`).join("")}
+        <span class="sk-sizeslider" title="筆刷粗細：拖著調（筆／麥克筆各自記住，中點有吸附）">
+          <svg viewBox="0 0 112 28" preserveAspectRatio="none"><polygon points="2,15.5 110,7 110,21" /></svg>
+          <i class="sk-thumb"></i>
         </span>
         <span class="sk-colors">${COLORS.map((c) =>
-          `<button data-skcolor="${c}"><i style="background:${c}"></i></button>`).join("")}
+          `<button data-skcolor="${c}"><i style="background:${c}"></i></button>`).join("")}<button data-skcustom title="自訂顏色"><i class="sk-customdot"></i></button>
         </span>
+        <input type="color" class="sk-colorinput" aria-hidden="true" tabindex="-1">
         <span class="sk-sep"></span>
         <button data-sklayer title="圖層清單：場景畫構圖、人物畫表演與運鏡（複製 cut 只重畫人物層）；最多再加 4 層自訂圖層，疊在人物上方">圖層：<b></b></button>
         <button data-skunder title="勘景照半透明墊底沿描——不會畫畫也能構圖正確；輸出的塗鴉不含墊底"></button>
         <span class="spacer"></span>
-        <button data-skundo>復原</button>
-        <button data-skredo>重做</button>
+        <button data-skundo title="復原" aria-label="復原">${SVG_UNDO}</button>
+        <button data-skredo title="重做" aria-label="重做">${SVG_REDO}</button>
         <button data-skclear>清除本層</button>
+        <button data-skhelp title="操作說明" aria-label="操作說明">?</button>
         <span class="sk-sep"></span>
         <button class="sk-cancel">取消</button>
         <button class="sk-ok">完成</button>
       </div>
       <div class="sk-layers"></div>
+      <div class="sk-helppop">
+        <p>Apple Pencil／滑鼠作畫，手指不會誤觸</p>
+        <p><b>雙指輕點＝復原、三指輕點＝重做</b>（塗鴉內專用）</p>
+        <p>橡皮擦＝擦到哪消到哪（只擦目前圖層）</p>
+        <p>選取＝圈起來拖著走、拉角落等比縮放</p>
+        <p>粗細拉桿與顏色＝筆／麥克筆各自記住</p>
+        <p>完成＝存進分鏡格，之後點縮圖可回來繼續改</p>
+      </div>
       <div class="sk-stage"><canvas class="sk-canvas${portrait ? " portrait" : ""}" width="${W}" height="${H}"></canvas></div>
-      <div class="sk-hint">Apple Pencil／滑鼠作畫，手指不會誤觸 · <b>雙指輕點＝復原、三指輕點＝重做</b> · 橡皮擦＝擦到哪消到哪（只擦目前圖層） · 選取＝圈起來拖著走、拉角落等比縮放 · 完成＝存進分鏡格，之後點縮圖可回來繼續改</div>
     </div>`;
   document.body.appendChild(overlay);
   const canvas = overlay.querySelector(".sk-canvas") as HTMLCanvasElement;
@@ -383,16 +405,21 @@ export function openSketchEditor(store: Store, cutId: string) {
   };
   const syncBar = () => {
     overlay.querySelectorAll("[data-sktool]").forEach((b) => b.classList.toggle("on", (b as HTMLElement).dataset.sktool === tool));
-    // 粗細顯示目前工具記住的檔位；橡皮擦/選取沒有粗細/顏色，兩組打淡不可按
+    // 拉桿滑塊照目前工具記住的倍率定位；橡皮擦/選取沒有粗細/顏色，兩組打淡不可按
     const inkTool: "pen" | "marker" = tool === "marker" ? "marker" : "pen";
     const noInk = tool === "eraser" || tool === "select";
-    overlay.querySelectorAll("[data-sksize]").forEach((b) => b.classList.toggle("on", parseFloat((b as HTMLElement).dataset.sksize!) === sizes[inkTool]));
+    const frac = (sizes[inkTool] - SIZE_MIN) / (SIZE_MAX - SIZE_MIN);
+    (overlay.querySelector(".sk-thumb") as HTMLElement).style.left = `${SL_IN + frac * (SL_W - SL_IN * 2)}px`;
     overlay.querySelectorAll("[data-skcolor]").forEach((b) => b.classList.toggle("on", (b as HTMLElement).dataset.skcolor === color));
-    (overlay.querySelector(".sk-sizes") as HTMLElement).classList.toggle("sk-off", noInk);
+    const customBtn = overlay.querySelector("[data-skcustom]") as HTMLElement;
+    customBtn.classList.toggle("on", customColor !== null && color === customColor);
+    (customBtn.querySelector(".sk-customdot") as HTMLElement).style.background =
+      customColor ?? "conic-gradient(#e5484d,#e2a336,#46a758,#3f7ad6,#8e4ec6,#e5484d)";
+    (overlay.querySelector(".sk-sizeslider") as HTMLElement).classList.toggle("sk-off", noInk);
     (overlay.querySelector(".sk-colors") as HTMLElement).classList.toggle("sk-off", noInk);
     layerLabel.textContent = layerName();
     (overlay.querySelector("[data-sklayer]") as HTMLElement).classList.toggle("sk-fig", layer === "figure");
-    (overlay.querySelector("[data-skunder]") as HTMLElement).textContent = work.underlay ? "✕ 移除墊底" : "＋ 墊底照片";
+    (overlay.querySelector("[data-skunder]") as HTMLElement).textContent = work.underlay ? "✕ 墊底" : "＋ 墊底";
   };
 
   // ---- 圖層面板（浮動，點「圖層」開合）----
@@ -421,6 +448,47 @@ export function openSketchEditor(store: Store, cutId: string) {
   };
   const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
   const closePanel = () => { panelOpen = false; layersEl.classList.remove("open"); };
+
+  // ---- 說明彈窗（? 鈕開合，取代原本常駐的底部說明列——中文看久礙眼）----
+  const helpEl = overlay.querySelector(".sk-helppop") as HTMLElement;
+  let helpOpen = false;
+  const closeHelp = () => { helpOpen = false; helpEl.classList.remove("open"); };
+
+  // ---- 自訂色：系統原生調色盤（input[type=color]，iPad＝原生取色面板含吸管）----
+  const colorInput = overlay.querySelector(".sk-colorinput") as HTMLInputElement;
+  colorInput.addEventListener("input", () => {
+    if (!HEX_RE.test(colorInput.value)) return;
+    customColor = colorInput.value;
+    localStorage.setItem("stbSkColorCustom", customColor);
+    color = customColor;
+    localStorage.setItem("stbSkColor", color);
+    syncBar();
+  });
+
+  // ---- 粗細拉桿：拖到哪倍率跟到哪（手指或筆都可拖）----
+  const slider = overlay.querySelector(".sk-sizeslider") as HTMLElement;
+  let sliderDrag = false;
+  const sizeFromEvent = (ev: PointerEvent) => {
+    const r = slider.getBoundingClientRect();
+    const t0 = SL_IN / SL_W, t1 = (SL_W - SL_IN * 2) / SL_W; // 與 syncBar 的滑塊定位同一套內縮
+    const frac = Math.max(0, Math.min(1, ((ev.clientX - r.left) / r.width - t0) / t1));
+    let v = SIZE_MIN + frac * (SIZE_MAX - SIZE_MIN);
+    if (Math.abs(v - 1) < 0.07) v = 1; // 預設粗細（1.0）有吸附
+    const tl: "pen" | "marker" = tool === "marker" ? "marker" : "pen";
+    sizes[tl] = v;
+    localStorage.setItem(sizeKey(tl), String(v));
+    syncBar();
+  };
+  slider.addEventListener("pointerdown", (e) => {
+    if (tool === "eraser" || tool === "select") return;
+    e.preventDefault();
+    try { slider.setPointerCapture(e.pointerId); } catch { /* 合成事件 */ }
+    sliderDrag = true;
+    sizeFromEvent(e);
+  });
+  slider.addEventListener("pointermove", (e) => { if (sliderDrag) sizeFromEvent(e); });
+  slider.addEventListener("pointerup", () => { sliderDrag = false; });
+  slider.addEventListener("pointercancel", () => { sliderDrag = false; });
 
   layersEl.addEventListener("click", (e) => {
     const t0 = e.target as HTMLElement;
@@ -764,9 +832,13 @@ export function openSketchEditor(store: Store, cutId: string) {
   // ---- 工具列 ----
   overlay.addEventListener("click", (e) => {
     const t = e.target as HTMLElement;
-    // 面板開著時點外面＝先收面板；點的是背板就只收面板不關編輯器
+    // 面板/說明開著時點外面＝先收起來；點的是背板就只收面板不關編輯器
     if (panelOpen && !t.closest(".sk-layers") && !t.closest("[data-sklayer]")) {
       closePanel();
+      if (t === overlay) return;
+    }
+    if (helpOpen && !t.closest(".sk-helppop") && !t.closest("[data-skhelp]")) {
+      closeHelp();
       if (t === overlay) return;
     }
     const tb = t.closest("[data-sktool]") as HTMLElement | null;
@@ -777,13 +849,6 @@ export function openSketchEditor(store: Store, cutId: string) {
       render();
       return;
     }
-    const sb = t.closest("[data-sksize]") as HTMLElement | null;
-    if (sb && (tool === "pen" || tool === "marker")) {
-      sizes[tool] = parseFloat(sb.dataset.sksize!);
-      localStorage.setItem(sizeKey(tool), sb.dataset.sksize!);
-      syncBar();
-      return;
-    }
     const cb = t.closest("[data-skcolor]") as HTMLElement | null;
     if (cb) {
       color = cb.dataset.skcolor!;
@@ -791,9 +856,31 @@ export function openSketchEditor(store: Store, cutId: string) {
       syncBar();
       return;
     }
+    if (t.closest("[data-skcustom]")) {
+      // 已有自訂色：點一下＝切回它；再點（或還沒選過）＝開系統調色盤
+      if (customColor && color !== customColor) {
+        color = customColor;
+        localStorage.setItem("stbSkColor", color);
+        syncBar();
+      } else {
+        colorInput.value = customColor ?? "#8e4ec6";
+        colorInput.click();
+      }
+      return;
+    }
+    if (t.closest("[data-skhelp]")) {
+      helpOpen = !helpOpen;
+      if (helpOpen) {
+        closePanel(); // 跟圖層面板互斥
+        helpEl.style.top = `${(overlay.querySelector(".sk-bar") as HTMLElement).offsetHeight + 4}px`;
+      }
+      helpEl.classList.toggle("open", helpOpen);
+      return;
+    }
     if (t.closest("[data-sklayer]")) {
       panelOpen = !panelOpen;
       if (panelOpen) {
+        closeHelp(); // 跟說明彈窗互斥
         renderLayers();
         // 面板貼在工具列正下方（工具列窄螢幕會換行，高度不固定）
         layersEl.style.top = `${(overlay.querySelector(".sk-bar") as HTMLElement).offsetHeight + 4}px`;
@@ -873,9 +960,9 @@ export function openSketchEditor(store: Store, cutId: string) {
     // 編輯器開著時鍵盤自己收：Esc 取消、⌘Z 復原（不讓全域 undo 動到案子）
     if (e.key === "Escape") {
       e.preventDefault(); e.stopPropagation();
-      if (panelOpen) { closePanel(); return; }            // 先收圖層面板
-      if (sel.length || lasso) { clearSel(); render(); return; } // 再解除選取
-      close();                                            // 都沒有才關編輯器
+      if (panelOpen || helpOpen) { closePanel(); closeHelp(); return; } // 先收面板/說明
+      if (sel.length || lasso) { clearSel(); render(); return; }        // 再解除選取
+      close();                                                          // 都沒有才關編輯器
       return;
     }
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {

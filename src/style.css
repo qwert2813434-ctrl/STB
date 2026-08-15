@@ -1109,17 +1109,39 @@ body.sel-mode .cut [contenteditable] { pointer-events: none; }
 }
 .sk-bar button { white-space: nowrap; padding: 6px 10px; }
 .sk-bar .spacer { flex: 1; }
-.sk-sep { width: 1px; height: 20px; background: var(--line); margin: 0 4px; }
+.sk-sep { width: 1px; height: 20px; background: var(--line); margin: 0 2px; }
 .sk-bar button { font-size: 13px; padding: 6px 12px; border-radius: 8px; }
 .sk-bar button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
-/* 粗細三檔＋三色（橡皮擦時整組打淡）。圓點用 currentColor，
-   選中反白時（.on 吃上面那條）點會自動跟著變色。 */
-.sk-sizes, .sk-colors { display: inline-flex; gap: 4px; align-items: center; }
-.sk-sizes button, .sk-colors button { padding: 6px 9px; display: inline-flex; align-items: center; justify-content: center; min-width: 30px; }
-.sk-sizes i { display: block; border-radius: 50%; background: currentColor; }
+/* 粗細楔形拉桿＋三色快選＋自訂色（橡皮擦/選取時整組打淡） */
+.sk-sizeslider { position: relative; width: 112px; height: 30px; flex: none; cursor: pointer; } /* 寬度改了要同步 sketchEditor 的 SL_W */
+.sk-sizeslider svg { width: 100%; height: 100%; display: block; }
+.sk-sizeslider polygon { fill: var(--faint); opacity: .45; }
+.sk-thumb {
+  position: absolute; top: 50%; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--ink); transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 2px var(--bg); pointer-events: none;
+}
+.sk-colors { display: inline-flex; gap: 3px; align-items: center; }
+.sk-colors button { padding: 6px 7px; display: inline-flex; align-items: center; justify-content: center; min-width: 26px; }
 .sk-colors i { display: block; width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--line); }
 .sk-bar .sk-colors button.on { background: var(--hover); border-color: var(--ink); color: inherit; }
+/* 系統調色盤的觸發 input：要在文件流裡才能開原生面板，但不佔版面 */
+.sk-colorinput { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+/* icon 鈕（復原/重做）：SVG 置中，行高歸零免得撐高工具列 */
+.sk-bar [data-skundo], .sk-bar [data-skredo] { line-height: 0; padding: 7px 9px; }
 .sk-off { opacity: .35; pointer-events: none; }
+/* 說明彈窗（? 鈕開合，取代常駐底部說明列） */
+.sk-helppop {
+  display: none;
+  position: absolute; top: 48px; right: 12px; z-index: 10;
+  width: 320px; padding: 10px 14px;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 10px 32px rgba(0,0,0,.22);
+  font-size: 12px; color: var(--muted); line-height: 1.7;
+}
+.sk-helppop.open { display: block; }
+.sk-helppop p { margin: 0 0 6px; }
+.sk-helppop p:last-child { margin-bottom: 0; }
 .sk-bar [data-sklayer] b { font-weight: 600; }
 .sk-bar [data-sklayer].sk-fig b { color: #2e6e46; } /* 人物層＝語意綠，一眼分層 */
 .sk-ok { background: var(--ink); color: var(--bg); border-color: var(--ink); }
@@ -1138,7 +1160,6 @@ body.sel-mode .cut [contenteditable] { pointer-events: none; }
   height: calc(94vh - 130px); max-height: none;
   aspect-ratio: 9 / 16;
 }
-.sk-hint { font-size: 12px; color: var(--muted); padding: 8px 14px 12px; line-height: 1.6; }
 
 /* 拖曳「抓取確認感」（Armin iPad 回饋：不知道有沒有抓到）——
    按住把手的瞬間物件立刻浮起（放大＋陰影），移動中維持浮起 */
