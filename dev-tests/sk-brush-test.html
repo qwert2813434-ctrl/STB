@@ -1,0 +1,272 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>sketchEditor 筆刷/圖層/選取 煙霧測試</title></head>
+<body>
+<pre id="out" style="position:fixed;left:0;top:0;z-index:9999;max-height:100vh;overflow:auto;font:11px monospace;background:#fff">running…</pre>
+<script type="module">
+// 企劃 10（筆刷優化）的行為測試：粗細/顏色條件式寫入、自訂圖層、套索選取移動。
+// 跑法＝vite dev 起著，headless Chrome 開本頁 --dump-dom 撈 #out（同 sk-coord-test 慣例）。
+import "/src/style.css";
+import { openSketchEditor } from "/src/sketchEditor.ts";
+
+const out = [];
+const say = (ok, msg) => out.push(`${ok ? "PASS" : "FAIL"} ${msg}`);
+const flush = () => { document.getElementById("out").textContent = out.join("\n") + "\nDONE"; };
+
+// 假 store：sketchEditor 只用到 get() 與 setCutSketch()
+let savedSketch = null, savedPng = null, saveCount = 0;
+const baseSketch = {
+  scene: [{ tool: "pen", pts: [[100, 100, 0.5], [300, 100, 0.5], [300, 300, 0.5]] }],
+  figure: [],
+};
+const project = { aspect: undefined, cuts: [{ id: "c1", imageRef: null, sketch: structuredClone(baseSketch) }] };
+const store = {
+  get: () => project,
+  setCutSketch: (id, sketch, png) => { savedSketch = sketch; savedPng = png; saveCount++; },
+};
+
+const $ = (s) => document.querySelector(s);
+const click = (el) => el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+// 畫布座標 → client 座標（測試環境無 zoom，rect 直算即可）
+const toClient = (cv, x, y) => {
+  const r = cv.getBoundingClientRect();
+  return [r.left + (x / cv.width) * r.width, r.top + (y / cv.height) * r.height];
+};
+const pev = (type, cv, x, y) => {
+  const [cx, cy] = toClient(cv, x, y);
+  cv.dispatchEvent(new PointerEvent(type, {
+    bubbles: true, pointerId: 1, pointerType: "mouse", isPrimary: true,
+    clientX: cx, clientY: cy, pressure: 0.5, buttons: 1,
+  }));
+};
+const drawLine = (cv, x0, y0, x1, y1) => {
+  pev("pointerdown", cv, x0, y0);
+  for (let i = 1; i <= 4; i++) pev("pointermove", cv, x0 + ((x1 - x0) * i) / 4, y0 + ((y1 - y0) * i) / 4);
+  pev("pointerup", cv, x1, y1);
+};
+
+// ?visual＝擺好狀態拍截圖用（多層多色筆畫＋選取框＋圖層面板），不跑斷言
+if (location.search.includes("visual")) {
+  project.cuts[0].sketch = {
+    scene: [{ tool: "pen", pts: [[80, 620, 0.5], [640, 430, 0.5], [1200, 640, 0.5]] }],
+    figure: [{ tool: "pen", pts: [[560, 480, 0.5], [620, 320, 0.5], [700, 470, 0.5]], size: 1.6 }],
+    extra: [{ name: "運鏡箭頭", strokes: [{ tool: "marker", pts: [[300, 200, 0.5], [900, 200, 0.5]], color: "#b3341c" }] }],
+  };
+  openSketchEditor(store, "c1");
+  const cv = $(".sk-canvas");
+  click($('[data-sktool="select"]'));
+  // 圈人物層的三角形（作用層＝人物，套索只選作用層；步距 ≤130px 別觸發髒起點防禦）
+  const vring = [[500, 280], [630, 280], [760, 280], [760, 400], [760, 520], [630, 520], [500, 520]];
+  pev("pointerdown", cv, vring[0][0], vring[0][1]);
+  for (const [x, y] of vring.slice(1)) pev("pointermove", cv, x, y);
+  pev("pointerup", cv, 500, 520);
+  // ?visual=color 看自訂色面板，其餘看圖層面板
+  click($(location.search.includes("color") ? "[data-skcustom]" : "[data-sklayer]"));
+  document.getElementById("out").textContent = "VISUAL";
+} else
+try {
+  localStorage.removeItem("stbSkColorSaved"); // 「我的顏色」斷言要從空清單起跑
+  openSketchEditor(store, "c1");
+  const cv = $(".sk-canvas");
+
+  // ── 工具列長相 ──
+  say(!!$('[data-sktool="select"]'), "工具列有「選取」");
+  say(!!$(".sk-sizeslider") && !!$(".sk-thumb"), "粗細拉桿存在");
+  say(document.querySelectorAll("[data-skcolor]").length === 3 && !!$("[data-skcustom]"), "三色快選＋自訂色鈕");
+  say(!!$("[data-skhelp]") && !$(".sk-hint"), "說明改 ? 彈窗（底部說明列已移除）");
+  say($("[data-sklayer]")?.textContent.includes("圖層"), "圖層鈕存在");
+
+  // 拉桿操作 helper：拖到倍率 v 對應的位置（與實作同一套內縮換算）
+  const dragSizeTo = (v) => {
+    const sl = $(".sk-sizeslider");
+    const r = sl.getBoundingClientRect();
+    const frac = (v - 0.5) / (2.2 - 0.5);
+    const x = r.left + r.width * (10 / 112 + frac * (92 / 112)); // 與 SL_W/SL_IN 同步
+    const sp = (type) => sl.dispatchEvent(new PointerEvent(type, {
+      bubbles: true, pointerId: 7, pointerType: "mouse", isPrimary: true,
+      clientX: x, clientY: r.top + r.height / 2, buttons: 1 }));
+    sp("pointerdown"); sp("pointerup");
+  };
+
+  // ── 拉桿拖曳時要有大小預覽泡泡 ──
+  {
+    const sl = $(".sk-sizeslider");
+    const r = sl.getBoundingClientRect();
+    const sp = (t) => sl.dispatchEvent(new PointerEvent(t, {
+      bubbles: true, pointerId: 8, pointerType: "mouse", isPrimary: true,
+      clientX: r.left + r.width * 0.8, clientY: r.top + 5, buttons: 1 }));
+    sp("pointerdown");
+    say($(".sk-sizeprev").classList.contains("open"), "拖拉桿時出現大小預覽");
+    sp("pointerup");
+    say(!$(".sk-sizeprev").classList.contains("open"), "放手預覽收起");
+    dragSizeTo(1); // 還原預設粗細，後面「預設檔位不寫 size」的斷言才成立
+  }
+
+  // ── 預設檔位畫一筆（人物層，因為 scene 已有筆畫）→ 不寫 size/color ──
+  drawLine(cv, 400, 400, 600, 400);
+
+  // ── 拉桿拉到最粗＋紅再畫一筆 → 寫入 size/color ──
+  dragSizeTo(2.2);
+  click(document.querySelectorAll("[data-skcolor]")[1]);
+  drawLine(cv, 400, 500, 600, 500);
+
+  // ── 自訂色：開自訂面板 → 點速選格（面板留著可微調）→ 確認鈕收面板 → 畫一筆 ──
+  click($("[data-skcustom]"));
+  say($(".sk-colorpop").classList.contains("open"), "自訂色面板打開");
+  click($('[data-skpick="#8e4ec6"]'));
+  say($(".sk-colorpop").classList.contains("open"), "點格子套用但面板留著（可微調）");
+  click($(".sk-cok"));
+  say(!$(".sk-colorpop").classList.contains("open"), "「使用這個顏色」收面板");
+  drawLine(cv, 400, 560, 600, 560);
+
+  // ── 我的顏色：速選格不存、滑桿自訂色會存、點色塊直接套用、同色不重複 ──
+  say(!$(".sk-csaved").classList.contains("has"), "速選格色不進「我的顏色」（格子上已看得到）");
+  click($("[data-skcustom]"));
+  const chue = $(".sk-chue");
+  chue.value = "200"; chue.dispatchEvent(new Event("input", { bubbles: true }));
+  const savedHex = $(".sk-cprev span").textContent; // 面板預覽的色碼＝確認當下的色（localStorage 是延遲寫，不能馬上讀）
+  click($(".sk-cok"));
+  say($(".sk-csaved").classList.contains("has"), "滑桿自訂色確認後出現在「我的顏色」");
+  say($(".sk-csaved button")?.dataset.skpick === savedHex, "存的就是確認當下那顆色");
+  click($("[data-skcustom]"));
+  click($(".sk-cgrid [data-skpick]")); // 先切去速選第一格
+  click($(".sk-csaved button"));       // 再點「我的顏色」切回來
+  say($(".sk-csaved button").classList.contains("cur"), "點「我的顏色」色塊直接套用（高亮圈跟上）");
+  click($(".sk-cok"));
+  say(localStorage.getItem("stbSkColor") === savedHex, "收面板時延遲寫的偏好有落盤");
+  say(document.querySelectorAll(".sk-csaved button").length === 1, "同色再確認不重複存");
+
+  // ── 高亮圈＋長按刪除（STB 觸控語法：長按長出危險鈕）──
+  click($("[data-skcustom]"));
+  say($(".sk-csaved button").classList.contains("cur"), "目前用的色在面板裡有高亮圈");
+  {
+    const sw = $(".sk-csaved button");
+    const swp = (t) => sw.dispatchEvent(new PointerEvent(t, { bubbles: true, pointerId: 9, pointerType: "touch", isPrimary: true }));
+    swp("pointerdown");
+    await new Promise((r) => setTimeout(r, 600)); // 450ms 長按門檻，虛擬時間下瞬跳
+    say(sw.classList.contains("del"), "長按色塊浮出 × 危險態");
+    swp("pointerup");
+    click(sw); // 真機抬手會附帶一次 click，必須被吞掉（不然 × 剛長出來就被自己點掉）
+    say(sw.classList.contains("del"), "抬手附帶的 click 被吞、危險態還在");
+    click(sw); // 再點一下＝真的刪
+    say(!$(".sk-csaved").classList.contains("has"), "點 × 刪除後清單清空、區塊收起");
+  }
+  click(cv); // 點外面收面板（不走確認鈕，別把現值又存回去）
+  say(!$(".sk-colorpop").classList.contains("open"), "點外面收自訂色面板");
+
+  // ── 圖層面板：開面板、加一層、畫一筆到新層 ──
+  click($("[data-sklayer]"));
+  say($(".sk-layers").classList.contains("open"), "圖層面板打開");
+  say(document.querySelectorAll(".sk-lrow").length === 2, "初始兩列（人物/場景）");
+  click($(".sk-ladd"));
+  say(document.querySelectorAll(".sk-lrow").length === 3, "新增後三列");
+  say($("[data-sklayer] b")?.textContent === "圖層 1", "新層變作用層");
+  click($('[data-sktool="pen"]')); // 收面板順便回筆（畫前把紅粗改回去驗預設）
+  dragSizeTo(1);
+  click(document.querySelectorAll("[data-skcolor]")[0]);
+  drawLine(cv, 200, 600, 500, 600);
+
+  // ── 選取：圈住新層那筆 → 拖移 100,0 ──
+  click($('[data-sktool="select"]'));
+  // 套索繞 (150,550)-(550,650) 一圈——步距 ≤80px（真筆是密集點流；
+  // 跳太大會觸發「髒起點防禦」，那是給開檔第一拍髒 origin 用的）
+  const ring = [];
+  for (let x = 150; x <= 550; x += 80) ring.push([x, 550]);
+  for (let y = 600; y <= 650; y += 50) ring.push([550, y]);
+  for (let x = 470; x >= 150; x -= 80) ring.push([x, 650]);
+  pev("pointerdown", cv, ring[0][0], ring[0][1]);
+  for (const [x, y] of ring.slice(1)) pev("pointermove", cv, x, y);
+  pev("pointerup", cv, 150, 650);
+  // 框內拖：從 (350,600) 拖到 (450,600)
+  pev("pointerdown", cv, 350, 600);
+  pev("pointermove", cv, 400, 600);
+  pev("pointermove", cv, 450, 600);
+  pev("pointerup", cv, 450, 600);
+
+  // ── 完成，驗存下來的資料 ──
+  click($(".sk-ok"));
+  say(saveCount === 1, "按完成有存檔");
+  const sk = savedSketch;
+  say(!!sk, "存回 sketch 資料");
+  if (sk) {
+    say(JSON.stringify(sk.scene) === JSON.stringify(baseSketch.scene), "場景層原封不動");
+    say(sk.figure.length === 3, `人物層三筆（實際 ${sk.figure.length}）`);
+    const [a, b, c2] = sk.figure;
+    say(a && !("size" in a) && !("color" in a), "預設檔位那筆沒寫 size/color");
+    say(b && Math.abs(b.size - 2.2) < 0.05 && b.color === "#b3341c", `拉到最粗＋紅那筆有寫 size/color（${b?.size?.toFixed(2)}/${b?.color}）`);
+    say(c2 && c2.color === "#8e4ec6", `自訂色那筆寫入色碼（${c2?.color}）`);
+    say(Array.isArray(sk.extra) && sk.extra.length === 1 && sk.extra[0].name === "圖層 1", "自訂層存進 extra");
+    const mv = sk.extra?.[0]?.strokes?.[0];
+    // 拖移 +100：起點 x 應從 200 變 ~300（座標經像素換算，容差 6px）
+    say(mv && Math.abs(mv.pts[0][0] - 300) < 6 && Math.abs(mv.pts[0][1] - 600) < 6,
+        `選取拖移生效（起點 ${mv ? mv.pts[0][0].toFixed(1) + "," + mv.pts[0][1].toFixed(1) : "無"}，期望 ~300,600）`);
+    say(typeof savedPng === "string" && savedPng.startsWith("data:image/png"), "壓平 PNG 有產出");
+  }
+
+  // ── 橡皮擦：擦中段＝裂成前後兩筆（點距 12.5px，擦除半徑 18px 會吃掉中間 3 點） ──
+  savedSketch = null; saveCount = 0;
+  project.cuts[0].sketch = structuredClone(baseSketch);
+  openSketchEditor(store, "c1");
+  const cv2 = $(".sk-canvas");
+  pev("pointerdown", cv2, 400, 400);
+  for (let i = 1; i <= 16; i++) pev("pointermove", cv2, 400 + i * 12.5, 400);
+  pev("pointerup", cv2, 600, 400);
+  click($('[data-sktool="eraser"]'));
+  pev("pointerdown", cv2, 500, 400);
+  pev("pointerup", cv2, 500, 400);
+  click($(".sk-ok"));
+  say(savedSketch && savedSketch.figure.length === 2,
+      `橡皮擦擦中段裂成兩筆（人物層 ${savedSketch?.figure?.length ?? "無"} 筆，期望 2）`);
+
+  // ── 髒起點防禦：第一拍離群（>200 畫布px）會被丟掉，不會拉出橫貫直線 ──
+  savedSketch = null; saveCount = 0;
+  project.cuts[0].sketch = structuredClone(baseSketch);
+  openSketchEditor(store, "c1");
+  const cv3 = $(".sk-canvas");
+  pev("pointerdown", cv3, 1150, 650); // 模擬髒 origin：起點被算到離群位置
+  for (let i = 0; i <= 6; i++) pev("pointermove", cv3, 300 + i * 15, 650);
+  pev("pointerup", cv3, 390, 650);
+  click($(".sk-ok"));
+  {
+    const st = savedSketch?.figure?.[0];
+    const maxX = st ? Math.max(...st.pts.map((p) => p[0])) : NaN;
+    say(!!st && maxX < 450 && st.pts.length >= 6,
+        `髒起點被丟掉（最大 x ${st ? maxX.toFixed(0) : "無"}，應 <450）`);
+  }
+
+  // ── 圖層 ⠿ 拖曳排序：最上層往下拖一格 → 順序交換 ──
+  savedSketch = null; saveCount = 0;
+  project.cuts[0].sketch = structuredClone(baseSketch);
+  openSketchEditor(store, "c1");
+  click($("[data-sklayer]"));
+  click($(".sk-ladd")); // 圖層 1
+  click($(".sk-ladd")); // 圖層 2（列表最上）
+  {
+    const grip = $('[data-lgrip="1"]');
+    const gr = grip.getBoundingClientRect();
+    const rowH = $(".sk-lrow").getBoundingClientRect().height;
+    const gp = (t, y) => grip.dispatchEvent(new PointerEvent(t, {
+      bubbles: true, pointerId: 5, pointerType: "mouse", isPrimary: true,
+      clientX: gr.left + 2, clientY: y, buttons: 1 }));
+    gp("pointerdown", gr.top + 4);
+    gp("pointermove", gr.top + 4 + rowH);
+    gp("pointerup", gr.top + 4 + rowH);
+  }
+  click($(".sk-ok"));
+  say(savedSketch?.extra?.map((l) => l.name).join(",") === "圖層 2,圖層 1",
+      `⠿ 拖曳排序生效（存回順序 ${savedSketch?.extra?.map((l) => l.name).join(",")}，期望 圖層 2,圖層 1）`);
+
+  // ── 相容不變式：舊 sketch（只有 scene/figure）開了就按完成 → 內容一字不差 ──
+  savedSketch = null; saveCount = 0;
+  project.cuts[0].sketch = structuredClone(baseSketch);
+  openSketchEditor(store, "c1");
+  click($(".sk-ok"));
+  say(saveCount === 1 && JSON.stringify(savedSketch) === JSON.stringify(baseSketch),
+      "舊檔開了不動直接完成＝資料 byte-identical（無 extra/size/color 髒欄位）");
+} catch (err) {
+  say(false, "例外：" + (err && err.stack || err));
+}
+flush();
+</script>
+</body>
+</html>

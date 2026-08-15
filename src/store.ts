@@ -150,7 +150,15 @@ export class Store {
     // structuredClone：字串（分鏡圖 data URL 等大宗）在拷貝間「共享」不複製——
     // JSON 往返會把所有圖片位元組每份快照都抄一遍，50 份快照＝數百 MB，
     // iPad 撞記憶體牆（實測「匯圖多次後開始失敗」的根因）；桌面同樣受惠。
-    return structuredClone(p);
+    // 2026-08-16 追加：cut.sketch（筆跡座標——重繪案 21 卡實測 147 萬點）
+    // 不進深拷貝，快照間共享參照。安全前提＝sketch 在整個 App 只會被
+    // setCutSketch「整包替換」、絕不就地改（塗鴉編輯器開檔 structuredClone、
+    // 存檔給全新物件）。實測每次編輯 270ms → 個位數 ms，undo 記憶體不再
+    // 隨筆跡量×50 膨脹。**要就地改 sketch 之前，必須先把這裡改回深拷貝。**
+    const bare = { ...p, cuts: p.cuts.map((c) => (c.sketch ? { ...c, sketch: null } : c)) };
+    const clone = structuredClone(bare);
+    clone.cuts.forEach((c, i) => { c.sketch = p.cuts[i].sketch; });
+    return clone;
   }
 
   // 任何會改變真相的動作前呼叫，存一份快照
@@ -485,7 +493,7 @@ export class Store {
     if (field === "passengers") {
       // 逗號／頓號／空白都能分隔，貼上名單直接用
       const list = value.split(/[,，、\s]+/).map((s) => s.trim()).filter(Boolean);
-      if (list.join(" ") === v.passengers.join(" ")) return;
+      if (list.join("\u0000") === v.passengers.join("\u0000")) return;
       this.snapshot();
       v.passengers = list;
     } else {

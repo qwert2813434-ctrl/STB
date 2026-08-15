@@ -75,6 +75,11 @@ button:active { transform: scale(.98); }
 .topbar .ver { font-family: var(--mono); font-size: 11px; color: var(--faint); }
 .spacer { flex: 1; }
 
+/* 觸控裝置才顯示（例：頂欄復原/重做——Mac 用 ⌘Z，藏起來省空間） */
+.touch-only { display: none; }
+@media (hover: none) { .touch-only { display: inline-block; } }
+.topbar button:disabled { opacity: .35; }
+
 /* 狀態列 */
 .statusbar {
   display: flex;
@@ -1075,15 +1080,113 @@ body.sel-mode .cut [contenteditable] { pointer-events: none; }
   width: min(1080px, 100%); max-height: 100%;
   display: flex; flex-direction: column; overflow: hidden;
   box-shadow: 0 18px 60px rgba(0,0,0,.35);
+  position: relative; /* 圖層面板的定位錨 */
 }
+/* 圖層浮動面板：工具列下方，點「圖層」開合 */
+.sk-layers {
+  display: none;
+  position: absolute; top: 48px; left: 12px; z-index: 10;
+  width: 250px; padding: 6px;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 10px 32px rgba(0,0,0,.22);
+}
+.sk-layers.open { display: block; }
+.sk-ladd { width: 100%; text-align: left; font-size: 13px; padding: 8px 10px; border-radius: 8px; margin-bottom: 4px; }
+.sk-ladd:disabled { opacity: .4; }
+.sk-lrow { display: flex; align-items: center; gap: 6px; padding: 7px 8px; border-radius: 8px; cursor: pointer; }
+.sk-lrow.on { background: var(--hover); }
+.sk-lrow.hid .sk-lname { color: var(--faint); }
+.sk-lname { flex: 1; font-size: 13px; color: var(--ink); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sk-lrow.on .sk-lname { font-weight: 600; }
+.sk-leye, .sk-ldel { padding: 5px 7px; border-radius: 6px; font-size: 12px; line-height: 1; display: inline-flex; align-items: center; }
+.sk-leye-ph { width: 29px; flex: none; } /* 固定層沒有眼睛，佔位讓名稱對齊 */
+.sk-lgrip { cursor: grab; touch-action: none; color: var(--faint); font-size: 13px; padding: 4px 5px; flex: none; user-select: none; -webkit-user-select: none; }
+.sk-lgrip-ph { width: 23px; flex: none; } /* 固定層不能拖，佔位對齊 */
+.sk-lrow { transition: transform .12s; }
+.sk-lrow.dragging { transition: none; position: relative; z-index: 2; background: var(--hover); box-shadow: 0 4px 14px rgba(0,0,0,.15); }
+.sk-lrow.sk-fixed { cursor: pointer; }
 .sk-bar {
-  display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+  display: flex; align-items: center; gap: 6px; padding: 10px 12px;
   background: var(--card); border-bottom: 1px solid var(--line);
+  flex-wrap: wrap; /* 按鈕變多（粗細/顏色/選取）後窄螢幕換行，不准把字擠成直排 */
 }
+.sk-bar button { white-space: nowrap; padding: 6px 10px; }
 .sk-bar .spacer { flex: 1; }
-.sk-sep { width: 1px; height: 20px; background: var(--line); margin: 0 4px; }
+.sk-sep { width: 1px; height: 20px; background: var(--line); margin: 0 2px; }
 .sk-bar button { font-size: 13px; padding: 6px 12px; border-radius: 8px; }
 .sk-bar button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+/* 粗細楔形拉桿＋三色快選＋自訂色（橡皮擦/選取時整組打淡） */
+.sk-sizeslider { position: relative; width: 112px; height: 30px; flex: none; cursor: pointer; } /* 寬度改了要同步 sketchEditor 的 SL_W */
+.sk-sizeslider svg { width: 100%; height: 100%; display: block; }
+.sk-sizeslider polygon { fill: var(--faint); opacity: .45; }
+.sk-thumb {
+  position: absolute; top: 50%; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--ink); transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 2px var(--bg); pointer-events: none;
+}
+.sk-colors { display: inline-flex; gap: 3px; align-items: center; }
+.sk-colors button { padding: 6px 7px; display: inline-flex; align-items: center; justify-content: center; min-width: 26px; }
+.sk-colors i { display: block; width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--line); }
+.sk-bar .sk-colors button.on { background: var(--hover); border-color: var(--ink); color: inherit; }
+/* 自訂色面板：16 色速選格＋HSL 三滑桿（自建；iPad WKWebView 開原生 input[type=color] 會靜默失敗） */
+.sk-colorpop {
+  display: none;
+  position: absolute; top: 48px; left: 260px; z-index: 10;
+  width: 236px; padding: 12px;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 10px 32px rgba(0,0,0,.22);
+}
+.sk-colorpop.open { display: block; }
+.sk-cgrid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; margin-bottom: 10px; }
+.sk-cgrid button { width: 21px; height: 21px; border-radius: 50%; border: 1px solid rgba(0,0,0,.15); padding: 0; }
+.sk-colorpop input[type="range"] {
+  -webkit-appearance: none; appearance: none;
+  display: block; width: 100%; height: 14px; border-radius: 7px;
+  border: 1px solid var(--line); margin: 8px 0; padding: 0;
+}
+.sk-colorpop input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--bg); border: 2px solid var(--ink);
+}
+.sk-chue { background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); }
+.sk-cprev { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.sk-cprev i { display: block; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--line); }
+.sk-cprev span { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.sk-csaved { display: none; }
+.sk-csaved.has { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.sk-csaved span { font-size: 11px; color: var(--muted); margin-right: 2px; }
+.sk-csaved button { width: 21px; height: 21px; border-radius: 50%; border: 1px solid rgba(0,0,0,.15); padding: 0; position: relative; -webkit-touch-callout: none; }
+.sk-colorpop [data-skpick].cur { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px var(--ink); }
+.sk-csaved button.del { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3.5px #b3341c; }
+.sk-csaved button.del::after { content: "×"; position: absolute; inset: 0; display: grid; place-items: center; border-radius: 50%; background: rgba(0,0,0,.45); color: #fff; font-size: 15px; line-height: 1; }
+.sk-cok { width: 100%; margin-top: 10px; padding: 8px 0; border-radius: 8px; font-size: 13px; background: var(--ink); color: var(--bg); border-color: var(--ink); }
+/* 筆刷大小即時預覽：拖拉桿時浮在下方，圓點＝實際螢幕粗細 */
+.sk-sizeprev {
+  display: none;
+  position: absolute; z-index: 10;
+  width: 84px; height: 84px;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 10px 32px rgba(0,0,0,.22);
+  align-items: center; justify-content: center;
+}
+.sk-sizeprev.open { display: flex; }
+.sk-sizeprev i { display: block; border-radius: 50%; }
+/* icon 鈕（復原/重做）：SVG 置中，行高歸零免得撐高工具列 */
+.sk-bar [data-skundo], .sk-bar [data-skredo] { line-height: 0; padding: 7px 9px; }
+.sk-off { opacity: .35; pointer-events: none; }
+/* 說明彈窗（? 鈕開合，取代常駐底部說明列） */
+.sk-helppop {
+  display: none;
+  position: absolute; top: 48px; right: 12px; z-index: 10;
+  width: 320px; padding: 10px 14px;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 10px 32px rgba(0,0,0,.22);
+  font-size: 12px; color: var(--muted); line-height: 1.7;
+}
+.sk-helppop.open { display: block; }
+.sk-helppop p { margin: 0 0 6px; }
+.sk-helppop p:last-child { margin-bottom: 0; }
 .sk-bar [data-sklayer] b { font-weight: 600; }
 .sk-bar [data-sklayer].sk-fig b { color: #2e6e46; } /* 人物層＝語意綠，一眼分層 */
 .sk-ok { background: var(--ink); color: var(--bg); border-color: var(--ink); }
@@ -1102,7 +1205,6 @@ body.sel-mode .cut [contenteditable] { pointer-events: none; }
   height: calc(94vh - 130px); max-height: none;
   aspect-ratio: 9 / 16;
 }
-.sk-hint { font-size: 12px; color: var(--muted); padding: 8px 14px 12px; line-height: 1.6; }
 
 /* 拖曳「抓取確認感」（Armin iPad 回饋：不知道有沒有抓到）——
    按住把手的瞬間物件立刻浮起（放大＋陰影），移動中維持浮起 */
