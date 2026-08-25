@@ -1,0 +1,38 @@
+<!doctype html><meta charset="utf-8"><title>live</title>
+<script type="module">
+window.onerror=(m,f,l)=>{document.title="ERR "+m+" @"+l;};
+import { paintProcStroke, liveEnd } from "/src/brush.ts";
+const ST=await (await fetch("/dev-tests/_real-strokes.json")).json();
+const big=ST.reduce((a,b)=>a.pts.length>b.pts.length?a:b);
+const mk=()=>{const c=document.createElement("canvas");c.width=1280;c.height=720;
+  const g=c.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,1280,720);return c;};
+// 暖機（烤紙紋）
+const warm=mk();paintProcStroke(warm.getContext("2d"),big.pts.slice(0,50),"pencil",11,"#141311",1,1280,720,0.19);
+// ── 模擬作畫：每 40 點餵一次（≈ Pencil 一格的量），量每一格的耗時 ──
+const liveCv=mk(), lg=liveCv.getContext("2d");
+const times=[];
+// ⚠️ 前一版這裡少了「最後不足 40 點的那一段」：3231 % 40 = 31，
+// live 最後一格只畫到 3200 點就去跟 3231 點的成品比 → 回報一千多像素差異，
+// 其實是測試自己的 bug 不是引擎的。教訓：比對前先確認兩邊餵的是同一份資料。
+const steps=[];for(let n=40;n<big.pts.length;n+=40)steps.push(n);steps.push(big.pts.length);
+for(const n of steps){
+  const prefix=big.pts.slice(0,n);
+  const t=performance.now();
+  lg.fillStyle="#fff";lg.fillRect(0,0,1280,720);            // 每格重貼底（STB paintFrame 也是重組）
+  paintProcStroke(lg,prefix,"pencil",11,"#141311",1,1280,720,0.19,"L1");
+  times.push(performance.now()-t);
+}
+// 最後一格＝整筆；跟「收筆後的整筆重畫」比像素
+const liveFinal=lg.getImageData(0,0,1280,720).data;
+liveEnd();
+const cmt=mk(), cg=cmt.getContext("2d");
+const tc=performance.now();
+paintProcStroke(cg,big.pts,"pencil",11,"#141311",1,1280,720,0.19);
+const commitMs=(performance.now()-tc).toFixed(1);
+const c2=cg.getImageData(0,0,1280,720).data;
+let diff=0,maxd=0;
+for(let i=0;i<c2.length;i+=4){const d=Math.abs(c2[i]-liveFinal[i]);if(d>3){diff++;if(d>maxd)maxd=d;}}
+const avg=(times.reduce((a,b)=>a+b)/times.length).toFixed(1);
+const last10=(times.slice(-10).reduce((a,b)=>a+b)/10).toFixed(1);
+document.title=`每格平均 ${avg}ms｜最後十格平均 ${last10}ms｜最慢 ${Math.max(...times).toFixed(1)}ms｜收筆整筆 ${commitMs}ms｜預覽vs成品 差異像素 ${diff}（最大差 ${maxd}）`;
+</script>

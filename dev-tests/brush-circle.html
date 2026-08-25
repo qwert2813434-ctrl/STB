@@ -1,0 +1,36 @@
+<!doctype html><meta charset="utf-8"><title>circle2</title>
+<body style="margin:0;background:#222;color:#ddd;font:13px -apple-system">
+<div id="wrap"></div>
+<script type="module">
+window.onerror=(m,f,l)=>{document.title="ERR "+m+" @"+l;};
+import { paintProcStroke } from "/src/brush.ts";
+function loops(cx,cy,r,turns,step,pbase,noise){
+  const pts=[];let a=0,n=0;
+  while(a<turns*6.2832){
+    const rr=r*(1-0.06*Math.sin(a*1.3));
+    const pr=pbase+(noise?0.12*Math.max(0,Math.sin(n*0.31))*Math.max(0,Math.sin(n*0.13)):0)+0.03*Math.sin(a*3.1);
+    pts.push([cx+Math.cos(a)*rr*1.6, cy+Math.sin(a)*rr, Math.max(0.02,pr)]);
+    a+=step/Math.max(1,rr); n++;
+  }
+  return pts;
+}
+function panel(label,draw){
+  const d=document.createElement("div");
+  const h=document.createElement("div");h.style.padding="4px 8px";h.textContent=label;d.append(h);
+  const c=document.createElement("canvas");c.width=1280;c.height=460;c.style.width="800px";c.style.background="#fff";
+  d.append(c);document.getElementById("wrap").append(d);
+  const g=c.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,1280,460);
+  const t=performance.now();draw(g);h.textContent=label+"　"+(performance.now()-t).toFixed(0)+"ms";
+}
+// D：一筆被切成 7 段（模擬 Pencil 微抬筆／手掌 cancel），段與段有 4 點重疊
+panel("D 一筆被切成 7 段（段尾段頭重疊 4 點）",g=>{
+  const P=loops(320,230,150,3.2,1.5,0.20,false), seg=Math.ceil(P.length/7);
+  for(let i=0;i<7;i++){
+    const a=Math.max(0,i*seg-4), b=Math.min(P.length,(i+1)*seg);
+    if(b-a>2)paintProcStroke(g,P.slice(a,b),"pencil",11,"#141311",1,1280,460);
+  }});
+// E：完全連續，但筆壓帶真實抖動（快速輕畫時 Pencil 會這樣）
+panel("E 連續一筆，但筆壓有抖動尖峰",g=>{
+  paintProcStroke(g,loops(320,230,150,3.2,1.5,0.14,true),"pencil",11,"#141311",1,1280,460);});
+document.title="ok";
+</script>

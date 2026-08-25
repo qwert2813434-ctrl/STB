@@ -1,0 +1,72 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>render one</title>
+<style>html,body{margin:0;padding:0;background:#fff;overflow:hidden}canvas{display:block}</style>
+<script type="module">
+import { getStroke } from "./pf.mjs";
+import { buildCut } from "./story.mjs";
+import { W, H, INK } from "./draw.mjs";
+import { makeHand } from "./draw.mjs";
+import { redHood, basket, wolf, person, tree, cottage, bed, LW } from "./parts.mjs";
+import { forest, meadow, cottageExt, interior } from "./sets.mjs";
+
+function path(s) {
+  const sim = s.pts.every((p) => p[2] === s.pts[0][2]);
+  const o = getStroke(s.pts, {
+    size: (s.tool === "marker" ? 24 : 7) * (s.size ?? 1),
+    thinning: s.tool === "marker" ? 0 : 0.55,
+    smoothing: 0.5, streamline: 0.3, simulatePressure: sim,
+  });
+  const p = new Path2D();
+  if (!o.length) return p;
+  p.moveTo(o[0][0], o[0][1]);
+  for (let i = 1; i < o.length; i++) p.lineTo(o[i][0], o[i][1]);
+  p.closePath();
+  return p;
+}
+
+// 參考頁用的單件圖（直式＝人物立姿，橫式＝場景／道具）
+const PROPS = {
+  actor_red:   { w: 720, h: 1280, f: (h) => { const g = redHood(h, { x: 360, y: 1180, s: 980, face: 1, pose: "stand" }); return [...g.strokes, ...basket(h, { x: g.hand[0] + 10, y: g.hand[1] + 90, s: 250 })]; } },
+  actor_wolf:  { w: 720, h: 1280, f: (h) => wolf(h, { x: 300, y: 980, s: 620, face: 1, pose: "stalk" }).out },
+  actor_granny:{ w: 720, h: 1280, f: (h) => person(h, { x: 360, y: 1180, s: 1000, face: 1, who: "granny" }).out },
+  actor_hunter:{ w: 720, h: 1280, f: (h) => person(h, { x: 360, y: 1180, s: 1000, face: 1, who: "hunter" }).out },
+  ward_cloak:  { w: 720, h: 1280, f: (h) => redHood(h, { x: 360, y: 1180, s: 1000, face: -1, pose: "walk" }).strokes },
+  ward_bonnet: { w: 720, h: 1280, f: (h) => wolf(h, { x: 300, y: 1220, s: 900, face: 1, pose: "stand", bonnet: true }).out },
+  ward_hunter: { w: 720, h: 1280, f: (h) => person(h, { x: 360, y: 1180, s: 1000, face: 1, who: "hunter", pose: "raise" }).out },
+  ward_apron:  { w: 720, h: 1280, f: (h) => person(h, { x: 360, y: 1180, s: 1000, face: 1, who: "granny", pose: "reach" }).out },
+  set_basket:  { w: 1280, h: 720, f: (h) => basket(h, { x: 640, y: 540, s: 460 }) },
+  set_bed:     { w: 1280, h: 720, f: (h) => bed(h, { x: 640, y: 600, w: 900 }) },
+  set_cottage: { w: 1280, h: 720, f: (h) => cottage(h, { x: 640, base: 620, w: 640, lit: true }) },
+  set_tree:    { w: 1280, h: 720, f: (h) => [...tree(h, { x: 340, base: 660, h: 560, kind: "fir" }), ...tree(h, { x: 800, base: 660, h: 500, kind: "oak" }), ...tree(h, { x: 1120, base: 660, h: 460, kind: "bare" })] },
+  loc_forest:  { w: 1280, h: 720, f: (h) => forest(h, { horizon: 424, gy: 552, path: { yNear: 726, yFar: 452, xNear: 660, xFar: 618, wNear: 980, wFar: 30 }, fore: "both", dense: 1.2 }) },
+  loc_meadow:  { w: 1280, h: 720, f: (h) => meadow(h, { gy: 520, horizon: 392 }) },
+  loc_house:   { w: 1280, h: 720, f: (h) => cottageExt(h, { x: 700, base: 556, w: 420, smoke: true }) },
+  loc_room:    { w: 1280, h: 720, f: (h) => interior(h, { floor: 566, bedAt: { x: 880, base: 600, w: 600, face: -1 } }) },
+};
+
+const q = new URLSearchParams(location.search);
+const key = q.get("k");
+let w = W, hgt = H, strokes;
+if (key) {
+  const P = PROPS[key];
+  w = P.w; hgt = P.h;
+  strokes = P.f(makeHand(4200 + key.length * 97 + key.charCodeAt(4) * 13));
+} else {
+  const L = buildCut(+q.get("i"));
+  strokes = [...L.scene, ...L.figure, ...L.extra.flatMap((l) => l.strokes)];
+}
+const c = document.createElement("canvas");
+c.width = w; c.height = hgt;
+document.body.append(c);
+const cx = c.getContext("2d");
+cx.fillStyle = "#ffffff"; cx.fillRect(0, 0, w, hgt);
+for (const s of strokes) {
+  if (!s) continue;
+  cx.fillStyle = s.color ?? INK;
+  cx.globalAlpha = s.tool === "marker" ? 0.32 : 1;
+  cx.fill(path(s));
+}
+cx.globalAlpha = 1;
+document.title = "done";
+</script>

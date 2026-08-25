@@ -1,8 +1,11 @@
 import { getStroke } from "perfect-freehand";
+import { paintProcStroke, isProc, BASE_W, BRUSH_V, currentCap, noteStroke, liveEnd, warmPencil, seedOfPoint } from "./brush";
+import type { ProcTool } from "./brush";
 import type { Store } from "./store";
 import type { CutSketch, SketchStroke } from "./model";
 import { boardDims } from "./model";
 import { pickFiles, fileToWorkingImage } from "./cutPicker";
+import { currentDir } from "./persistence";
 import { bindUndoGestures } from "./touchUndo";
 import { askName } from "./nameDialog";
 
@@ -10,7 +13,9 @@ import { askName } from "./nameDialog";
 // 定位：不跟分鏡師比質感——跟「沒有分鏡」比清楚。溝通工具，不是繪畫 App。
 // 工具＝筆／麥克筆／橡皮擦／選取＋復原。2026-08-15（企劃 10）解凍三件：
 // 粗細三檔＋黑紅藍三色、自訂圖層（上限 4）、套索選取移動縮放——擴充守著
-// 「讓溝通更清楚」一句話原則，調色盤/筆刷引擎這類繪畫 App 的東西仍不做。
+// 「讓溝通更清楚」一句話原則。
+// 2026-08-25 Armin 拍板加兩支程序式筆刷（鉛筆／墨筆，見 brush.ts）——舊的「筆刷引擎不做」
+// 那條到此為止；但界線沒變：不做圖層混合模式、不做自訂筆刷編輯器，參數在樣本間調完就寫死。
 // 圖層：場景（構圖）＋人物（表演/運鏡）固定——「複製 cut 只改人物層」
 // 工作流的地基；自訂層放 extra 疊人物上方。筆跡存資料（可再編輯）；
 // 完成時壓平 PNG 走既有 imageRef 管線（簡報/匯出零改動）。
@@ -21,6 +26,14 @@ import { askName } from "./nameDialog";
 // 筆畫物件全程不可變（見 strokePath 註解）＝外形快取可以用物件身份當 key；
 // 放模組層讓「關掉再開同一格」不必整批重算外形。
 const pathCache = new WeakMap<SketchStroke, Path2D>();
+// 程序式筆刷（鉛筆/墨筆）的點陣快取——與 pathCache 同一套哲學，但存「畫好的圖」不是外形：
+// 一筆重畫 10–30ms，擦除/undo/換層的整層重建會疊成秒級凍結，所以首繪之後裁外接框存小圖，
+// 重建一律一張 drawImage。筆畫物件不可變＝物件身份當 key 永遠有效；
+// 擦裂/變形產生新物件＝舊快取自然報廢（GC 收走）。爆上限就整包放掉，重建＝再畫一次。
+interface ProcBmp { cv: HTMLCanvasElement; x: number; y: number }
+let procCache = new WeakMap<SketchStroke, ProcBmp>();
+let procBytes = 0;
+const PROC_CACHE_CAP = 96e6; // ~96MB RGBA；爆了重畫的成本＝一次首繪
 // 離屏畫布池：以前每次開編輯器都現配 6 張大 canvas（1280×720×6≈22MB）＋
 // WKWebView 首次合成的 IOSurface 配置，是開卡頓的另一半。池化＝App 首開付一次。
 // 安全前提＝同時間只有一個塗鴉編輯器（openSketchEditor 開頭有擋重複開）。
@@ -59,7 +72,23 @@ export function openSketchEditor(store: Store, cutId: string) {
   // 照片收進 sketch.underlay，不會消失；輸出壓平不含墊底
   if (cut.imageRef && !cut.sketch) work.underlay = cut.imageRef;
   let underlayImg: HTMLImageElement | null = null; // 墊底的解碼快取
-  let tool: "pen" | "marker" | "eraser" | "select" = "pen";
+  // 1.8 起四支筆：pen／marker（外形填滿，1.0 以來沒動過）＋ pencil／ink（程序式）
+  type InkTool = "pen" | "marker" | "pencil" | "ink";
+  // 筆刷狀態跟著**案子**走：分鏡稿有自己的畫法（有人整案用鉛筆、有人用麥克筆標註），
+  // 全域一份等於換案子就被上一案帶走。純檢視偏好 → localStorage，不進 project.json。
+  // key＝案子資料夾（沒有資料夾就退回第一路的 id）；讀不到就沿用舊的全域偏好。
+  const projKey = "stbSkState:" + (currentDir() ?? store.get().films?.[0]?.id ?? "default");
+  type SkState = { tool?: InkTool; color?: string; sizes?: Partial<Record<InkTool, number>> };
+  const skState: SkState = (() => {
+    try { return JSON.parse(localStorage.getItem(projKey) || "{}") as SkState; } catch { return {}; }
+  })();
+  const INK_TOOLS: InkTool[] = ["pen", "marker", "pencil", "ink"];
+  let tool: InkTool | "eraser" | "select" =
+    skState.tool && INK_TOOLS.includes(skState.tool) ? skState.tool : "pen";
+  let lastInk: InkTool = tool as InkTool;                     // 橡皮擦/選取時，粗細與顏色仍屬於上一支筆
+  const inkOf = (): InkTool => (tool === "eraser" || tool === "select" ? lastInk : tool);
+  // 基準粗細（畫布 1280×720 座標）：pen 7、marker 24 是 1.0 以來的值，不准動
+  const baseW = (tl: InkTool): number => (tl === "marker" ? 24 : tl === "pen" ? 7 : BASE_W[tl]);
   // 圖層：場景/人物固定（語意層），自訂層在 work.extra（上限 4，疊人物上方）。
   // layer＝目前作用層："scene"｜"figure"｜extra 的索引。
   // 橡皮擦/清除/選取都只動作用層——與兩層時代的行為一致。
@@ -88,12 +117,20 @@ export function openSketchEditor(store: Store, cutId: string) {
   const COLORS = ["#141311", "#b3341c", "#185fa5"];
   const INK = COLORS[0];
   const HEX_RE = /^#[0-9a-fA-F]{6}$/;
-  const sizeKey = (tl: "pen" | "marker") => (tl === "marker" ? "stbSkSizeMarker" : "stbSkSizePen");
-  const loadSize = (tl: "pen" | "marker"): number => {
+  // 舊鍵名不動（stbSkSizePen／stbSkSizeMarker），新筆各自新增一把
+  const sizeKey = (tl: InkTool) => "stbSkSize" + tl[0].toUpperCase() + tl.slice(1);
+  const loadSize = (tl: InkTool): number => {
     const v = parseFloat(localStorage.getItem(sizeKey(tl)) || "1");
     return Number.isFinite(v) ? Math.max(SIZE_MIN, Math.min(SIZE_MAX, v)) : 1;
   };
-  const sizes = { pen: loadSize("pen"), marker: loadSize("marker") };
+  const clampSize = (v: unknown, fb: number) =>
+    typeof v === "number" && Number.isFinite(v) ? Math.max(SIZE_MIN, Math.min(SIZE_MAX, v)) : fb;
+  const sizes: Record<InkTool, number> = {
+    pen: clampSize(skState.sizes?.pen, loadSize("pen")),
+    marker: clampSize(skState.sizes?.marker, loadSize("marker")),
+    pencil: clampSize(skState.sizes?.pencil, loadSize("pencil")),
+    ink: clampSize(skState.sizes?.ink, loadSize("ink")),
+  };
   // WKWebView 的 localStorage.setItem 是同步 IPC——滑桿類「每顆 move 都寫」＝
   // 快速調完馬上下筆會頓（寫入積壓）。偏好一律延遲寫：記憶體即時生效、
   // 300ms 沒新值才落盤；收面板/放開拉桿/關編輯器強制沖掉。
@@ -141,14 +178,19 @@ export function openSketchEditor(store: Store, cutId: string) {
     return [Math.round(h), Math.round(s * 100), Math.round(l * 100)];
   };
   let color = ((): string => {
-    const v = localStorage.getItem("stbSkColor") || INK;
+    const v = skState.color || localStorage.getItem("stbSkColor") || INK;
     return COLORS.includes(v) || HEX_RE.test(v) ? v : INK;
   })();
+  // 案子層級的記憶：換筆／換色／拖粗細都寫（延遲寫，關編輯器時 flushPrefs 沖掉）
+  const saveSk = () => lsWrite(projKey, JSON.stringify({ tool: inkOf(), color, sizes }));
   // 聰明預設：空白＝先畫場景（構圖）；已有場景＝進來多半是改人物
   let layer: "scene" | "figure" | number = work.scene.length ? "figure" : "scene";
   const undoStack: CutSketch[] = [];
   const redoStack: CutSketch[] = [];
   let drawing: number[][] | null = null; // 進行中的筆畫
+  let strokeCal = 0;                     // 這一筆的筆壓滿力值：落筆當下凍住，收筆原樣存進筆畫
+  let liveKey = "";                      // 這一筆的身分（增量渲染用；換一筆就換 key＝重來）
+  let liveSeq = 0;
   let erasing = false;
   let erasedAny = false;
 
@@ -160,7 +202,10 @@ export function openSketchEditor(store: Store, cutId: string) {
   let selDrag: { mode: "move" | "scale"; last: [number, number]; anchor: [number, number] } | null = null;
   let selPushed = false;
   const HANDLE_HIT = 30;                  // 把手命中半徑（畫布 px）
-  const clearSel = () => { sel = []; lasso = null; selDrag = null; selPushed = false; };
+  const clearSel = () => {
+    sel = []; lasso = null; selDrag = null; selPushed = false;
+    selPend = null; if (selRaf) { cancelAnimationFrame(selRaf); selRaf = 0; }
+  };
   const selBBox = (): [number, number, number, number] | null => {
     if (!sel.length) return null;
     const arr = curStrokes();
@@ -198,6 +243,32 @@ export function openSketchEditor(store: Store, cutId: string) {
   };
   // 變形＝換新筆畫物件（映射座標），不就地改 pts——
   // 舊物件可能被復原快照共享，而且路徑快取認物件不認內容
+  // 拖曳中的變形佇列：pointermove 在 240Hz Pencil 下一幀來 2–4 顆，逐顆 transformSel
+  // ＝每幀重繪作用層 2–4 次；累積到 rAF 一次套用。縮放的最小尺寸防護在累積端做
+  //（用「目前 bbox × 已累積倍率」估），套用端不再檢查。
+  let selPend: { dx: number; dy: number; k: number; ax: number; ay: number } | null = null;
+  let selRaf = 0;
+  const queueSel = (dx: number, dy: number, k: number, ax: number, ay: number) => {
+    const P = selPend ?? (selPend = { dx: 0, dy: 0, k: 1, ax, ay });
+    P.dx += dx; P.dy += dy;
+    if (k !== 1) {
+      const bb = selBBox();
+      if (bb && k < 1) {
+        const longSide = Math.max(bb[2] - bb[0], bb[3] - bb[1]) * P.k;
+        if (longSide > 0 && longSide * k < 12) k = 12 / longSide;
+      }
+      P.k *= k; P.ax = ax; P.ay = ay;
+    }
+    if (!selRaf) selRaf = requestAnimationFrame(flushSel);
+  };
+  const flushSel = () => {
+    selRaf = 0;
+    const P = selPend;
+    if (!P) return;
+    selPend = null;
+    if (P.k !== 1) transformSel((p) => [P.ax + (p[0] - P.ax) * P.k + P.dx, P.ay + (p[1] - P.ay) * P.k + P.dy, p[2]]);
+    else if (P.dx || P.dy) transformSel((p) => [p[0] + P.dx, p[1] + P.dy, p[2]]);
+  };
   const transformSel = (fn: (p: number[]) => number[]) => {
     if (!selPushed) { pushUndo(); selPushed = true; }
     const arr = [...curStrokes()];
@@ -215,8 +286,7 @@ export function openSketchEditor(store: Store, cutId: string) {
   overlay.innerHTML = `
     <div class="sk-panel">
       <div class="sk-bar">
-        <button data-sktool="pen" class="on">筆</button>
-        <button data-sktool="marker">麥克筆</button>
+        <button data-skbrush class="on" title="筆刷清單：點一下換筆（每支筆各自記住粗細與顏色）">筆刷：<b></b></button>
         <button data-sktool="eraser">橡皮擦</button>
         <button data-sktool="select" title="圈起來＝選取（只選目前圖層）；框內拖＝移動、角把手＝等比縮放">選取</button>
         <span class="sk-sep"></span>
@@ -240,6 +310,7 @@ export function openSketchEditor(store: Store, cutId: string) {
         <button class="sk-ok">完成</button>
       </div>
       <div class="sk-layers"></div>
+      <div class="sk-brushes"></div>
       <div class="sk-colorpop">
         <div class="sk-cgrid">${CGRID.map((c) => `<button data-skpick="${c}" style="background:${c}"></button>`).join("")}</div>
         <input type="range" class="sk-chue" min="0" max="360" step="1" aria-label="色相">
@@ -330,7 +401,41 @@ export function openSketchEditor(store: Store, cutId: string) {
   ];
   const activeIdx = (): number => (layer === "scene" ? 0 : layer === "figure" ? 1 : 2 + layer);
   const strokeAlpha = (s: SketchStroke): number => (s.tool === "marker" ? 0.32 : 1);
+  const SCRATCH = pooledCv(6, W, H); // 池位 6＝程序式筆畫快取的全尺寸暫存（0–5 已被三層離屏＋主畫布用掉）
+  const procBitmap = (s: SketchStroke): ProcBmp | null => {
+    const hit = procCache.get(s);
+    if (hit) return hit;
+    const w = baseW(s.tool as ProcTool) * (s.size ?? 1);
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    for (const p of s.pts) { if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0]; if (p[1] < y0) y0 = p[1]; if (p[1] > y1) y1 = p[1]; }
+    const pad = w * 2 + 24; // 蓋過毛邊（fuzz）＋模糊（gooey）＋撒點外擴的最大外伸
+    const bx = Math.max(0, Math.floor(x0 - pad)), by = Math.max(0, Math.floor(y0 - pad));
+    const bw = Math.min(W, Math.ceil(x1 + pad)) - bx, bh = Math.min(H, Math.ceil(y1 + pad)) - by;
+    if (bw <= 0 || bh <= 0) return null;
+    SCRATCH.cx.clearRect(0, 0, W, H);
+    paintProcStroke(SCRATCH.cx, s.pts, s.tool as ProcTool, w, s.color ?? INK, 1, W, H, s.cal, undefined, s.seed, s.off);
+    const c = document.createElement("canvas");
+    c.width = bw; c.height = bh;
+    c.getContext("2d")!.drawImage(SCRATCH.cv, bx, by, bw, bh, 0, 0, bw, bh);
+    if (procBytes > PROC_CACHE_CAP) { procCache = new WeakMap(); procBytes = 0; }
+    procCache.set(s, { cv: c, x: bx, y: by });
+    procBytes += bw * bh * 4;
+    return { cv: c, x: bx, y: by };
+  };
   const paintStrokeInto = (cx: CanvasRenderingContext2D, s: SketchStroke, a: number) => {
+    if (isProc(s.tool)) {   // 鉛筆／墨筆＝逐點蓋章太貴，走點陣快取
+      // 拖曳選取中：每顆 move 都產生新筆畫物件，進快取＝每幀 miss＋procBytes 灌爆
+      // →上限一到整包快取被清，之後第一次重建全部重畫（多秒凍結）。拖曳中直繪、不落快取。
+      if (selDrag) {
+        paintProcStroke(cx, s.pts, s.tool, baseW(s.tool) * (s.size ?? 1), s.color ?? INK, a, W, H, s.cal, undefined, s.seed, s.off);
+        return;
+      }
+      // 打淡（非作用層 0.4）＝「整筆結果 × a」：與逐 dab 乘 a 在自身重疊處理論上有差，
+      // 但只影響編輯畫面的打淡預覽；壓平/匯出都是 a=1，數值與直繪一致。
+      const b = procBitmap(s);
+      if (b) { cx.globalAlpha = a; cx.drawImage(b.cv, b.x, b.y); cx.globalAlpha = 1; }
+      return;
+    }
     cx.fillStyle = s.color ?? INK;
     cx.globalAlpha = a;
     cx.fill(strokePath(s));
@@ -381,11 +486,7 @@ export function openSketchEditor(store: Store, cutId: string) {
   // 同步整張畫完（壓平輸出用；editorMode=false＝不含墊底、不打淡）
   function paintStatic(cx: CanvasRenderingContext2D, editorMode: boolean) {
     paintBg(cx, editorMode);
-    for (const { s, a } of orderedStrokes(editorMode)) {
-      cx.fillStyle = s.color ?? INK;
-      cx.globalAlpha = a;
-      cx.fill(strokePath(s));
-    }
+    for (const { s, a } of orderedStrokes(editorMode)) paintStrokeInto(cx, s, a);
     cx.globalAlpha = 1;
   }
 
@@ -427,13 +528,17 @@ export function openSketchEditor(store: Store, cutId: string) {
     ctx.drawImage(active.cv, 0, 0);
     ctx.drawImage((showProgress ? aboveBuild : aboveFront).cv, 0, 0);
     if (drawing && drawing.length > 1) {
-      const tl: "pen" | "marker" = tool === "marker" ? "marker" : "pen";
+      const tl = inkOf();
+      if (isProc(tl)) {   // 程序式筆刷自己收尾（含上色與貼回）
+        // liveKey＝這一筆的身分：作畫中走增量渲染（已定案那段不重畫，只補新增的點）
+        paintProcStroke(ctx, drawing, tl, baseW(tl) * sizes[tl], color, 1, W, H, strokeCal, liveKey);
+      } else {
       ctx.fillStyle = color;
       ctx.globalAlpha = tool === "marker" ? 0.32 : 1;
       // 進行中的筆畫每幀都在長，不進快取（臨時物件，畫完 GC）
       const sim = drawing.every((p) => p[2] === drawing![0][2]);
       const outline = getStroke(drawing, {
-        size: (tl === "marker" ? 24 : 7) * sizes[tl],
+        size: baseW(tl) * sizes[tl],
         thinning: tl === "marker" ? 0 : 0.55,
         smoothing: 0.5,
         streamline: 0.3,
@@ -447,6 +552,7 @@ export function openSketchEditor(store: Store, cutId: string) {
         ctx.fill();
       }
       ctx.globalAlpha = 1;
+      }
     }
     // 選取視覺：套索虛線、選取框＋四角把手
     if (tool === "select") {
@@ -479,8 +585,11 @@ export function openSketchEditor(store: Store, cutId: string) {
   };
   const syncBar = () => {
     overlay.querySelectorAll("[data-sktool]").forEach((b) => b.classList.toggle("on", (b as HTMLElement).dataset.sktool === tool));
+    const brushBtn = overlay.querySelector("[data-skbrush]") as HTMLElement;
+    brushBtn.classList.toggle("on", tool !== "eraser" && tool !== "select");
+    brushLabel.textContent = brushName(inkOf());
     // 拉桿滑塊照目前工具記住的倍率定位；橡皮擦/選取沒有粗細/顏色，兩組打淡不可按
-    const inkTool: "pen" | "marker" = tool === "marker" ? "marker" : "pen";
+    const inkTool = inkOf();
     const noInk = tool === "eraser" || tool === "select";
     const frac = (sizes[inkTool] - SIZE_MIN) / (SIZE_MAX - SIZE_MIN);
     (overlay.querySelector(".sk-thumb") as HTMLElement).style.left = `${SL_IN + frac * (SL_W - SL_IN * 2)}px`;
@@ -495,6 +604,56 @@ export function openSketchEditor(store: Store, cutId: string) {
     (overlay.querySelector("[data-sklayer]") as HTMLElement).classList.toggle("sk-fig", layer === "figure");
     (overlay.querySelector("[data-skunder]") as HTMLElement).textContent = work.underlay ? "✕ 墊底" : "＋ 墊底";
   };
+
+  // ---- 筆刷面板（浮動，點「筆刷」開合；與圖層面板同一套互動）----
+  // 為什麼收成選單：工具列已經很滿（Armin 2026-08-25「現在很完美，加了感覺很亂」）。
+  // 兩顆筆合成一顆，加了鉛筆與墨筆之後元件數反而比原本少一顆。
+  // 每列前面的縮圖＝真的跑那支筆刷畫出來的，不是示意圖。
+  const brushesEl = overlay.querySelector(".sk-brushes") as HTMLElement;
+  const brushLabel = overlay.querySelector("[data-skbrush] b") as HTMLElement;
+  let brushOpen = false;
+  const BRUSH_LIST: { id: InkTool; name: string }[] = [
+    { id: "pen", name: "筆" }, { id: "marker", name: "麥克筆" },
+    { id: "pencil", name: "鉛筆" }, { id: "ink", name: "墨筆" },
+  ];
+  const brushName = (id: InkTool) => BRUSH_LIST.find((b) => b.id === id)!.name;   // 這個編輯器目前整份未走 i18n
+  const TH_W = 76, TH_H = 22;
+  const brushThumb = (id: InkTool): HTMLCanvasElement => {
+    const c = document.createElement("canvas");
+    c.width = TH_W; c.height = TH_H;
+    const g = c.getContext("2d")!;
+    g.fillStyle = "#fff"; g.fillRect(0, 0, TH_W, TH_H);
+    // 一條輕→重→輕的樣本筆畫（縮圖座標，粗細照該支筆的基準值縮小）
+    const pts: number[][] = [];
+    for (let i = 0; i <= 40; i++) {
+      const u = i / 40;
+      pts.push([5 + u * (TH_W - 10), TH_H / 2 + Math.sin(u * Math.PI * 1.6) * 4, 0.15 + 0.5 * Math.sin(u * Math.PI)]);
+    }
+    const w = baseW(id) * sizes[id] * 0.42;   // 縮圖畫布只有畫布的四成寬
+    if (isProc(id)) paintProcStroke(g, pts, id, w, color, 1, TH_W, TH_H);
+    else {
+      const out = getStroke(pts, { size: w, thinning: id === "marker" ? 0 : 0.55, smoothing: 0.5, streamline: 0.3, simulatePressure: false });
+      g.fillStyle = color; g.globalAlpha = id === "marker" ? 0.32 : 1;
+      g.beginPath(); g.moveTo(out[0][0], out[0][1]);
+      for (let i = 1; i < out.length; i++) g.lineTo(out[i][0], out[i][1]);
+      g.closePath(); g.fill(); g.globalAlpha = 1;
+    }
+    return c;
+  };
+  const renderBrushes = () => {
+    brushesEl.innerHTML = "";
+    for (const b of BRUSH_LIST) {
+      const row = document.createElement("div");
+      row.className = "sk-brow" + (b.id === inkOf() ? " on" : "");
+      row.dataset.skpen = b.id;
+      row.append(brushThumb(b.id));
+      const n = document.createElement("span");
+      n.className = "sk-lname"; n.textContent = brushName(b.id);
+      row.append(n);
+      brushesEl.append(row);
+    }
+  };
+  const closeBrushes = () => { brushOpen = false; brushesEl.classList.remove("open"); };
 
   // ---- 圖層面板（浮動，點「圖層」開合）----
   // 列表由上而下＝畫面由上而下：自訂層（index 大在上）→ 人物 → 場景。
@@ -553,6 +712,7 @@ export function openSketchEditor(store: Store, cutId: string) {
     lsWrite("stbSkColorCustom", hex); // 滑桿每顆 input 都進來——延遲寫，別打 IPC
     color = hex;
     lsWrite("stbSkColor", hex);
+    saveSk();
     syncBar();
     syncPicks();
   };
@@ -640,9 +800,9 @@ export function openSketchEditor(store: Store, cutId: string) {
   const sizePrevDot = sizePrev.querySelector("i") as HTMLElement;
   let sliderDrag = false;
   const syncSizePrev = () => {
-    const tl: "pen" | "marker" = tool === "marker" ? "marker" : "pen";
+    const tl = inkOf();
     // 畫布座標的筆徑 × 畫布在螢幕上的縮放 ＝ 所見即所得的直徑
-    const d = (tl === "marker" ? 24 : 7) * sizes[tl] * (canvas.clientWidth / W);
+    const d = baseW(tl) * sizes[tl] * (canvas.clientWidth / W);
     sizePrevDot.style.width = sizePrevDot.style.height = `${d.toFixed(1)}px`;
     sizePrevDot.style.background = color;
     sizePrevDot.style.opacity = tl === "marker" ? "0.32" : "1";
@@ -653,9 +813,10 @@ export function openSketchEditor(store: Store, cutId: string) {
     const frac = Math.max(0, Math.min(1, ((ev.clientX - r.left) / r.width - t0) / t1));
     let v = SIZE_MIN + frac * (SIZE_MAX - SIZE_MIN);
     if (Math.abs(v - 1) < 0.07) v = 1; // 預設粗細（1.0）有吸附
-    const tl: "pen" | "marker" = tool === "marker" ? "marker" : "pen";
+    const tl = inkOf();
     sizes[tl] = v;
     lsWrite(sizeKey(tl), String(v)); // 拖曳中每顆 move 都進來——延遲寫
+    saveSk();
     syncSizePrev();
     syncBar();
   };
@@ -914,20 +1075,35 @@ export function openSketchEditor(store: Store, cutId: string) {
     const out: SketchStroke[] = [];
     let changed = false;
     for (const s of curStrokes()) {
-      const runs: number[][][] = [];
+      const runs: { pts: number[][]; off: number }[] = [];
       let run: number[][] = [];
+      let runOff = 0;
       let hit = false;
-      for (const p of s.pts) {
+      let arc = 0; // 走到目前點的弧長（沿原筆畫，含被擦掉的段）
+      for (let pi = 0; pi < s.pts.length; pi++) {
+        const p = s.pts[pi];
+        if (pi > 0) arc += Math.hypot(p[0] - s.pts[pi - 1][0], p[1] - s.pts[pi - 1][1]);
         if ((p[0] - x) * (p[0] - x) + (p[1] - y) * (p[1] - y) < rr) {
           hit = true;
-          if (run.length) { runs.push(run); run = []; }
-        } else run.push(p);
+          if (run.length) { runs.push({ pts: run, off: runOff }); run = []; }
+        } else {
+          if (!run.length) runOff = arc;
+          run.push(p);
+        }
       }
-      if (run.length) runs.push(run);
+      if (run.length) runs.push({ pts: run, off: runOff });
       if (!hit) { out.push(s); continue; }
       changed = true;
-      // 裂開的段落沿用原筆畫的粗細/顏色（太短的碎屑不留）
-      for (const r of runs) if (r.length >= 3) out.push({ ...s, pts: r });
+      // 裂開的段落沿用原筆畫的粗細/顏色（太短的碎屑不留）。
+      // 程序式筆刷另帶 seed＋off：紋理種子與 dab 網格落回原位，沒被擦到的部分長相不變
+      //（不帶的話後段起點變＝種子變，擦一下整條後段換紋理）。pen/marker 不需要、不寫欄位。
+      for (const r of runs) if (r.pts.length >= 3) out.push({
+        ...s, pts: r.pts,
+        ...(isProc(s.tool) ? {
+          seed: s.seed ?? seedOfPoint(s.pts[0][0], s.pts[0][1]),
+          off: Math.round(((s.off ?? 0) + r.off) * 10) / 10,
+        } : {}),
+      });
     }
     if (changed) { setCurStrokes(out); erasedAny = true; render(); }
   };
@@ -971,6 +1147,8 @@ export function openSketchEditor(store: Store, cutId: string) {
       return;
     }
     drawing = [toPt(e)];
+    strokeCal = currentCap();   // 落筆當下凍住＝作畫中的預覽與收筆後完全一致
+    liveKey = "s" + (++liveSeq);
     render();
   }, { signal: ac.signal });
   canvas.addEventListener("pointermove", (e) => {
@@ -981,7 +1159,7 @@ export function openSketchEditor(store: Store, cutId: string) {
       const d = selDrag;
       if (d.mode === "move") {
         const dx = x - d.last[0], dy = y - d.last[1];
-        if (dx || dy) transformSel((p) => [p[0] + dx, p[1] + dy, p[2]]);
+        if (dx || dy) queueSel(dx, dy, 1, 0, 0);   // rAF 合併：一幀只變形一次（程序式筆刷重繪貴）
         d.last = [x, y];
       } else {
         // 每步用「離定錨距離的比值」當倍率——連續乘上去，手感跟拉圖片角一樣
@@ -996,7 +1174,7 @@ export function openSketchEditor(store: Store, cutId: string) {
             const longSide = Math.max(bb[2] - bb[0], bb[3] - bb[1]);
             if (longSide > 0 && longSide * k < 12) k = 12 / longSide;
           }
-          if (k !== 1) transformSel((p) => [ax + (p[0] - ax) * k, ay + (p[1] - ay) * k, p[2]]);
+          if (k !== 1) queueSel(0, 0, k, ax, ay);
         }
         d.last = [x, y];
       }
@@ -1024,7 +1202,13 @@ export function openSketchEditor(store: Store, cutId: string) {
     if (Math.hypot(p1[0] - pts[0][0], p1[1] - pts[0][1]) > 200) pts.length = 0;
   };
   const finishStroke = () => {
-    if (selDrag) { selDrag = null; return; }
+    if (selDrag) {
+      if (selRaf) { cancelAnimationFrame(selRaf); selRaf = 0; }
+      flushSel();          // 佇列裡最後一小段變形要套完才放手，不然筆畫少移一截
+      selDrag = null;
+      render();            // selDrag 清掉後下一幀改走快取路徑（拖曳中是直繪）
+      return;
+    }
     if (lasso) { finishLasso(); return; }
     if (erasing) {
       erasing = false;
@@ -1033,13 +1217,18 @@ export function openSketchEditor(store: Store, cutId: string) {
     }
     if (!drawing) return;
     if (drawing.length > 1) {
+      noteStroke(drawing);   // 這一筆併進校準——只影響「之後」的筆畫（本筆已用凍住的值畫完）
+      liveEnd();             // 放掉增量渲染的暫存層
       pushUndo(); // 快照＝「畫這筆之前」
-      const tl = tool as "pen" | "marker";
+      const tl = tool as InkTool;
       const stroke: SketchStroke = {
         tool: tl, pts: drawing,
         // 等於預設值就不寫＝沒動過粗細/顏色的檔案 byte-identical
         ...(sizes[tl] !== 1 ? { size: sizes[tl] } : {}),
         ...(color !== INK ? { color } : {}),
+        ...(isProc(tl) ? { v: BRUSH_V, cal: Math.round(strokeCal * 1e4) / 1e4 } : {}),
+        // v＝配方版本、cal＝這筆的筆壓滿力值。兩個都是為了同一件事：
+        // 以後改預設值或校準往前走，**已經畫好的筆畫長相不變**。
       };
       setCurStrokes([...curStrokes(), stroke]);
       // 新筆是作用層最上面一筆＝直接補畫進 active，免整層重建
@@ -1063,7 +1252,7 @@ export function openSketchEditor(store: Store, cutId: string) {
   // 小觸點（小拇指側）系統不會自動當手掌，全靠這裡。工具列除外（按鈕要能點）。
   const palmGuard = (e: TouchEvent) => {
     // 工具列與各彈窗除外（preventDefault 會吃掉合成 click 與滑桿拖曳）
-    if (!(e.target as HTMLElement).closest(".sk-bar, .sk-layers, .sk-colorpop, .sk-helppop")) e.preventDefault();
+    if (!(e.target as HTMLElement).closest(".sk-bar, .sk-layers, .sk-brushes, .sk-colorpop, .sk-helppop")) e.preventDefault();
   };
   overlay.addEventListener("touchstart", palmGuard, { passive: false });
   overlay.addEventListener("touchmove", palmGuard, { passive: false });
@@ -1080,6 +1269,10 @@ export function openSketchEditor(store: Store, cutId: string) {
         closePanel();
         if (t === overlay) return;
       }
+      if (brushOpen && !t.closest(".sk-brushes") && !t.closest("[data-skbrush]")) {
+        closeBrushes();
+        if (t === overlay) return;
+      }
       if (helpOpen && !t.closest(".sk-helppop") && !t.closest("[data-skhelp]")) {
         closeHelp();
         if (t === overlay) return;
@@ -1089,9 +1282,26 @@ export function openSketchEditor(store: Store, cutId: string) {
         if (t === overlay) return;
       }
     }
+    if (t.closest("[data-skbrush]")) {
+      brushOpen = !brushOpen;
+      brushesEl.classList.toggle("open", brushOpen);
+      if (brushOpen) { renderBrushes(); placePop(brushesEl, overlay.querySelector("[data-skbrush]") as HTMLElement); }
+      return;
+    }
+    const brow = t.closest("[data-skpen]") as HTMLElement | null;
+    if (brow) {
+      tool = brow.dataset.skpen as InkTool;
+      lastInk = tool as InkTool;
+      saveSk();
+      clearSel();
+      closeBrushes();
+      syncBar(); syncSizePrev(); render();
+      return;
+    }
     const tb = t.closest("[data-sktool]") as HTMLElement | null;
     if (tb) {
       tool = tb.dataset.sktool as typeof tool;
+      if (tool !== "eraser" && tool !== "select") lastInk = tool;
       clearSel(); // 換工具＝選取解除
       syncBar();
       render();
@@ -1101,6 +1311,7 @@ export function openSketchEditor(store: Store, cutId: string) {
     if (cb) {
       color = cb.dataset.skcolor!;
       localStorage.setItem("stbSkColor", color);
+      saveSk();
       syncBar();
       return;
     }
@@ -1109,6 +1320,7 @@ export function openSketchEditor(store: Store, cutId: string) {
       if (customColor && color !== customColor) {
         color = customColor;
         localStorage.setItem("stbSkColor", color);
+        saveSk();
         syncBar();
         return;
       }
@@ -1206,6 +1418,7 @@ export function openSketchEditor(store: Store, cutId: string) {
   function close() {
     flushPrefs();                              // 延遲中的偏好落盤
     if (raf) { cancelAnimationFrame(raf); raf = 0; } // 池化畫布共用——別讓舊 session 的待畫幀畫到下一格
+    saveSk(); flushPrefs();                    // 筆刷狀態一定要落地（延遲寫還沒到期就關窗）
     ac.abort();                                // 池化 canvas 的監聽斷乾淨
     overlay.remove();
     document.removeEventListener("keydown", onKey, true);
@@ -1216,7 +1429,7 @@ export function openSketchEditor(store: Store, cutId: string) {
     // 編輯器開著時鍵盤自己收：Esc 取消、⌘Z 復原（不讓全域 undo 動到案子）
     if (e.key === "Escape") {
       e.preventDefault(); e.stopPropagation();
-      if (panelOpen || helpOpen || colorPopOpen) { closePanel(); closeHelp(); closeColorPop(); return; } // 先收各彈窗
+      if (panelOpen || brushOpen || helpOpen || colorPopOpen) { closePanel(); closeBrushes(); closeHelp(); closeColorPop(); return; } // 先收各彈窗
       if (sel.length || lasso) { clearSel(); render(); return; }        // 再解除選取
       close();                                                          // 都沒有才關編輯器
       return;
@@ -1238,4 +1451,8 @@ export function openSketchEditor(store: Store, cutId: string) {
   syncBar();
   loadUnderlay();
   render();
+  // 紙紋預熱：第一筆鉛筆才不會凍 ~80ms（烤 921,600 像素的 value noise）。
+  // 開編輯器 300ms 後做——別跟開場的三層離屏建構搶同一批幀。
+  // 不用 requestIdleCallback：WKWebView（iPad）到 iPadOS 26 都還不支援。
+  setTimeout(() => warmPencil(W, H), 300);
 }

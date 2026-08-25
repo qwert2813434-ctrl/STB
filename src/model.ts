@@ -37,7 +37,13 @@ export interface Film { id: string; name: string; }
 // pts＝[x,y,壓力]（分鏡底圖座標，見 boardDims）。
 // size＝粗細倍率（0.6/1/1.6）、color＝白名單色——都是條件式寫入：
 // 等於預設（1／黑）就不落地，沒動過新功能的舊檔存回 byte-identical。
-export interface SketchStroke { tool: "pen" | "marker"; pts: number[][]; size?: number; color?: string; }
+// tool：pen／marker 是 1.0 以來的外形填滿筆；pencil／ink 是 1.8 加的程序式筆刷。
+// v＝程序式筆刷的配方版本：之後調預設外觀時，舊筆畫仍照它當初的版本畫（不改動使用者既有的稿）。
+// cal＝這一筆的筆壓滿力值（程序式筆刷）。烤進筆畫裡是刻意的：校準會隨使用者的手慢慢調整，
+// 但**已經畫好的筆畫不能跟著變**——同一份資料每次都要畫出同一個樣子。
+// seed/off＝只有「被橡皮擦裂開」的程序式筆畫才寫：原筆畫的紋理種子＋這段的弧長起點，
+// 讓沒被擦到的部分長相與原畫一致（條件式落地→舊檔與沒裂過的檔 byte-identical）。
+export interface SketchStroke { tool: "pen" | "marker" | "pencil" | "ink"; pts: number[][]; size?: number; color?: string; v?: number; cal?: number; seed?: number; off?: number; }
 // 兩層固定圖層：場景（構圖，複製後通常不動）＋人物（表演/運鏡，擦掉重畫）。
 // underlay＝勘景照描圖墊底（半透明顯示沿描；輸出壓平「不含」墊底）。
 // 自訂圖層（2026-08-15 企劃 10）：scene/figure 兩層語意不動（「複製 cut 只改

@@ -1,0 +1,20 @@
+<!doctype html><meta charset="utf-8"><title>stable</title>
+<script type="module">
+window.onerror=(m,f,l)=>{document.title="ERR "+m+" @"+l;};
+import { paintProcStroke, noteStroke, currentCap } from "/src/brush.ts";
+const ST=await (await fetch("/dev-tests/_real-strokes.json")).json();
+const big=ST.reduce((a,b)=>a.pts.length>b.pts.length?a:b);
+const draw=(cal)=>{const c=document.createElement("canvas");c.width=1280;c.height=720;
+  const g=c.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,1280,720);
+  paintProcStroke(g,big.pts,"pencil",11,"#141311",1,1280,720,cal);
+  const d=g.getImageData(0,0,1280,720).data;let h=0,ink=0;
+  for(let i=0;i<d.length;i+=4){h=(h*31+d[i])|0;if(d[i]<200)ink++;}
+  return [h,ink];};
+const a=draw(0.19);
+// 中間讓校準跑好幾筆（模擬他一直畫）
+for(let k=0;k<8;k++)ST.forEach(s=>noteStroke(s.pts));
+const capNow=currentCap();
+const b=draw(0.19);                 // 烤了 cal 的舊筆畫：必須完全一樣
+const c=draw(undefined);            // 沒烤 cal（作畫中預覽）：會跟著校準走
+document.title=`烤了cal：${a[0]===b[0]?"完全相同":"不同！"}（墨 ${a[1]} vs ${b[1]}）｜校準漂到 ${capNow.toFixed(3)}｜不烤cal的墨 ${c[1]}`;
+</script>

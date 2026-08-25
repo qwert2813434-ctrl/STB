@@ -1,0 +1,29 @@
+<!doctype html><meta charset="utf-8"><title>圖層分解</title>
+<style>
+ body{margin:0;background:#f6f4ef;font:13px/1.5 -apple-system,"PingFang TC",sans-serif;color:#141311}
+ .g{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px}
+ figure{margin:0}canvas{width:100%;display:block;border:1px solid #ddd8cc;background:#fff}
+ figcaption{padding:5px 2px;letter-spacing:.05em}
+ b{color:#b3341c}
+</style><div class="g" id="g"></div>
+<script type="module">
+import { getStroke } from "./pf.mjs";
+function path(s){const sim=s.pts.every(p=>p[2]===s.pts[0][2]);
+ const o=getStroke(s.pts,{size:(s.tool==="marker"?24:7)*(s.size??1),thinning:s.tool==="marker"?0:0.55,smoothing:0.5,streamline:0.3,simulatePressure:sim});
+ const p=new Path2D(); if(!o.length)return p; p.moveTo(o[0][0],o[0][1]); for(let i=1;i<o.length;i++)p.lineTo(o[i][0],o[i][1]); p.closePath(); return p;}
+const i=+ (new URLSearchParams(location.search).get("i") ?? 0);
+const proj=await (await fetch("./out/小紅帽_手繪分鏡範本/project.json")).json();
+const cut=proj.cuts[i], sk=cut.sketch;
+const obj=(sk.extra??[]).flatMap(l=>l.strokes);
+const panels=[["① 背景層 scene",sk.scene],["② 人物層 figure",sk.figure],["③ 物件層 extra「物件」",obj],["合成（＝存進 imageRef 的那張）",[...sk.scene,...sk.figure,...obj]]];
+for(const [label,strokes] of panels){
+ const f=document.createElement("figure"), c=document.createElement("canvas");
+ c.width=1280;c.height=720; const cx=c.getContext("2d");
+ cx.fillStyle="#fff";cx.fillRect(0,0,1280,720);
+ for(const s of strokes){cx.fillStyle=s.color??"#141311";cx.globalAlpha=s.tool==="marker"?0.32:1;cx.fill(path(s));}
+ cx.globalAlpha=1;
+ const cap=document.createElement("figcaption"); cap.innerHTML=`<b>${label}</b>　${strokes.length} 筆`;
+ f.append(c,cap); document.getElementById("g").append(f);
+}
+document.title="done";
+</script>

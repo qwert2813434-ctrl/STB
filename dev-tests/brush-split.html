@@ -1,0 +1,35 @@
+<!doctype html><meta charset="utf-8"><title>split</title>
+<script type="module">
+window.onerror=(m,f,l)=>{document.title="ERR "+m+" @"+l;};
+import { paintProcStroke, seedOfPoint } from "/src/brush.ts";
+const ST=await (await fetch("/dev-tests/_real-strokes.json")).json();
+const big=ST.reduce((a,b)=>a.pts.length>b.pts.length?a:b);
+const mk=()=>{const c=document.createElement("canvas");c.width=1280;c.height=720;
+  const g=c.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,1280,720);return c;};
+paintProcStroke(mk().getContext("2d"),big.pts.slice(0,80),"pencil",11,"#141311",1,1280,720,0.19);
+// 原畫
+const orig=mk();paintProcStroke(orig.getContext("2d"),big.pts,"pencil",11,"#141311",1,1280,720,0.19);
+// 模擬橡皮擦在 40% 弧長處切一刀：後段 fragment 帶 seed+off（同 eraseAt 的算法）
+const cut=Math.floor(big.pts.length*0.4);
+let arc=0;for(let i=1;i<=cut;i++)arc+=Math.hypot(big.pts[i][0]-big.pts[i-1][0],big.pts[i][1]-big.pts[i-1][1]);
+const frag=big.pts.slice(cut);
+const seed=seedOfPoint(big.pts[0][0],big.pts[0][1]);
+const A=mk();paintProcStroke(A.getContext("2d"),frag,"pencil",11,"#141311",1,1280,720,0.19,undefined,seed,Math.round(arc*10)/10);
+const B=mk();paintProcStroke(B.getContext("2d"),frag,"pencil",11,"#141311",1,1280,720,0.19,undefined,seed,Math.round(arc*10)/10);
+const C=mk();paintProcStroke(C.getContext("2d"),frag,"pencil",11,"#141311",1,1280,720,0.19); // 沒帶 seed/off（舊行為）
+const D=(x,y)=>{const dO=orig.getContext("2d").getImageData(0,0,1280,720).data;
+  const cmp=c=>{const d=c.getContext("2d").getImageData(0,0,1280,720).data;
+    let ink=0,diff=0;for(let i=0;i<d.length;i+=4){const px=(i/4)%1280;
+      if(px<x)continue;                        // 只看離刀口遠的區域
+      if(dO[i]<200||d[i]<200)ink++;
+      if(Math.abs(d[i]-dO[i])>25)diff++;}
+    return ink?(diff*100/ink).toFixed(1):"0";};
+  return cmp;};
+// 刀口在 frag[0]，看 x 超過刀口+60px 的區域
+const cx0=frag[0][0]+60;const cx1=frag[0][0]+200;
+const cmp=D(cx0),cmp2=D(cx1);
+const s1=cmp(A), s3=cmp(C), f1=cmp2(A), f3=cmp2(C);
+const dA=A.getContext("2d").getImageData(0,0,1280,720).data, dB=B.getContext("2d").getImageData(0,0,1280,720).data;
+let rep=0;for(let i=0;i<dA.length;i+=4)if(Math.abs(dA[i]-dB[i])>3)rep++;
+document.title=`刀口+60px：新 ${s1}% 舊 ${s3}%｜刀口+200px：新 ${f1}% 舊 ${f3}%｜畫兩次差 ${rep}px`;
+</script>

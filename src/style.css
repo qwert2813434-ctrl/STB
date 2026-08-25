@@ -913,6 +913,10 @@ body:has(.mb-overlay, .crop-overlay, .pv-overlay, .ex-overlay, .sk-overlay, .hub
    這裡只覆寫定位（靠源碼順序在 .pv-fit 之後勝出）＝PDF 版面＝簡報版面。
    html2canvas 逐頁截圖，故放在畫面外但仍需正常排版（不能 display:none）。 */
 .pdf-capture { position: fixed; left: -20000px; top: 0; width: 1560px; transform: none; background: #fff; z-index: -1; }
+/* 深色版面匯出（匯出對話框的「深色版面」勾選）：底色與 LOGO 要一起換，
+   不然會出現「頁面是黑的、外框卻是白的」這種半套——那正是 2026-08-25 那個 bug 的長相。 */
+.pdf-capture.dark, .pdf-capture.dark .ex-slide16 { background: #0c0c0e; }
+.pdf-capture.dark .pv-logo-slide img { filter: brightness(0) invert(1); }
 .pdf-capture .page { box-shadow: none; }
 .pdf-capture .ref-play, .pdf-capture .vstop { display: none !important; }
 .pdf-capture .print-page { margin: 0 0 24px; }
@@ -1105,6 +1109,20 @@ body.sel-mode .cut [contenteditable] { pointer-events: none; }
 .sk-lrow { transition: transform .12s; }
 .sk-lrow.dragging { transition: none; position: relative; z-index: 2; background: var(--hover); box-shadow: 0 4px 14px rgba(0,0,0,.15); }
 .sk-lrow.sk-fixed { cursor: pointer; }
+/* 筆刷面板：與圖層面板同一套外觀（同寬、同圓角、同陰影），差別只在每列前面有筆觸縮圖。
+   縮圖是真的跑那支筆刷畫出來的——名稱看不出手感，一條線看得出來。 */
+.sk-brushes {
+  display: none;
+  position: absolute; top: 48px; left: 12px; z-index: 10;
+  width: 200px; padding: 6px;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: 0 10px 32px rgba(0,0,0,.22);
+}
+.sk-brushes.open { display: block; }
+.sk-brow { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 8px; cursor: pointer; }
+.sk-brow.on { background: var(--hover); }
+.sk-brow.on .sk-lname { font-weight: 600; }
+.sk-brow canvas { display: block; flex: none; border-radius: 4px; background: #fff; border: 1px solid var(--line2); }
 .sk-bar {
   display: flex; align-items: center; gap: 6px; padding: 10px 12px;
   background: var(--card); border-bottom: 1px solid var(--line);

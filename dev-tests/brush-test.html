@@ -1,0 +1,31 @@
+<!doctype html><meta charset="utf-8"><title>brush</title>
+<body style="margin:0;background:#fff">
+<canvas id="c" width="1280" height="720" style="width:640px"></canvas>
+<script type="module">
+window.onerror=(m,f,l)=>{document.title="ERR "+m+" @"+l;};
+import { paintProcStroke, isProc, BASE_W } from "/src/brush.ts";
+const g=document.getElementById("c").getContext("2d");
+g.fillStyle="#fff";g.fillRect(0,0,1280,720);
+const wave=(y,pf)=>{const a=[];for(let i=0;i<=120;i++){const u=i/120;
+  a.push([80+u*1100, y+Math.sin(u*Math.PI*1.7)*70, pf(u)]);}return a;};
+const t0=performance.now();
+paintProcStroke(g, wave(150,u=>.05+.28*Math.sin(u*Math.PI)), "pencil", BASE_W.pencil, "#141311", 1, 1280,720);
+const t1=performance.now();
+paintProcStroke(g, wave(330,u=>.05+.28*Math.sin(u*Math.PI)), "ink", BASE_W.ink, "#141311", 1, 1280,720);
+const t2=performance.now();
+paintProcStroke(g, wave(500,()=>.5), "pencil", BASE_W.pencil*2, "#b3341c", .4, 1280,720);   // 滑鼠（同壓）＋打淡
+const t3=performance.now();
+// 縮圖尺寸也跑一次（池化：換回大畫布不該重烤紙紋）
+const tc=document.createElement("canvas");tc.width=76;tc.height=22;
+paintProcStroke(tc.getContext("2d"), [[5,11,.2],[30,14,.5],[70,11,.3]], "pencil", 4, "#141311",1,76,22);
+const t4=performance.now();
+paintProcStroke(g, wave(650,u=>.3), "pencil", BASE_W.pencil, "#141311", 1, 1280,720);
+const t5=performance.now();
+const d=g.getImageData(0,0,1280,720).data;
+let ink=0,red=0;for(let i=0;i<d.length;i+=4){if(d[i]<200)ink++;if(d[i]>140&&d[i+2]<120&&d[i+1]<120)red++;}
+const tk=tc.getContext("2d").getImageData(0,0,76,22).data;let th=0;
+for(let i=0;i<tk.length;i+=4)if(tk[i]<220)th++;
+if(!document.title.startsWith("ERR"))document.title=
+  `proc=${isProc("pencil")}/${isProc("pen")} 墨=${ink} 紅=${red} 縮圖=${th} `+
+  `鉛筆首筆=${(t1-t0).toFixed(0)}ms 墨筆=${(t2-t1).toFixed(0)}ms 大筆=${(t3-t2).toFixed(0)}ms 縮圖=${(t4-t3).toFixed(0)}ms 回大畫布=${(t5-t4).toFixed(0)}ms`;
+</script>

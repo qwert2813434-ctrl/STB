@@ -1,0 +1,21 @@
+<!doctype html><meta charset="utf-8"><title>v</title>
+<style>html,body{margin:0;background:#fff;overflow:hidden}canvas{display:block}</style>
+<script type="module">
+import { getStroke } from "./pf.mjs";
+// 完全照 sketchEditor.ts 的 strokePath()＋paintStatic(editorMode=false)：
+// 白底、scene→figure→extra 依序、marker alpha 0.32、隱藏層不畫
+function path(s){
+  const sim = s.pts.every(p=>p[2]===s.pts[0][2]);
+  const o = getStroke(s.pts,{size:(s.tool==="marker"?24:7)*(s.size??1),thinning:s.tool==="marker"?0:0.55,smoothing:0.5,streamline:0.3,simulatePressure:sim});
+  const p=new Path2D(); if(!o.length) return p;
+  p.moveTo(o[0][0],o[0][1]); for(let i=1;i<o.length;i++)p.lineTo(o[i][0],o[i][1]); p.closePath(); return p;
+}
+const i = +new URLSearchParams(location.search).get("i");
+const proj = await (await fetch("./out/小紅帽_手繪分鏡範本/project.json")).json();
+const sk = proj.cuts[i].sketch;
+const c=document.createElement("canvas"); c.width=1280;c.height=720; document.body.append(c);
+const cx=c.getContext("2d"); cx.fillStyle="#ffffff"; cx.fillRect(0,0,1280,720);
+const seq=[...sk.scene,...sk.figure,...(sk.extra??[]).filter(l=>!l.hidden).flatMap(l=>l.strokes)];
+for(const s of seq){ cx.fillStyle=s.color??"#141311"; cx.globalAlpha=s.tool==="marker"?0.32:1; cx.fill(path(s)); }
+cx.globalAlpha=1; document.title="done";
+</script>

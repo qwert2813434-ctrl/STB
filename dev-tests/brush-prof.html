@@ -1,0 +1,23 @@
+<!doctype html><meta charset="utf-8"><title>prof</title>
+<script type="module">
+window.onerror=(m,f,l)=>{document.title="ERR "+m+" @"+l;};
+import { paintProcStroke } from "/src/brush.ts";
+import { S } from "/src/brushCore.ts";
+const ST=await (await fetch("/dev-tests/_real-strokes.json")).json();
+const big=ST.reduce((a,b)=>a.pts.length>b.pts.length?a:b);
+const c=document.createElement("canvas");c.width=1280;c.height=720;const g=c.getContext("2d");
+const run=(n=5)=>{const t=[];for(let i=0;i<n;i++){const a=performance.now();
+  paintProcStroke(g,big.pts,"pencil",11,"#141311",1,1280,720,0.19);t.push(performance.now()-a);}
+  return (t.reduce((x,y)=>x+y)/n).toFixed(1);};
+run(2);                                   // 暖機（烤紙紋）
+const full=run();
+const goo=S.goo; S.goo=0; const noGoo=run(); S.goo=goo;
+const th=S.tooth; S.tooth=0; const noGrain=run(); S.tooth=th;
+// 只算 dab：關掉模糊與紙紋
+S.goo=0;S.tooth=0; const dabsOnly=run(); S.goo=goo;S.tooth=th;
+// 一半長度：看成本跟長度的關係
+const half={...big,pts:big.pts.slice(0,Math.floor(big.pts.length/2))};
+const t0=performance.now();paintProcStroke(g,half.pts,"pencil",11,"#141311",1,1280,720,0.19);
+const halfMs=(performance.now()-t0).toFixed(1);
+document.title=`整筆 ${full}ms｜關模糊 ${noGoo}ms｜關紙紋 ${noGrain}ms｜只剩蓋章 ${dabsOnly}ms｜半長 ${halfMs}ms（${big.pts.length} 點）`;
+</script>

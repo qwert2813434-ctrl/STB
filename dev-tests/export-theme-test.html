@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <!-- iPad 縮放走 main.ts 的 zoom（viewport 縮小會讓 WKWebView 文字變糊） -->
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>STB</title>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="/src/main.ts"></script>
+  <script type="module">
+  window.onerror=(m,f,l)=>{document.title="ERR "+m+" @"+l;};
+  await new Promise(r=>setTimeout(r,2500));
+  if(document.documentElement.dataset.theme!=="dark")document.getElementById("btn-theme").click();
+  await new Promise(r=>setTimeout(r,300));
+  document.getElementById("btn-print").click();
+  // 等第一輪截圖整批結束（勾選框解鎖＝captureAll 的 finally 跑完）再驗，
+  // 不然驗到一半的資料；順便驗「截圖中勾選框被鎖」這條新防護
+  let sawLocked=false;
+  for(let i=0;i<120;i++){await new Promise(r=>setTimeout(r,400));
+    const dk=document.querySelector("[data-exdark]");
+    if(dk&&dk.disabled)sawLocked=true;
+    if(dk&&!dk.disabled&&document.querySelectorAll(".ex-thumbs img").length>=4)break;}
+  for(let i=0;i<80;i++){
+    await new Promise(r=>setTimeout(r,400));
+    const e=[...document.querySelectorAll(".ex-thumbs img")].filter(x=>x.complete&&x.naturalWidth>0);
+    document.title=`t=${((i+1)*0.4).toFixed(1)}s 圖數=${e.length} 狀態=${(document.querySelector(".ex-status")||{}).textContent||"—"}`;
+    if(e.length>=4){
+      const img=e[e.length-1];
+      const c=document.createElement("canvas");c.width=img.naturalWidth;c.height=img.naturalHeight;
+      const g=c.getContext("2d");g.drawImage(img,0,0);
+      const d=g.getImageData(0,0,c.width,c.height).data;let sum=0,n=0;
+      for(let k=0;k<d.length;k+=4){sum+=(d[k]+d[k+1]+d[k+2])/3;n++;}
+      // LOGO 頁（第一張）：深色版必須有夠多「白」像素＝反白剪影有生效
+      //（html2canvas 不吃 CSS filter，之前是黑上黑隱形）
+      const lg=document.querySelector(".ex-thumbs img");
+      const c2=document.createElement("canvas");c2.width=lg.naturalWidth;c2.height=lg.naturalHeight;
+      const g2=c2.getContext("2d");g2.drawImage(lg,0,0);
+      const d2=g2.getImageData(0,0,c2.width,c2.height).data;let wh=0;
+      for(let k=0;k<d2.length;k+=4)if(d2[k]>200&&d2[k+1]>200)wh++;
+      document.title=`深色版面：末頁平均亮度 ${(sum/n).toFixed(0)}（黑底應<80）｜LOGO頁白像素 ${wh}（反白生效應>500）｜截圖中鎖勾選=${sawLocked}｜圖數 ${e.length}｜主題 ${document.documentElement.dataset.theme}`;
+      break;
+    }
+  }
+  </script>
+</body>
+</html>

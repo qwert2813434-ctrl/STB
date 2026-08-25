@@ -1,0 +1,65 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>角色表</title>
+<style>
+  body { margin: 0; background: #f6f4ef; font: 12px/1.5 -apple-system, "PingFang TC", sans-serif; color: #141311; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; padding: 10px; }
+  figure { margin: 0; background: #fff; border: 1px solid #ddd8cc; }
+  figcaption { padding: 4px 6px; letter-spacing: .05em; }
+</style>
+<div class="row" id="row"></div>
+<script type="module">
+import { getStroke } from "./pf.mjs";
+import { makeHand, GREY, RED } from "./draw.mjs";
+import { redHood, basket, wolf, person, tree, cottage, bed, LW } from "./parts.mjs";
+
+function path(s) {
+  const sim = s.pts.every((p) => p[2] === s.pts[0][2]);
+  const o = getStroke(s.pts, {
+    size: (s.tool === "marker" ? 24 : 7) * (s.size ?? 1),
+    thinning: s.tool === "marker" ? 0 : 0.55,
+    smoothing: 0.5, streamline: 0.3, simulatePressure: sim,
+  });
+  const p = new Path2D();
+  if (!o.length) return p;
+  p.moveTo(o[0][0], o[0][1]);
+  for (let i = 1; i < o.length; i++) p.lineTo(o[i][0], o[i][1]);
+  p.closePath();
+  return p;
+}
+function cell(w, h, label, fn) {
+  const fig = document.createElement("figure");
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  const cx = c.getContext("2d");
+  cx.fillStyle = "#fff"; cx.fillRect(0, 0, w, h);
+  const strokes = fn(makeHand(7000 + label.length * 13 + w));
+  for (const s of strokes.flat()) {
+    if (!s) continue;
+    cx.fillStyle = s.color ?? "#141311";
+    cx.globalAlpha = s.tool === "marker" ? 0.32 : 1;
+    cx.fill(path(s));
+  }
+  const cap = document.createElement("figcaption");
+  cap.textContent = label;
+  fig.append(c, cap);
+  document.getElementById("row").append(fig);
+}
+
+const P = [["walk", 1], ["stand", 1], ["run", 1], ["reach", 1], ["crouch", 1], ["walk", -1]];
+for (const [pose, face] of P) cell(230, 400, `紅 ${pose} ${face > 0 ? "→" : "←"}`, (h) => {
+  const g = redHood(h, { x: 115, y: 370, s: 320, face, pose });
+  return [...g.strokes, ...basket(h, { x: g.hand[0] + 2 * face, y: g.hand[1] + 26, s: 80, face })];
+});
+for (const [pose, face] of [["stalk", 1], ["trot", 1], ["sit", 1], ["leap", 1], ["stalk", -1], ["stand", 1], ["lie", 1]])
+  cell(360, 300, `狼 ${pose} ${face > 0 ? "→" : "←"}`, (h) => wolf(h, { x: 180, y: 275, s: 250, face, pose, bonnet: pose === "stand" || pose === "lie" }).out);
+for (const who of ["granny", "hunter"]) cell(230, 400, `人 ${who}`, (h) => person(h, { x: 115, y: 375, s: 330, who }).out);
+cell(420, 320, "小屋", (h) => cottage(h, { x: 210, base: 300, w: 340 }));
+cell(420, 320, "小屋 開門", (h) => cottage(h, { x: 210, base: 300, w: 340, open: true, face: -1 }));
+cell(420, 320, "床", (h) => bed(h, { x: 210, base: 290, w: 380 }));
+cell(420, 320, "床 ←", (h) => bed(h, { x: 210, base: 290, w: 380, face: -1 }));
+for (const k of ["fir", "oak", "bare"]) cell(240, 340, `樹 ${k}`, (h) => tree(h, { x: 120, base: 320, h: 280, kind: k }));
+cell(240, 340, "樹 trunk", (h) => tree(h, { x: 120, base: 340, h: 340, w: 150, kind: "trunk" }));
+cell(200, 240, "籃子", (h) => basket(h, { x: 100, y: 160, s: 150 }));
+window.__done = 1;
+</script>

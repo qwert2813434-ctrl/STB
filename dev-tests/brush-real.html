@@ -1,0 +1,28 @@
+<!doctype html><meta charset="utf-8"><title>real</title>
+<body style="margin:0;background:#222;color:#ddd;font:13px -apple-system">
+<div id="w" style="display:flex;flex-wrap:wrap"></div>
+<script type="module">
+window.onerror=(m,f,l)=>{document.title="ERR "+m+" @"+l;};
+import { paintProcStroke } from "/src/brush.ts";
+const ST=await (await fetch("/dev-tests/_real-strokes.json")).json();
+const zoom=1.33;
+function panel(label,st,box,cal){
+  const full=document.createElement("canvas");full.width=1280;full.height=720;
+  const fg=full.getContext("2d");fg.fillStyle="#fff";fg.fillRect(0,0,1280,720);
+  const t=performance.now();
+  paintProcStroke(fg,st.pts,"pencil",11,"#141311",1,1280,720,cal);
+  const ms=performance.now()-t;
+  const d=document.createElement("div");
+  const h=document.createElement("div");h.style.padding="4px 8px";h.textContent=label+"　"+ms.toFixed(0)+"ms";d.append(h);
+  const c=document.createElement("canvas");c.width=box[2]*zoom;c.height=box[3]*zoom;c.style.background="#fff";
+  d.append(c);document.getElementById("w").append(d);
+  c.getContext("2d").drawImage(full,box[0],box[1],box[2],box[3],0,0,c.width,c.height);
+}
+const s1=ST[0],s3=ST.reduce((a,b)=>a.pts.length>b.pts.length?a:b);
+const bb=st=>{const xs=st.pts.map(p=>p[0]),ys=st.pts.map(p=>p[1]);
+  return [Math.round(Math.min(...xs))-15,Math.round(Math.min(...ys))-15,
+          Math.round(Math.max(...xs)-Math.min(...xs))+30,Math.round(Math.max(...ys)-Math.min(...ys))+30];};
+panel("有 0.5 尖峰那筆（458 點）",s1,bb(s1),0.16);
+panel("螺旋那筆（3231 點）",s3,bb(s3),0.19);
+document.title="ok";
+</script>

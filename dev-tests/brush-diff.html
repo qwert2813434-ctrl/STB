@@ -1,0 +1,28 @@
+<!doctype html><meta charset="utf-8"><title>diff</title>
+<script type="module">
+window.onerror=(m,f,l)=>{document.title="ERR "+m+" @"+l;};
+import { paintProcStroke, liveEnd } from "/src/brush.ts";
+const ST=await (await fetch("/dev-tests/_real-strokes.json")).json();
+const big=ST.reduce((a,b)=>a.pts.length>b.pts.length?a:b);
+const mk=()=>{const c=document.createElement("canvas");c.width=1280;c.height=720;
+  const g=c.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,1280,720);return c;};
+paintProcStroke(mk().getContext("2d"),big.pts.slice(0,60),"pencil",11,"#141311",1,1280,720,0.19); // 暖機
+const commit=mk();paintProcStroke(commit.getContext("2d"),big.pts,"pencil",11,"#141311",1,1280,720,0.19);
+const C=commit.getContext("2d").getImageData(0,0,1280,720).data;
+const diffOf=(cv)=>{const D=cv.getContext("2d").getImageData(0,0,1280,720).data;
+  let n=0,maxd=0,x0=1e9,y0=1e9,x1=-1,y1=-1;
+  for(let i=0;i<D.length;i+=4){const d=Math.abs(D[i]-C[i]);
+    if(d>3){n++;if(d>maxd)maxd=d;const px=(i/4)%1280,py=(i/4/1280)|0;
+      if(px<x0)x0=px;if(px>x1)x1=px;if(py<y0)y0=py;if(py>y1)y1=py;}}
+  return n?`${n}px max${maxd} bbox[${x0},${y0}→${x1},${y1}]`:"0";};
+// A：單次 live（同一份最終資料、一次呼叫）
+liveEnd();const A=mk();paintProcStroke(A.getContext("2d"),big.pts,"pencil",11,"#141311",1,1280,720,0.19,"one");liveEnd();
+// B：逐步 live（模擬作畫）
+const B=mk(),bg=B.getContext("2d");
+for(let n=40;n<=big.pts.length;n+=40){bg.fillStyle="#fff";bg.fillRect(0,0,1280,720);
+  paintProcStroke(bg,big.pts.slice(0,n),"pencil",11,"#141311",1,1280,720,0.19,"inc");}
+bg.fillStyle="#fff";bg.fillRect(0,0,1280,720);
+paintProcStroke(bg,big.pts,"pencil",11,"#141311",1,1280,720,0.19,"inc");liveEnd();
+// 筆畫頭的位置給參考
+document.title=`單次live vs 成品：${diffOf(A)}｜逐步live vs 成品：${diffOf(B)}｜筆頭(${big.pts[0][0]|0},${big.pts[0][1]|0}) 筆尾(${big.pts.at(-1)[0]|0},${big.pts.at(-1)[1]|0})`;
+</script>

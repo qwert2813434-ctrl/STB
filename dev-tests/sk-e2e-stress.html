@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <!-- iPad 縮放走 main.ts 的 zoom（viewport 縮小會讓 WKWebView 文字變糊） -->
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>STB</title>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="/src/main.ts"></script>
+  <script type="module">
+  // 端對端壓測：真的 App、真的塗鴉編輯器、真的指標事件。量的是「使用者感受的那層」：
+  // 每個階段記錄 rAF 之間的最大間隔（＝畫面凍結多久），不是自己的計數器。
+  window.onerror=(m,f,l)=>{fetch("http://127.0.0.1:8767/result",{method:"POST",mode:"no-cors",body:"ERR "+m+" @"+l});};
+  window.confirm=()=>true;
+  const raf=()=>new Promise(r=>requestAnimationFrame(r));
+  const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+  let gapMax=0,gapOn=false;
+  (async function watch(){let t=performance.now();for(;;){await raf();const n=performance.now();
+    if(gapOn&&n-t>gapMax)gapMax=n-t;t=n;}})();
+  const phase=async fn=>{gapMax=0;gapOn=true;const t0=performance.now();await fn();await raf();await raf();
+    gapOn=false;return {ms:(performance.now()-t0).toFixed(0),gap:gapMax.toFixed(0)};};
+  const cv=()=>document.querySelector(".sk-canvas");
+  const ev=(t,x,y,pr,extra)=>cv().dispatchEvent(new PointerEvent(t,{clientX:x,clientY:y,pressure:pr,
+    pointerType:"pen",pointerId:1,isPrimary:true,bubbles:true,cancelable:true,buttons:1,...extra}));
+  const stroke=async(x0,y0,len,amp)=>{ev("pointerdown",x0,y0,.15);
+    for(let i=1;i<=15;i++){ev("pointermove",x0+i*len/15,y0+Math.sin(i/3)*amp,.1+.2*Math.sin(i/15*3.14));await raf();}
+    ev("pointerup",x0+len,y0,.2);await raf();};
+  const ink=()=>{const c=cv(),g=c.getContext("2d");const d=g.getImageData(0,0,c.width,c.height).data;
+    let n=0;for(let i=0;i<d.length;i+=4)if(d[i]<200)n++;return n;};
+  const click=el=>{el.dispatchEvent(new MouseEvent("click",{bubbles:true}));};
+
+  await sleep(2500);
+  document.querySelector(".thumb-sketch")?.dispatchEvent(new MouseEvent("click",{bubbles:true}));
+  await sleep(600);
+  if(!cv()){await fetch("http://127.0.0.1:8767/result",{method:"POST",mode:"no-cors",body:"開不了塗鴉編輯器"});throw 0;}
+  const r=cv().getBoundingClientRect();const X=r.left,Y=r.top,W2=r.width,H2=r.height;
+
+  // 換筆：走真的筆刷選單（順便驗證選單點得動）
+  click(document.querySelector("[data-skbrush]"));await raf();
+  const row=document.querySelector('[data-skpen="pencil"]');
+  if(!row){await fetch("http://127.0.0.1:8767/result",{method:"POST",mode:"no-cors",body:"筆刷選單裡沒有鉛筆列"});throw 0;}
+  click(row);await raf();
+
+  // A：60 筆鉛筆
+  const A=await phase(async()=>{for(let k=0;k<60;k++)
+    await stroke(X+30+(k%6)*W2*.14, Y+40+((k/6)|0)*H2*.09, W2*.5, 18);});
+  const inkA=ink();
+
+  // B：換到場景層再換回（整層重建 below/above）
+  const B=await phase(async()=>{
+    click(document.querySelector("[data-sklayer]"));await raf();
+    click(document.querySelector('.sk-lrow[data-lid="scene"]'));await sleep(400);
+    click(document.querySelector("[data-sklayer]"));await raf();
+    click(document.querySelector('.sk-lrow[data-lid="figure"]'));await sleep(700);});
+
+  // C：橡皮擦三刀
+  click(document.querySelector('[data-sktool="eraser"]'));await raf();
+  const C=await phase(async()=>{for(let k=0;k<3;k++){
+    ev("pointerdown",X+40,Y+40+k*60,.5);
+    for(let i=1;i<=25;i++){ev("pointermove",X+40+i*W2*.035,Y+40+k*60+i*3,.5);await raf();}
+    ev("pointerup",X+40+25*W2*.035,Y+40+k*60+80,.5);await raf();}});
+  const inkC=ink();
+
+  // D：復原十次＋重做十次
+  const D=await phase(async()=>{
+    for(let i=0;i<10;i++){click(document.querySelector("[data-skundo]"));await raf();}
+    for(let i=0;i<10;i++){click(document.querySelector("[data-skredo]"));await raf();}});
+
+  // D2：選取拖曳（rAF 合併＋拖曳中直繪不進快取——這段是剛改過的路徑）
+  click(document.querySelector('[data-sktool="select"]'));await raf();
+  const D2=await phase(async()=>{
+    // 套索圈住左上一批筆畫
+    ev("pointerdown",X+20,Y+20,.5);
+    for(let i=1;i<=20;i++){ev("pointermove",X+20+Math.cos(i/20*6.28)*130+130,Y+20+Math.sin(i/20*6.28)*90+90,.5);await raf();}
+    ev("pointerup",X+20,Y+20,.5);await raf();
+    // 框內拖曳移動
+    ev("pointerdown",X+150,Y+110,.5);
+    for(let i=1;i<=30;i++){ev("pointermove",X+150+i*4,Y+110+i*2,.5);await raf();}
+    ev("pointerup",X+270,Y+170,.5);await raf();});
+
+  // E：墨筆五筆
+  click(document.querySelector("[data-skbrush]"));await raf();
+  click(document.querySelector('[data-skpen="ink"]'));await raf();
+  const E=await phase(async()=>{for(let k=0;k<5;k++)
+    await stroke(X+50,Y+H2*.55+k*22,W2*.6,10);});
+
+  // F：完成（壓平存回）
+  const F=await phase(async()=>{click(document.querySelector(".sk-ok"));await sleep(500);});
+
+  const line=`A60筆:${A.ms}ms/凍${A.gap}｜B換層:${B.ms}/凍${B.gap}｜C擦:${C.ms}/凍${C.gap}｜D復原:${D.ms}/凍${D.gap}｜D2選取拖曳:${D2.ms}/凍${D2.gap}｜E墨筆:${E.ms}/凍${E.gap}｜F完成:${F.ms}/凍${F.gap}｜墨 ${inkA}→擦後 ${inkC}`;
+  document.title=line;
+  await fetch("http://127.0.0.1:8767/result",{method:"POST",mode:"no-cors",body:line}).catch(()=>{});
+  </script>
+</body>
+</html>

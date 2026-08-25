@@ -31,6 +31,7 @@ export async function openExportDialog(store: Store) {
         <span class="ex-title">${t("匯出")}</span>
         <label class="ex-opt"><input type="checkbox" data-extitles checked> ${t("封面＋章節標題頁")}</label>
         <label class="ex-opt"><input type="checkbox" data-exlabels> ${t("頁面小標")}</label>
+        <label class="ex-opt" title="${t("深色＝黑底白字的螢幕版；亮色＝米白印刷版。預設跟著你現在的主題。只作用於 PDF 與預覽——PPTX 可編輯版恆為亮色。")}"><input type="checkbox" data-exdark${document.documentElement.dataset.theme === "dark" ? " checked" : ""}> ${t("深色版面")}</label>
         <span class="spacer"></span>
         <button class="ex-go" data-exgo="pdf">${t("匯出 PDF")}</button>
         <button class="ex-go" data-exgo="pptx">${t("匯出 PPTX（可編輯）")}</button>
@@ -52,16 +53,33 @@ export async function openExportDialog(store: Store) {
 
   const withTitles = () => (overlay.querySelector("[data-extitles]") as HTMLInputElement).checked;
   const withLabels = () => (overlay.querySelector("[data-exlabels]") as HTMLInputElement).checked;
+  const wantDark = () => (overlay.querySelector("[data-exdark]") as HTMLInputElement).checked;
 
   // 逐頁截圖：頁面掛 .pv-fit ⇒ 沿用簡報全部字體與隱藏規則；scale 2 求印刷銳利度
   async function captureAll() {
     busy = true;
+    // 匯出配色由「深色版面」勾選決定，預設跟著目前主題（Armin 2026-08-25：
+    // 「我不希望他是亮色，為什麼不能匯出深色」——之前硬寫亮色是我替他決定的，改成可選）。
+    //
+    // 為什麼要在這裡「整份設定主題」而不是放著不管：匯出走 html2canvas **截目前的 DOM**，
+    // 而深色掛在 `:root[data-theme]`（main.ts:46）。原本的 bug 是主題深色、
+    // 但截圖底色硬寫白 → 出來半黑半白（他看到的「只有分鏡頁是黑的」）。
+    // 現在兩件事綁在一起：主題與底色同進同出，兩種配色都是完整一致的成品。
+    const dark = wantDark();
+    // 截圖期間鎖住會觸發「重截」的勾選——captureAll 不可重入：
+    // 兩輪並行會互踩 prevTheme（還原成使用者沒選的主題）、共用的 chapters 交錯出重複章、
+    // 甚至截出「內容一個主題、底色另一個主題」的混色頁（代理人審查 2026-08-25 三個視角同時抓到）。
+    const locked = overlay.querySelectorAll<HTMLInputElement>("[data-exlabels],[data-exdark]");
+    locked.forEach((i) => { i.disabled = true; });
+    const rootEl = document.documentElement;
+    const prevTheme = rootEl.dataset.theme;
+    rootEl.dataset.theme = dark ? "dark" : "light";
     const src = collectChapters(store);
     const cap = document.createElement("div");
-    cap.className = "pv-fit pdf-capture" + (withLabels() ? "" : " nolabel");
+    cap.className = "pv-fit pdf-capture" + (withLabels() ? "" : " nolabel") + (dark ? " dark" : "");
     document.body.appendChild(cap);
     const shot = async (el: HTMLElement): Promise<ExImg> => {
-      const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff", logging: false, useCORS: true });
+      const canvas = await html2canvas(el, { scale: 2, backgroundColor: dark ? "#0c0c0e" : "#ffffff", logging: false, useCORS: true });
       const img = { img: canvas.toDataURL("image/jpeg", 0.92), w: canvas.width, h: canvas.height };
       canvas.width = canvas.height = 0; // iOS：畫布用完立刻釋放
       return img;
@@ -84,8 +102,10 @@ export async function openExportDialog(store: Store) {
       // 忽略 CSS 縮放 → 之前縮圖只剩一個角）
       const logoEl = slide16(logoSlideHtml(store));
       const logoImg = logoEl.querySelector("img");
-      if (logoImg && logoImg.src.startsWith("data:image/svg")) {
-        const r = await rasterLogo(logoImg.src);
+      // SVG 一律先轉 PNG（html2canvas 畫 SVG 會照原生尺寸）；深色版面則**不分格式**都過一次
+      // ——反白要在光柵化階段做（見 rasterLogo 的 whiten 註解），使用者換上的 PNG logo 也要吃到
+      if (logoImg && (dark || logoImg.src.startsWith("data:image/svg"))) {
+        const r = await rasterLogo(logoImg.src, dark);
         if (r) { logoImg.src = r.data; await logoImg.decode().catch(() => { /* 就緒即可 */ }); }
       }
       logo = await shot(logoEl);
@@ -107,6 +127,8 @@ export async function openExportDialog(store: Store) {
       }
     } finally {
       cap.remove();
+      if (prevTheme) rootEl.dataset.theme = prevTheme; else delete rootEl.dataset.theme;
+      locked.forEach((i) => { i.disabled = false; });
       busy = false;
     }
   }
@@ -164,8 +186,10 @@ export async function openExportDialog(store: Store) {
         const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: [338.7, 190.5] });
         const pw = pdf.internal.pageSize.getWidth();
         const ph = pdf.internal.pageSize.getHeight();
+        const darkPdf = wantDark();
         imgs.forEach((m, i) => {
           if (i > 0) pdf.addPage();
+          if (darkPdf) { pdf.setFillColor(12, 12, 14); pdf.rect(0, 0, pw, ph, "F"); } // 鋪深色底：圖與頁面比例有零點幾 mm 差、內容頁 contain 會留邊
           const k = Math.min(pw / m.w, ph / m.h);
           pdf.addImage(m.img, "JPEG", (pw - m.w * k) / 2, (ph - m.h * k) / 2, m.w * k, m.h * k);
         });
@@ -258,7 +282,7 @@ export async function openExportDialog(store: Store) {
       renderPreview();
     } else if (el.hasAttribute("data-extitles")) {
       renderPreview();
-    } else if (el.hasAttribute("data-exlabels")) { // 小標開關要重截圖
+    } else if (el.hasAttribute("data-exlabels") || el.hasAttribute("data-exdark")) { // 小標／配色要重截圖
       body.innerHTML = `<div class="ex-status">${t("擷取頁面中…")}</div>`;
       void captureAll().then(renderPreview).catch(showCaptureError);
     }

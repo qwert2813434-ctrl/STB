@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>接觸表</title>
+<style>
+  body { margin: 0; background: #f6f4ef; font: 11px/1.4 -apple-system, "PingFang TC", sans-serif; color: #141311; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 8px; }
+  figure { margin: 0; }
+  canvas { width: 100%; display: block; border: 1px solid #ddd8cc; background: #fff; }
+  figcaption { padding: 3px 2px; letter-spacing: .03em; }
+  b { color: #b3341c; }
+</style>
+<div class="grid" id="grid"></div>
+<script type="module">
+import { getStroke } from "./pf.mjs";
+import { CUTS, buildCut } from "./story.mjs";
+import { W, H, INK } from "./draw.mjs";
+
+export function strokePath(s) {
+  const sim = s.pts.every((p) => p[2] === s.pts[0][2]);
+  const o = getStroke(s.pts, {
+    size: (s.tool === "marker" ? 24 : 7) * (s.size ?? 1),
+    thinning: s.tool === "marker" ? 0 : 0.55,
+    smoothing: 0.5, streamline: 0.3, simulatePressure: sim,
+  });
+  const p = new Path2D();
+  if (!o.length) return p;
+  p.moveTo(o[0][0], o[0][1]);
+  for (let i = 1; i < o.length; i++) p.lineTo(o[i][0], o[i][1]);
+  p.closePath();
+  return p;
+}
+export function paint(cx, L) {
+  cx.fillStyle = "#ffffff";
+  cx.fillRect(0, 0, W, H);
+  for (const s of [...L.scene, ...L.figure, ...L.extra.flatMap((l) => l.strokes)]) {
+    if (!s) continue;
+    cx.fillStyle = s.color ?? INK;
+    cx.globalAlpha = s.tool === "marker" ? 0.32 : 1;
+    cx.fill(strokePath(s));
+  }
+  cx.globalAlpha = 1;
+}
+
+const q = new URLSearchParams(location.search);
+const from = +(q.get("from") ?? 0), to = +(q.get("to") ?? CUTS.length);
+const grid = document.getElementById("grid");
+for (let i = from; i < to; i++) {
+  const L = buildCut(i);
+  const fig = document.createElement("figure");
+  const c = document.createElement("canvas");
+  c.width = W; c.height = H;
+  paint(c.getContext("2d"), L);
+  const cap = document.createElement("figcaption");
+  const n = L.scene.length + L.figure.length + L.extra[0].strokes.length;
+  cap.innerHTML = `<b>CUT ${String(i + 1).padStart(2, "0")}</b> ${CUTS[i].shot}　${CUTS[i].desc.slice(0, 22)}　<span style="color:#8d8880">${n}筆</span>`;
+  fig.append(c, cap);
+  grid.append(fig);
+}
+window.__done = 1;
+</script>

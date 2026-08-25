@@ -1,0 +1,26 @@
+<!doctype html><meta charset="utf-8"><title>bench</title>
+<canvas id="c" width="1280" height="720"></canvas>
+<script type="module">
+window.onerror=(m,f,l)=>{document.title="ERR "+m+" @"+l;};
+import { paintProcStroke, BASE_W } from "/src/brush.ts";
+const g=document.getElementById("c").getContext("2d");
+const wave=(n,y,len)=>{const a=[];for(let i=0;i<=n;i++){const u=i/n;
+  a.push([80+u*len, y+Math.sin(u*Math.PI*1.7)*70, .1+.25*Math.sin(u*Math.PI)]);}return a;};
+paintProcStroke(g, wave(20,60,200), "pencil", 11, "#141311",1,1280,720);  // 先烤紙紋
+const out=[];
+for(const [n,len] of [[40,200],[120,500],[240,900],[480,1150]]){
+  const p=wave(n,300,len), t=[];
+  for(let k=0;k<5;k++){const a=performance.now();paintProcStroke(g,p,"pencil",11,"#141311",1,1280,720);t.push(performance.now()-a);}
+  out.push(n+"點/"+len+"px "+(t.reduce((x,y)=>x+y)/5).toFixed(1)+"ms");
+}
+// 顏色與打淡確實有效？
+g.fillStyle="#fff";g.fillRect(0,0,1280,720);
+paintProcStroke(g, wave(80,300,900), "pencil", 11, "#b3341c", 1, 1280,720);
+const d=g.getImageData(0,0,1280,720).data;let warm=0;
+for(let i=0;i<d.length;i+=4)if(d[i]-d[i+1]>25)warm++;
+g.fillStyle="#fff";g.fillRect(0,0,1280,720);
+paintProcStroke(g, wave(80,300,900), "pencil", 11, "#141311", .4, 1280,720);
+const d2=g.getImageData(0,0,1280,720).data;let dim=0;
+for(let i=0;i<d2.length;i+=4)if(d2[i]<230)dim++;
+if(!document.title.startsWith("ERR"))document.title=out.join(" | ")+" || 紅筆像素="+warm+" 打淡0.4像素="+dim;
+</script>

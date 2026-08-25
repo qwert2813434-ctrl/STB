@@ -267,6 +267,8 @@ export const en: Record<string, string> = {
   // ---- 匯出對話框 ----
   "匯出": "Export",
   "封面＋章節標題頁": "Cover + chapter title pages",
+  "深色版面": "Dark layout",
+  "深色＝黑底白字的螢幕版；亮色＝米白印刷版。預設跟著你現在的主題。只作用於 PDF 與預覽——PPTX 可編輯版恆為亮色。": "Dark = black-background screen version; light = off-white print version. Follows your current theme by default. Applies to PDF and preview only — editable PPTX is always light.",
   "頁面小標": "Page headers",
   "匯出 PDF": "Export PDF",
   "匯出 PPTX（可編輯）": "Export PPTX (editable)",
