@@ -13,7 +13,7 @@
 
 👉 **[下載 STB for Mac（DMG）](https://raw.githubusercontent.com/qwert2813434-ctrl/STB/main/release/STB_1.8.0_aarch64.dmg)**（v1.8.0）
 
-🪟 **[下載 STB for Windows（安裝檔）](https://raw.githubusercontent.com/qwert2813434-ctrl/STB/main/release/STB_1.7.1_x64-setup.exe)**（v1.7.1，Windows 10/11 64 位元。安裝檔未簽章，首次開啟出現 SmartScreen 提示時點「其他資訊 → 仍要執行」）
+🪟 **[下載 STB for Windows（安裝檔）](https://raw.githubusercontent.com/qwert2813434-ctrl/STB/main/release/STB_1.8.0_x64-setup.exe)**（v1.8.0，Windows 10/11 64 位元。安裝檔未簽章，首次開啟出現 SmartScreen 提示時點「其他資訊 → 仍要執行」）
 
 📱 **[STB for iPad — App Store](https://apps.apple.com/tw/app/stb-storyboard-to-shoot/id6790075928)**（NT$350 買斷，支援 Apple Pencil 塗鴉分鏡）
 
