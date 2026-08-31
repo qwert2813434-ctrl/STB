@@ -43,8 +43,11 @@ export function renderStaff(store: Store, root: HTMLElement) {
   html += `<div class="staff-grid">`;
   for (const { c, i } of rows) {
     const canon = canonRole(c.role);
-    // 打「攝影」「燈光」這類簡稱時，在旁邊顯示會被收斂成什麼——不動使用者打的字
-    const hint = canon && canon !== c.role ? `<span class="staff-canon">→ ${esc(canon)}</span>` : "";
+    // 打「攝影」「燈光」這類簡稱時，在旁邊顯示會被收斂成什麼——不動使用者打的字。
+    // 🔴 收斂結果要用「介面語言」寫：canon 本身是繁中，英日介面直接印它會變中文亂入
+    //    （2026-09-01 產英文商店截圖時看到 "Cinematographer → 攝影師"）。
+    const canonLabel = canon ? (locale() === "zh" ? canon : roleAlt(canon, locale())) : "";
+    const hint = canonLabel && canonLabel !== c.role ? `<span class="staff-canon">→ ${esc(canonLabel)}</span>` : "";
     html += `<div class="staff-row">
       <span class="staff-rolecell">
         <span class="staff-role cut-edit" contenteditable draggable="false" data-st="${i}" data-stf="role" data-ph="${t("職位")}">${esc(c.role)}</span>

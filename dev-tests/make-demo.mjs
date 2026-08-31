@@ -6,15 +6,15 @@ const base = JSON.parse(readFileSync('public/demo/magicstone.json', 'utf8'));
 
 // 各語系的工作人員（職務用該語系的寫法——canonRole 兩邊都認得）
 const CREW = {
-  zh: [['導演','高偉鳴','arminkao',1],['監製','示意監製','',1],['製片','示意製片','studio_demo',1],
+  zh: [['導演','示意導演','director_demo',1],['監製','示意監製','',1],['製片','示意製片','studio_demo',1],
        ['攝影師','示意攝影','dp_demo',0],['燈光師','示意燈光','',0],['美術指導','示意美術','art_demo',0],
-       ['剪輯師','高偉鳴','arminkao',0],['調光師','高偉鳴','',0],['混音音效','示意混音','sound_demo',0]],
-  en: [['Director','Armin Kao','arminkao',1],['Executive Producer','Sample EP','',1],['Producer','Sample Producer','studio_demo',1],
+       ['剪輯師','示意剪輯','editor_demo',0],['調光師','示意調光','',0],['混音音效','示意混音','sound_demo',0]],
+  en: [['Director','Sample Director','director_demo',1],['Executive Producer','Sample EP','',1],['Producer','Sample Producer','studio_demo',1],
        ['Cinematographer','Sample DP','dp_demo',0],['Gaffer','Sample Gaffer','',0],['Art Director','Sample Art','art_demo',0],
-       ['Editor','Armin Kao','arminkao',0],['Colorist','Armin Kao','',0],['Sound Design','Sample Sound','sound_demo',0]],
-  ja: [['監督','高偉鳴','arminkao',1],['エグゼクティブプロデューサー','サンプルEP','',1],['プロデューサー','サンプル制作','studio_demo',1],
+       ['Editor','Sample Editor','editor_demo',0],['Colorist','Sample Colorist','',0],['Sound Design','Sample Sound','sound_demo',0]],
+  ja: [['監督','サンプル監督','director_demo',1],['エグゼクティブプロデューサー','サンプルEP','',1],['プロデューサー','サンプル制作','studio_demo',1],
        ['撮影監督','サンプル撮影','dp_demo',0],['照明','サンプル照明','',0],['美術','サンプル美術','art_demo',0],
-       ['編集','高偉鳴','arminkao',0],['カラリスト','高偉鳴','',0],['音響効果','サンプル音響','sound_demo',0]],
+       ['編集','サンプル編集','editor_demo',0],['カラリスト','サンプルカラリスト','',0],['音響効果','サンプル音響','sound_demo',0]],
 };
 
 const pick = (tbl, s, lang) => (lang === 'zh' ? s : (tbl?.[s]?.[lang] ?? s));

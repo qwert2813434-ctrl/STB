@@ -94,4 +94,6 @@ echo "  1. git add -A && git commit && git push（pre-push hook 會再驗一次�
 echo "  2. releaseNotes.ts 的 APP_VERSION 是否＝${VER}"
 echo "  3. 工具間 stb-latest.json：url 已自動改好，但 version 與 notesI18n 三語要你自己寫，"
 echo "     然後在「37 - 工具間/上線/」git push 才會生效（沒推＝App 內升級橫幅不會跳）"
-echo "  4. ditto 蓋 /Applications/STB.app"
+echo "  4. ditto 蓋 /Applications/STB.app —— 🔴 從 DMG 裡挖，不要拿 bundle/macos/STB.app"
+echo "     hdiutil attach -nobrowse -readonly ${DMG} -mountpoint /tmp/m && ditto /tmp/m/STB.app /Applications/STB.app && hdiutil detach /tmp/m"
+echo "     （build 產物沒簽沒公證，直接蓋上去 spctl 會說「code has no resources」；2026-09-01 實踩）"

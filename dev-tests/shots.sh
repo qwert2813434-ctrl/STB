@@ -12,6 +12,10 @@ PORT="${1:-5199}"
 OUT="$PWD/dev-tests/shot/i18n"
 CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 SIZE="${STB_SHOT_SIZE:-1680,1050}"
+# 商店截圖要 2 倍圖：視窗給 CSS 尺寸、DPR 給 2，出來就是 2× 的像素。
+# 🔴 別直接把視窗開成 2752×2064——那是 2752 個 CSS 像素，版面會攤成一大片空白
+#    （2026-09-01 實踩：內容只佔畫面上緣四分之一）。iPad Pro 13" ＝ 1376×1032 @2x。
+DPR="${STB_SHOT_DPR:-1}"
 mkdir -p "$OUT"
 
 # 章節 × 夾具：哪一章用哪個案子才有東西看
@@ -32,6 +36,7 @@ for LANG in ${STB_SHOT_LANGS:-zh en ja}; do
     F="$OUT/${LANG}_${NAME}.png"
     "$CHROME" --headless --disable-gpu --hide-scrollbars \
       --virtual-time-budget=${STB_SHOT_WAIT:-12000} --window-size="$SIZE" \
+      --force-device-scale-factor="$DPR" \
       --screenshot="$F" \
       "http://localhost:$PORT/?lang=$LANG&demo=$DEMO.$LANG&chap=$CHAP" >/dev/null 2>&1
     printf "  %-3s %-11s %s\n" "$LANG" "$NAME" "$(du -h "$F" | cut -f1)"
