@@ -459,6 +459,8 @@ button:active { transform: scale(.98); }
   padding: 1px 9px; min-width: 34px; text-align: center; flex: none;
 }
 .cs-phone { min-width: 108px; }
+/* IG 只活在 STAFF 章（工作人員名單），通告單完全不出現——
+   通告單是現場文件，現場不會用 IG 找人（Armin 2026-08-30）。 */
 
 /* 大組通告時間：直排二分欄＋列拖曳（⠿） */
 .cs-glist { display: grid; grid-template-columns: 1fr 1fr; gap: 0 30px; align-items: start; }
@@ -1352,9 +1354,10 @@ body.sel-mode .cut [contenteditable] { pointer-events: none; }
 
 /* 新建案分鏡比例選擇（橫式／直式） */
 .nd-sub { font-size: 12px; color: var(--muted); line-height: 1.5; margin-top: -6px; }
-.asp-choices { display: flex; gap: 12px; }
+/* 五個以上就換行（16:9 / 4:3 / 3:2 一排，21:9 / 9:16 一排） */
+.asp-choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .asp-choice {
-  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
   padding: 14px 10px 16px; border: 1px solid var(--border-strong); border-radius: 12px;
   background: var(--card); cursor: pointer; transition: border-color .12s, background .12s;
 }
@@ -1364,10 +1367,8 @@ body.sel-mode .cut [contenteditable] { pointer-events: none; }
   content: ""; background: var(--placeholder);
   border: 1px solid var(--border-strong); border-radius: 3px;
 }
-.asp-frame.land::before { width: 60px; height: 34px; }
-.asp-frame.land32::before { width: 54px; height: 36px; }
-.asp-frame.land219::before { width: 60px; height: 26px; }
-.asp-frame.port::before { width: 34px; height: 60px; }
+/* 尺寸由 nameDialog 依 ar 算好，用 --aw/--ah 帶進來（加比例不用改 CSS） */
+.asp-frame::before { width: var(--aw, 60px); height: var(--ah, 34px); }
 .asp-label { font-size: 13px; font-weight: 500; color: var(--ink); }
 .asp-hint { font-size: 11px; color: var(--muted); }
 
@@ -1402,6 +1403,10 @@ body.sel-mode .cut [contenteditable] { pointer-events: none; }
 .help-langk { font-size: 11px; letter-spacing: .12em; color: var(--ink2); margin-right: 4px; }
 .help-lang { font: inherit; font-size: 12.5px; padding: 3px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink2); cursor: pointer; }
 .help-lang.on { color: var(--ink); border-color: var(--ink2); font-weight: 600; }
+/* 預設 LOGO 那一列：縮圖＋兩顆鈕＋一句說明（說明長，這列允許換行） */
+.help-langrow:has(.help-logo) { flex-wrap: wrap; }
+.help-logo { height: 26px; width: auto; max-width: 90px; object-fit: contain; border-radius: 4px; }
+.help-loghint { font-size: 11.5px; color: var(--muted); flex-basis: 100%; margin-left: 2px; }
 .help-rel { margin-top: 18px; }
 .help-relh { display: flex; align-items: baseline; gap: 10px; font-size: 14px; }
 .help-relh span { font-family: var(--mono); font-size: 11px; color: var(--muted); }
@@ -1493,3 +1498,56 @@ body.sel-mode .cut [contenteditable] { pointer-events: none; }
   .ghost-stick { width: 22px; right: -18px; }
   .ghost-stick.left { right: auto; left: -18px; }
 }
+
+/* ── STAFF 章：工作人員名單 ────────────────────────────────────
+   跟通告單共用同一份 contacts，但這裡是給客戶看的：不顯示電話。
+   🔴 `.page` 本身是 4 欄 grid（給分鏡卡用的），文字型的頁一律要
+   `display:block` 推翻它——不然整個列表會被塞進四分之一欄寬，
+   中文名字被擠成一字一行。既有的 `.page.callsheet` 就是這樣做的。 */
+.page.staffpage { display: block; padding: 26px 30px; }
+.staffpage .cut-edit { flex: none; }          /* .cut-edit 預設 flex:1，非 flex 容器裡要關掉 */
+
+.staff-bar { display: flex; align-items: center; gap: 14px; margin: 0 0 10px; font-size: 12px; flex-wrap: wrap; }
+.staff-bar .spacer { flex: 1; }
+.staff-toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.staff-hint { color: var(--faint); }
+
+/* 用 CSS columns 不用 grid：名單要「左欄讀完再讀右欄」，
+   grid 是橫向填的（導演→監製→製片…Z 字型），讀起來是錯的。 */
+.staff-grid { columns: 2; column-gap: 44px; border-top: 1px solid var(--line); }
+.staff-row {
+  display: grid; grid-template-columns: minmax(0, 148px) minmax(0, 1fr) minmax(0, 80px) auto;
+  align-items: baseline; gap: 12px;
+  padding: 7px 0; border-bottom: 1px solid var(--line); min-width: 0;
+  break-inside: avoid;            /* 一列不要被分欄切成兩半 */
+}
+.staff-rolecell { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.staff-role { font-size: 13px; font-weight: 600; color: var(--ink); }
+.staff-en { font-size: 9.5px; color: var(--faint); line-height: 1.3; }
+.staff-canon { color: var(--muted); margin-left: 4px; }
+.staff-name { font-size: 14px; min-width: 0; }
+.staff-ig { font-size: 10.5px; color: var(--faint); min-width: 0; overflow-wrap: anywhere; }
+.staff-ig:not(:empty)::before { content: "@"; }
+.staff-acts { display: flex; align-items: center; gap: 6px; }
+/* 「通告」＝這個人要不要上通告單。名單是全組，通告單只有現場要打電話找的那幾個。 */
+.staff-call {
+  border: 1px solid transparent; background: transparent; color: var(--faint);
+  font-size: 10px; border-radius: 20px; padding: 1px 7px; line-height: 1.5; opacity: .45;
+}
+/* 開＝實心藥丸（明度差，不加彩度）；關＝只剩淡字。一眼要分得出來，這是可點的狀態 */
+.staff-call.on { background: var(--ink); border-color: var(--ink); color: var(--card); opacity: 1; }
+.staff-call:hover { opacity: 1; border-color: var(--line); }
+.staff-call.on:hover { border-color: var(--ink); }
+.staff-del { border: none; background: transparent; color: var(--faint); font-size: 11px; padding: 0; line-height: 1; }
+.staff-del:hover { color: var(--ink); background: transparent; }
+.staff-addrow { margin-top: 16px; }
+.staff-addrow button { font-size: 12px; color: var(--muted); }
+/* 簡報／列印：編輯用的東西一律不出現（跟 .cs-* 同一套規則） */
+.pv-fit .staff-acts, .pv-fit .staff-addrow, .pv-fit .staff-canon,
+.print-page .staff-acts, .print-page .staff-addrow, .print-page .staff-canon { display: none !important; }
+.pv-fit .staff-row { grid-template-columns: minmax(0, 200px) minmax(0, 1fr) minmax(0, 120px) 0; }
+.pv-fit .staff-role { font-size: 17px; }
+.pv-fit .staff-name { font-size: 18px; }
+.pv-fit .staff-en { font-size: 11px; }
+/* 窄視窗（iPad 直向）收成一欄，不然 148px 的職務欄會把名字擠沒 */
+@media (max-width: 900px) { .staff-grid { columns: 1; } }

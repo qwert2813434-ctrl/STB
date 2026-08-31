@@ -29,13 +29,17 @@ export function renderCallSheet(store: Store, root: HTMLElement, dayOverride?: i
     </div>`;
 
   // 聯絡人：上方橫排一列（老通告單格式：製片-姓名 電話 / 監製… / 導演…）
+  // PPM 案有 STAFF 章接著，✕ 只是「從通告單移除」；通告排表模式沒有那一章，✕ 就是真刪除
+  const ppm = (p.mode ?? "ppm") !== "schedule";
   html += `<div class="cs-contactline"><span class="cs-clabel">${t("聯絡人")}</span>`;
+  // 只列「要上通告單」的人——STAFF 章新增的全組人員不會跑到現場文件上
   p.contacts.forEach((c, i) => {
+    if (c.onCall === false) return;
     html += `<span class="cs-centry">
       <span class="cs-crole cut-edit" contenteditable draggable="false" data-ct="${i}" data-ctf="role" data-ph="${t("職位")}">${esc(c.role)}</span>
       <span class="cut-edit" contenteditable draggable="false" data-ct="${i}" data-ctf="name" data-ph="${t("姓名")}">${esc(c.name)}</span>
       <span class="cs-gt cs-phone cut-edit" contenteditable draggable="false" data-ct="${i}" data-ctf="phone" data-ph="0900-000-000">${esc(c.phone)}</span>
-      <button class="cs-gdel" data-ctdel="${i}" aria-label="${t("刪除聯絡人")}">✕</button>
+      <button class="cs-gdel" data-ctdel="${i}" aria-label="${ppm ? t("從通告單移除") : t("刪除聯絡人")}" title="${ppm ? t("從通告單移除（人留在工作人員名單）") : t("刪除聯絡人")}">✕</button>
     </span>`;
   });
   html += `<button class="cs-addinline" data-ctadd title="${t("新增聯絡人")}">＋</button></div>`;
@@ -94,7 +98,13 @@ export function bindCallSheet(store: Store, root: HTMLElement) {
     const ndel = t.closest("[data-ntdel]") as HTMLElement | null;
     if (ndel) { store.deleteNote(Number(ndel.dataset.ntdel)); return; }
     const cdel = t.closest("[data-ctdel]") as HTMLElement | null;
-    if (cdel) { store.deleteContact(Number(cdel.dataset.ctdel)); return; }
+    if (cdel) {
+      const i = Number(cdel.dataset.ctdel);
+      // PPM 案：人留在 STAFF 章，只是不上通告單；通告排表模式沒有那一章，只能真刪除
+      if ((store.get().mode ?? "ppm") !== "schedule") store.setContactOnCall(i, false);
+      else store.deleteContact(i);
+      return;
+    }
     const del = t.closest("[data-cgdel]") as HTMLElement | null;
     if (del) store.deleteCallGroup(Number(del.dataset.cgdel));
   });

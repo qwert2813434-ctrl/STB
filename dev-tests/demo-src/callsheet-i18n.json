@@ -1,0 +1,235 @@
+{
+  "_說明": "通告單／Rundown／甘特的截圖夾具。原案是真的客戶案（淨毒五郎水篇），裡面有實際場地與地址——截圖會上 App Store，所以全部換成示意內容，不是翻譯。三語同構重寫。",
+  "meta": {
+    "title": {
+      "zh": "示範案_日常篇",
+      "en": "Sample — Everyday",
+      "ja": "サンプル案・日常篇"
+    },
+    "client": {
+      "zh": "○○影像製作",
+      "en": "Sample Production Co.",
+      "ja": "サンプル映像制作"
+    }
+  },
+  "groups": {
+    "製片組": {
+      "zh": "製片組",
+      "en": "Production",
+      "ja": "制作部"
+    },
+    "妝髮組": {
+      "zh": "妝髮組",
+      "en": "Hair & Makeup",
+      "ja": "ヘアメイク"
+    },
+    "導演組": {
+      "zh": "導演組",
+      "en": "Directing",
+      "ja": "演出部"
+    },
+    "攝影・燈光・收音": {
+      "zh": "攝影・燈光・收音",
+      "en": "Camera · Grip · Sound",
+      "ja": "撮影・照明・録音"
+    },
+    "女主角": {
+      "zh": "女主角",
+      "en": "Lead talent",
+      "ja": "主演"
+    }
+  },
+  "locs": {
+    "公司門口": {
+      "zh": "工作室門口",
+      "en": "Studio entrance",
+      "ja": "スタジオ入口"
+    },
+    "公司門口（女主早妝）": {
+      "zh": "工作室門口（早妝）",
+      "en": "Studio entrance (early makeup)",
+      "ja": "スタジオ入口（早メイク）"
+    },
+    "通告直達一場（溪畔外景）": {
+      "zh": "直達第一場（溪畔外景）",
+      "en": "Direct to scene 1 (creek exterior)",
+      "ja": "1シーン目に直行（川辺ロケ）"
+    },
+    "陽明山溪畔": {
+      "zh": "溪畔外景",
+      "en": "Creek exterior",
+      "ja": "川辺ロケ"
+    },
+    "民生東路四段": {
+      "zh": "市區・棚景",
+      "en": "City · stage",
+      "ja": "市街・スタジオ"
+    },
+    "民生社區廚房棚": {
+      "zh": "廚房棚景",
+      "en": "Kitchen set",
+      "ja": "キッチンセット"
+    },
+    "民生東路平面停車場": {
+      "zh": "棚景旁平面停車場",
+      "en": "Surface lot by the stage",
+      "ja": "スタジオ隣の平面駐車場"
+    }
+  },
+  "rundown": {
+    "公司門口集合・器材上車": {
+      "zh": "集合・器材上車",
+      "en": "Call · load the truck",
+      "ja": "集合・機材積み込み"
+    },
+    "前往外景": {
+      "zh": "前往外景",
+      "en": "Travel to location",
+      "ja": "ロケ地へ移動"
+    },
+    "外景：溪畔與草地": {
+      "zh": "外景：溪畔與草地",
+      "en": "Exterior: creek and grass",
+      "ja": "ロケ：川辺と草地"
+    },
+    "移動＋場佈｜民生社區廚房棚": {
+      "zh": "移動＋場佈｜廚房棚景",
+      "en": "Move + set dressing | kitchen set",
+      "ja": "移動＋セット準備｜キッチンセット"
+    },
+    "劇組便當": {
+      "zh": "劇組便當",
+      "en": "Crew lunch",
+      "ja": "ケータリング"
+    },
+    "廚房場：洗碗、瀝水": {
+      "zh": "廚房場：洗碗、瀝水",
+      "en": "Kitchen: washing, draining",
+      "ja": "キッチン：洗い物・水切り"
+    },
+    "廚房場：思考、洗水果": {
+      "zh": "廚房場：思考、洗水果",
+      "en": "Kitchen: a pause, washing fruit",
+      "ja": "キッチン：ひと呼吸・果物を洗う"
+    },
+    "收工整理・器材清點": {
+      "zh": "收工整理・器材清點",
+      "en": "Wrap · equipment check",
+      "ja": "撤収・機材チェック"
+    },
+    "集合": {
+      "zh": "集合",
+      "en": "Call",
+      "ja": "集合"
+    }
+  },
+  "notes": {
+    "需拍攝申請": {
+      "zh": "需拍攝申請",
+      "en": "Permit required",
+      "ja": "撮影許可が必要"
+    }
+  },
+  "desc": {
+    "日光與葉影": {
+      "zh": "日光與葉影",
+      "en": "Sunlight and leaf shadows",
+      "ja": "陽光と葉の影"
+    },
+    "聽到水聲，原來是有人在洗餐具": {
+      "zh": "聽到水聲，原來是有人在洗餐具",
+      "en": "Water running — someone is washing dishes",
+      "ja": "水音。誰かが食器を洗っている"
+    },
+    "女生將白色盤子放到瀝水架上": {
+      "zh": "把白色盤子放到瀝水架上",
+      "en": "A white plate goes onto the rack",
+      "ja": "白い皿を水切りかごへ"
+    },
+    "水珠從白色盤子上流下": {
+      "zh": "水珠從白色盤子上流下",
+      "en": "Droplets run down the white plate",
+      "ja": "白い皿を水滴が伝う"
+    },
+    "女生在思考": {
+      "zh": "停下來想事情",
+      "en": "A pause, thinking",
+      "ja": "ふと考え込む"
+    },
+    "同時女生開始洗水果": {
+      "zh": "接著開始洗水果",
+      "en": "Then starts washing fruit",
+      "ja": "そのまま果物を洗い始める"
+    },
+    "水聲延續自溪流": {
+      "zh": "水聲延續自溪流",
+      "en": "The water sound carries over from the creek",
+      "ja": "水音は川辺から続いている"
+    },
+    "天空及雲": {
+      "zh": "天空及雲",
+      "en": "Sky and clouds",
+      "ja": "空と雲"
+    }
+  },
+  "crew": {
+    "zh": [
+      [
+        "製片",
+        "示意製片",
+        "0900-000-001"
+      ],
+      [
+        "監製",
+        "示意監製",
+        "0900-000-002"
+      ],
+      [
+        "導演",
+        "高偉鳴",
+        "0900-000-003"
+      ]
+    ],
+    "en": [
+      [
+        "Producer",
+        "Sample Producer",
+        "0900-000-001"
+      ],
+      [
+        "Executive Producer",
+        "Sample EP",
+        "0900-000-002"
+      ],
+      [
+        "Director",
+        "Armin Kao",
+        "0900-000-003"
+      ]
+    ],
+    "ja": [
+      [
+        "プロデューサー",
+        "サンプル制作",
+        "0900-000-001"
+      ],
+      [
+        "エグゼクティブプロデューサー",
+        "サンプルEP",
+        "0900-000-002"
+      ],
+      [
+        "監督",
+        "高偉鳴",
+        "0900-000-003"
+      ]
+    ]
+  },
+  "refTitle": {
+    "民生社區廚房棚": {
+      "zh": "廚房棚景",
+      "en": "Kitchen set",
+      "ja": "キッチンセット"
+    }
+  }
+}

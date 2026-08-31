@@ -1,0 +1,74 @@
+{
+  "_說明": "魔法石示範案的英日內容。圖不動（插畫裡沒有文字），只換文字欄位。做法照 sampleData.en/ja 的慣例：同構重寫，不是逐字翻譯。",
+  "meta": {
+    "title": { "en": "The Magic Stone", "ja": "魔法石" },
+    "client": { "en": "Personal · ALIGNED carousel", "ja": "個人・ALIGNED カルーセル" }
+  },
+  "films": {
+    "A路 Nano Banana": { "en": "Ver.A Nano Banana", "ja": "A案 Nano Banana" },
+    "B路 GPT": { "en": "Ver.B GPT", "ja": "B案 GPT" }
+  },
+  "desc": {
+    "雙手攤開，掌心躺著魔法石。紅光只照亮手指，手掌以外全暗。": {
+      "en": "Two open hands, the magic stone resting in the palms. The red glow reaches only the fingers; everything past the hands is black.",
+      "ja": "両手を開き、手のひらに魔法石。赤い光は指先までしか届かず、その外は真っ暗。" },
+    "石造小鎮的早晨，街上每個人手裡都有一塊魔法石：攤販、小孩、提籃的婦人，人人帶著笑。": {
+      "en": "Morning in a stone town. Everyone on the street holds a magic stone — a vendor, a child, a woman with a basket. All of them smiling.",
+      "ja": "石造りの町の朝。通りの誰もが手に魔法石を持っている——屋台の主、子ども、籠を提げた女。みな笑顔。" },
+    "明亮的廣場，主角和幾個朋友圍在一起，各自舉著自己的魔法石互相展示、比較，有說有笑": {
+      "en": "A bright square. The lead and a few friends huddle together, holding up their stones to show and compare, laughing.",
+      "ja": "明るい広場。主人公と友人たちが輪になり、それぞれの石を掲げて見せ合い、比べ、笑い合う。" },
+    "木桌長餐，朋友們舉杯吃飯，桌上一堆石頭疊在麵包旁邊，沒有人在看它。": {
+      "en": "A long wooden table. Friends raise their cups and eat; a pile of stones sits beside the bread, and nobody is looking at it.",
+      "ja": "長い木のテーブル。友人たちが杯を上げて食事する。パンの横に石が積まれているが、誰も見ていない。" },
+    "主角和兩個朋友剛走到山崖邊，看見海與遠方的城市，興奮起來。": {
+      "en": "The lead and two friends reach the cliff edge, see the sea and the far city, and light up.",
+      "ja": "主人公と友人二人が崖の縁に出る。海と遠くの街が見えて、思わず心が躍る。" },
+    "黑暗城堡的大廳裡，一個黑袍巫師站在一塊巨大的魔法石前；鎮上所有人的紅光像細線一樣被吸進石頭裡，巫師看著它發亮。": {
+      "en": "In the hall of a dark castle a robed sorcerer stands before an enormous magic stone. Every red glow in the town is drawn into it as thin threads; the sorcerer watches it brighten.",
+      "ja": "暗い城の大広間。黒衣の魔法使いが巨大な魔法石の前に立つ。町中の赤い光が細い糸となって吸い込まれ、石が輝きを増していく。" },
+    "石頭的特寫：被凝視越久，紅光越深，邊緣滲出墨黑色的煙，像有東西在裡面醒來。": {
+      "en": "Close on the stone: the longer it is stared at, the deeper the red, until ink-black smoke seeps from its edges — as if something inside is waking.",
+      "ja": "石のクローズアップ。見つめるほど赤は深くなり、縁から墨のような黒い煙が滲む。中で何かが目を覚ますように。" },
+    "同一間酒館的餐桌，現在每個人都低著頭看自己的石頭，桌上的食物沒動，燭火快滅了。": {
+      "en": "The same tavern table. Now every head is bent over its own stone; the food is untouched, the candle nearly out.",
+      "ja": "同じ酒場のテーブル。今は誰もが自分の石に顔を伏せている。料理は手つかず、蝋燭は消えかけている。" },
+    "夜色裡的廣場，主角坐在台階上盯著魔法石；廣場上只有三四個人，各自低頭盯著自己的石頭。每塊石頭都冒出黑色的煙絲，纏上人的身體、往石頭裡吸，像在抽走精力。": {
+      "en": "The square at night. The lead sits on the steps staring at the stone; three or four others are scattered around, each bent over their own. Black threads of smoke rise from every stone, wind around their bodies and are drawn back in — as if drinking them.",
+      "ja": "夜の広場。主人公は階段に座り石を見つめる。周りには三、四人が散らばり、それぞれ自分の石に顔を伏せている。どの石からも黒い煙が立ち上り、体に絡みつき、また石へ吸い込まれていく。精気を抜き取るように。" },
+    "主角側臉特寫，低頭盯著手裡的魔法石；紅光從下方照上來，眼下有陰影，眼神空。": {
+      "en": "Profile close-up of the lead, head down over the stone. Red light from below, shadow under the eyes, the gaze empty.",
+      "ja": "主人公の横顔のクローズアップ。手の石にうつむく。下からの赤い光、目の下に影、視線は虚ろ。" },
+    "同一個俯視特寫：手緊緊捏著魔法石，指節發白，石頭縫隙冒出黑煙。": {
+      "en": "The same overhead close-up: the hand grips the stone hard, knuckles white, black smoke escaping between the fingers.",
+      "ja": "同じ俯瞰のクローズアップ。手は石を固く握り、指の関節は白く、隙間から黒い煙が漏れる。" },
+    "同一鏡位、同一隻手：手慢慢鬆開，掌心裡躺著一支黑色手機，比石頭大得多、幾乎跟整隻手一樣長，黑煙散去。": {
+      "en": "Same frame, same hand: the fingers slowly open. Lying in the palm is a black phone — far larger than the stone, nearly the length of the whole hand. The smoke is gone.",
+      "ja": "同じ画角、同じ手。指がゆっくり開く。手のひらにあるのは黒いスマートフォン——石よりずっと大きく、手のひら全体ほどの長さ。煙は消えている。" },
+    "主角站在黃昏的街上（對齊 tone 第 3 張），手機收進口袋，抬頭看天；街上只有他一個人，但天是暖的。": {
+      "en": "The lead stands on the street at dusk, slips the phone into a pocket and looks up. He is alone on the street, but the sky is warm.",
+      "ja": "夕暮れの通りに立つ主人公。スマートフォンをポケットにしまい、空を見上げる。通りには彼ひとり、けれど空は暖かい。" }
+  },
+  "sup": {
+    "魔法石": { "en": "The Magic Stone", "ja": "魔法石" },
+    "魔法石，就是手機。": { "en": "The magic stone is your phone.", "ja": "魔法石とは、スマートフォンのことだ。" },
+    "曾經我以為我是使用者，原來我是商品。": {
+      "en": "I thought I was the user. I was the product.",
+      "ja": "自分は使う側だと思っていた。本当は、売られる側だった。" }
+  },
+  "refTitle": {
+    "主角 小徒": { "en": "Lead — Tou", "ja": "主人公・トウ" },
+    "發明巫師": { "en": "The Inventor", "ja": "発明の魔法使い" },
+    "貪婪巫師（群）": { "en": "The Greedy Ones", "ja": "強欲の魔法使いたち" },
+    "本田（老朋友）": { "en": "Honda — old friend", "ja": "ホンダ（旧友）" },
+    "微微（女生朋友）": { "en": "Wei — friend", "ja": "ウェイ（友人）" },
+    "艾斯（胖胖朋友）": { "en": "Ace — friend", "ja": "エース（友人）" },
+    "魔法石（道具）": { "en": "The magic stone (prop)", "ja": "魔法石（小道具）" },
+    "小鎮街道（早晨）": { "en": "Town street — morning", "ja": "町の通り（朝）" },
+    "廣場": { "en": "The square", "ja": "広場" },
+    "酒館餐桌": { "en": "Tavern table", "ja": "酒場のテーブル" },
+    "山崖看海": { "en": "Cliff over the sea", "ja": "海を望む崖" },
+    "夜巷": { "en": "Night alley", "ja": "夜の路地" },
+    "黑暗城堡大廳": { "en": "Dark castle hall", "ja": "暗い城の大広間" }
+  }
+}

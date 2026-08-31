@@ -8,6 +8,7 @@ import { sampleProject, emptyProject } from "./sampleData";
 import { renderStb, bindStb } from "./stbView";
 import { renderRundown, bindRundown } from "./rundownView";
 import { renderCallSheet, bindCallSheet } from "./callSheetView";
+import { renderStaff, bindStaff } from "./staffView";
 import { renderRefPage, bindRefPage } from "./refPageView";
 import { renderGantt, bindGantt } from "./ganttView";
 import { openPreview } from "./previewMode";
@@ -80,6 +81,7 @@ app.innerHTML = `
           <div id="callsheet-area"></div>
           <div id="rundown-area"></div>
         </div>
+        <div id="staff-area"></div>
         <div id="refpage-area"></div>
       </div>
       <div class="inspector" id="inspector"></div>
@@ -95,6 +97,7 @@ const scheduleView = document.getElementById("schedule-view")!;
 const dayTabs = document.getElementById("day-tabs")!;
 const callsheetArea = document.getElementById("callsheet-area")!;
 const rundownArea = document.getElementById("rundown-area")!;
+const staffArea = document.getElementById("staff-area")!;
 const refpageArea = document.getElementById("refpage-area")!;
 const inspector = document.getElementById("inspector")!;
 const statusbar = document.getElementById("statusbar")!;
@@ -102,6 +105,9 @@ const statusbar = document.getElementById("statusbar")!;
 function kindOf(id: string) {
   return CHAPTERS.find((c) => c.id === id)?.kind ?? "agenda";
 }
+
+// 「關於」裡換了預設 LOGO → 封面要跟著換（helpDialog 只管存，不認識主畫面）
+document.addEventListener("stb:logo-changed", () => renderAll());
 
 function renderAll() {
   // 分鏡縮圖比例交給 CSS 變數（.cut-thumb / .rd-cut-box / 塗鴉畫布共用）——加新比例不用改 CSS
@@ -118,6 +124,7 @@ function renderAll() {
   agendaArea.style.display = kind === "agenda" ? "" : "none";
   stbArea.style.display = kind === "storyboard" ? "" : "none";
   scheduleView.style.display = kind === "schedule" ? "" : "none";
+  staffArea.style.display = kind === "staff" ? "" : "none";
   refpageArea.style.display = kind === "refpage" ? "" : "none";
   inspector.style.display = kind === "storyboard" ? "" : "none";
 
@@ -136,6 +143,13 @@ function renderAll() {
     renderStb(store, stbArea, pendingFlash, expanded);
     pendingFlash = -1;
     renderInspector();
+  } else if (kind === "staff") {
+    const p2 = store.get();
+    const n = p2.contacts.filter((c) => c.name.trim()).length;
+    statusbar.innerHTML = `<span class="k">CONTACTS</span><span class="v">${t("工作人員")}</span>`
+      + `<span class="k" style="margin-left:8px">${t("人數")}</span><span class="v">${n}</span>`
+      + `<span class="spacer"></span><span class="hint">${t("跟通告單共用同一份名單 · 這裡不顯示電話")}</span>`;
+    renderStaff(store, staffArea);
   } else if (kind === "schedule") {
     const day = store.currentDay();
     const times = day ? chainRundown(day.rundown, hhmmToMin(day.callTime)) : [];
@@ -854,6 +868,7 @@ stbArea.addEventListener("click", (e) => {
   pickImage(cut.id);
 });
 bindRundown(store, rundownArea);
+bindStaff(store, staffArea, () => renderAll());
 bindCallSheet(store, callsheetArea);
 bindGantt(store, ganttArea);
 bindRefPage(store, refpageArea, () => store.currentChapter, renderAll);
@@ -893,5 +908,23 @@ bindDropImage(stbArea, "[data-thumb]", (el, f) => void applyImageFile(el.dataset
 
 store.subscribe(renderAll);
 renderAll();
+
+// ── QA 後門：截圖自動化用（跟 i18n 的 ?lang= 同一種東西，只讀不寫、不進 localStorage）──
+//   ?demo=<name>  載入 public/demo/<name>.json 當前專案（截圖夾具，public/demo 已進 .gitignore）
+//   ?chap=<id>    直接跳到某一章
+// 產品環境打這兩個參數：demo 檔不存在就 404 靜靜跳過，chap 只是切章，都無副作用。
+{
+  const qs = new URLSearchParams(location.search);
+  const chap = qs.get("chap");
+  const goChap = () => { if (chap && CHAPTERS.some((c) => c.id === chap)) { store.currentChapter = chap; renderAll(); } };
+  const demo = qs.get("demo");
+  // 允許 magicstone.ja 這種帶語系的檔名；不准出現 .. 或斜線（路徑穿越）
+  if (demo && /^[\w-]+(\.[\w-]+)*$/.test(demo)) {
+    void fetch(`/demo/${demo}.json`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("no demo"))))
+      .then((j) => { store.replaceProject(normalizeProject(j)); goChap(); })
+      .catch(() => goChap());
+  } else goChap();
+}
 // 更新提醒：延後幾秒再查，不跟開檔搶資源；離線就安靜跳過
 setTimeout(() => void checkUpdate(), 4000);

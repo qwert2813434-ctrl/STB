@@ -14,7 +14,7 @@ export function sampleProjectEn(): Project {
     contacts: [
       { role: "Producer", name: "Sample Producer", phone: "0900-000-000" },
       { role: "Executive Producer", name: "Sample EP", phone: "0900-000-000" },
-      { role: "Director", name: "Armin Kao", phone: "0900-000-000" },
+      { role: "Director", name: "Sample Director", phone: "0900-000-000" },
     ],
     cuts: [
       { id: "c1", groupId: "g1", shot: "W", desc: "Sunlight through the leaves", vo: "Water comes from nature.", sup: "Sample super A", imageRef: null, prompt: "", props: "", note: "" },

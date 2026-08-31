@@ -2,19 +2,22 @@
 // 這裡只放「真相結構」與「衍生機器欄」；渲染/操作在別處。
 
 // 分鏡比例：整片層級一次定案。加新比例＝在 ASPECTS 表加一行（版面沿用橫/直兩套，不用改程式）。
-export type Aspect = "16:9" | "9:16" | "3:2" | "21:9";
+export type Aspect = "16:9" | "4:3" | "9:16" | "3:2" | "21:9";
 
 export interface AspectSpec {
   ar: number;                      // 寬/高
   label: string;                   // 選擇器顯示名
   board: { w: number; h: number }; // 裁切/塗鴉畫布尺寸
   portrait: boolean;               // 直式版面（卡片站立、6 欄）
+  hint: string;                    // 新案比例選擇器的副標（i18n key＝繁中原文）
 }
+// 順序＝新案選擇器的顯示順序。16:9 是預設放第一個，其餘由寬到窄、直式收尾。
 export const ASPECTS: Record<Aspect, AspectSpec> = {
-  "16:9": { ar: 16 / 9, label: "橫式 16:9", board: { w: 1280, h: 720 }, portrait: false },
-  "3:2":  { ar: 3 / 2,  label: "全幅 3:2",  board: { w: 1200, h: 800 }, portrait: false },
-  "21:9": { ar: 21 / 9, label: "寬銀幕 21:9", board: { w: 1344, h: 576 }, portrait: false },
-  "9:16": { ar: 9 / 16, label: "直式 9:16", board: { w: 720, h: 1280 }, portrait: true },
+  "16:9": { ar: 16 / 9, label: "橫式 16:9", board: { w: 1280, h: 720 }, portrait: false, hint: "一般影片・簡報" },
+  "4:3":  { ar: 4 / 3,  label: "標準 4:3",  board: { w: 1280, h: 960 }, portrait: false, hint: "紀錄片・資料帶・社群好裁" },
+  "3:2":  { ar: 3 / 2,  label: "全幅 3:2",  board: { w: 1200, h: 800 }, portrait: false, hint: "平面・相機原生" },
+  "21:9": { ar: 21 / 9, label: "寬銀幕 21:9", board: { w: 1344, h: 576 }, portrait: false, hint: "電影感・Scope" },
+  "9:16": { ar: 9 / 16, label: "直式 9:16", board: { w: 720, h: 1280 }, portrait: true,  hint: "Reels・限動・直式廣告" },
 };
 export function aspectSpec(a?: string): AspectSpec {
   return ASPECTS[(a as Aspect) ?? "16:9"] ?? ASPECTS["16:9"];
@@ -93,12 +96,20 @@ export interface Project {
   mode?: "ppm" | "schedule";
   // 分鏡比例：橫式 16:9（預設）／直式 9:16。缺欄＝16:9（舊案不動、序列化零改動）。
   aspect?: Aspect;
+  // 工作人員名單要不要給客戶看（進簡報／PDF／PPTX）。缺欄＝false：舊案完全不受影響。
+  staffInDeck?: boolean;
 }
 
-export interface Contact { role: string; name: string; phone: string; }
+// 一個人一筆，通告單與 STAFF 章共用——但兩邊要的人不一樣：
+//   通告單＝現場要打電話找的那幾個（製片／監製／導演），STAFF＝全組名單。
+// onCall 決定「這個人上不上通告單」：**缺欄＝true**，所以舊檔的聯絡人行為完全不變；
+// 從 STAFF 章新增的人一律 onCall:false，不會跑去通告單上。
+// ig＝Instagram 帳號（不含 @）。給名單／credits.json 用，不是現場資訊——
+// 通告單簡報與列印一律不顯示（見 style.css 的 .cs-ig 隱藏規則）。
+export interface Contact { role: string; name: string; phone: string; ig?: string; onCall?: boolean; }
 
 // PPM AGENDA 章節（固定十章）
-export type ChapterKind = "agenda" | "refpage" | "storyboard" | "schedule";
+export type ChapterKind = "agenda" | "refpage" | "storyboard" | "schedule" | "staff";
 // en＝現行 deck 標題（台灣圈慣用英文，zh 語系沿用不變）；
 // enIntl＝英語市場修正版（LOOK & FEEL 等，依 07_在地化對照表）；ja＝日文 deck 標題。
 // 消費端在 en/ja 語系才改用 enIntl/ja（階段 1/2 接線），zh 行為零變。
@@ -113,6 +124,9 @@ export const CHAPTERS: Chapter[] = [
   { id: "wardrobe", label: "服裝", en: "WARDROBE", enIntl: "WARDROBE", ja: "衣装・ヘアメイク", kind: "refpage" },
   { id: "setting", label: "美術道具", en: "SETTING", enIntl: "ART & SET DESIGN", ja: "美術・セット", kind: "refpage" },
   { id: "location", label: "場景", en: "LOCATION", enIntl: "LOCATIONS", ja: "ロケ地", kind: "refpage" },
+  // 工作人員名單（07 對照表 §02：英日 pre-pro book 都有這章）。
+  // 🔴 只有 staffInDeck===true 才進簡報／匯出，缺欄＝false ⇒ 既有專案 deck 零變動。
+  { id: "staff", label: "工作人員", en: "CONTACTS", enIntl: "CONTACTS", ja: "スタッフリスト", kind: "staff" },
   { id: "schedule", label: "製作時程", en: "SCHEDULE", enIntl: "SCHEDULE", ja: "スケジュール", kind: "schedule" },
 ];
 
@@ -343,13 +357,20 @@ export function normalizeProject(raw: unknown): Project {
       version: meta.version ?? 1,
       logo: meta.logo ?? null,
     },
-    // 聯絡人：舊檔沒有這欄 → 給預設三人（示意名與示意電話；導演預設高偉鳴）
+    // 聯絡人：舊檔沒有這欄 → 給預設三人（一律示意名與示意電話；
+    // 2026-09-01 起不再放真人姓名——這份會出現在每個使用者的畫面上）
     contacts: Array.isArray(r.contacts)
-      ? (r.contacts as Partial<Contact>[]).map((c) => ({ role: c?.role ?? "", name: c?.name ?? "", phone: c?.phone ?? "" }))
+      ? (r.contacts as Partial<Contact>[]).map((c) => ({
+          role: c?.role ?? "", name: c?.name ?? "", phone: c?.phone ?? "",
+          // 沒填就整個欄位不寫進 JSON（舊檔存回去仍 byte-identical）
+          ...(c?.ig ? { ig: c.ig } : {}),
+          // 只有「不上通告單」才寫入；缺欄＝上通告單＝舊檔行為不變
+          ...(c?.onCall === false ? { onCall: false as const } : {}),
+        }))
       : [
           { role: "製片", name: "示意製片", phone: "0900-000-000" },
           { role: "監製", name: "示意監製", phone: "0900-000-000" },
-          { role: "導演", name: "高偉鳴", phone: "0900-000-000" },
+          { role: "導演", name: "示意導演", phone: "0900-000-000" },
         ],
     films,
     cuts: cuts.map((c) => ({
@@ -426,5 +447,28 @@ export function normalizeProject(raw: unknown): Project {
     // 預設 16:9 不寫入欄位＝舊檔序列化後 byte-identical；其餘認得的比例照存
     ...(typeof r.aspect === "string" && r.aspect !== "16:9" && (r.aspect as Aspect) in ASPECTS
       ? { aspect: r.aspect as Aspect } : {}),
+    // 沒開就整個欄位不寫入＝既有專案 byte-identical、deck 頁數與版面零變動
+    ...(r.staffInDeck === true ? { staffInDeck: true as const } : {}),
   };
+}
+
+// 參考項目「有內容」的定義：全空的佔位框（按了＋新增但沒填）不算——
+// 不然點過一下新增，簡報就多出一頁空章（Armin 實測回報）
+export function refItemHasContent(it: RefItem): boolean {
+  return !!(it.imageRef || it.title.trim() || it.note.trim() || it.videoFile || it.videoUrl || it.cutRefs?.length);
+}
+
+// 章節出場名單（簡報/匯出共用）：沒內容的章自動跳過；
+// hiddenChapters＝「這次不給客戶看」的手動隱藏（編輯器不受影響）。
+// includeHidden 給簡報「章節」勾選清單用（要能把藏起來的勾回來）。
+export function chapterPlan(p: Project, includeHidden = false): Chapter[] {
+  const hidden = new Set(p.hiddenChapters ?? []);
+  return CHAPTERS.filter((ch) => ch.id !== "agenda").filter((ch) => {
+    if (!includeHidden && hidden.has(ch.id)) return false;
+    if (ch.kind === "storyboard") return p.cuts.length > 0;
+    if (ch.kind === "schedule") return p.milestones.length > 0 || p.days.length > 0;
+    // 工作人員：預設不進 deck（缺欄＝false）＝既有專案頁數與版面完全不變，要給客戶看才自己開
+    if (ch.kind === "staff") return p.staffInDeck === true && p.contacts.some((c) => c.name.trim() !== "");
+    return (p.refPages[ch.id] || []).some(refItemHasContent);
+  });
 }

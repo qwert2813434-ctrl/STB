@@ -1,0 +1,26 @@
+<!-- 匯出 PPTX 的實跑驗證（不進 build）：
+     npx vite --port 5199 → 這頁自己組一份 PPTX、POST 回 dev-tests/pptx-recv.py 落地。
+     用途＝高畫幅（4:3／3:2）的分鏡格會不會壓到下一排，只能真的打開檔案才看得準。
+       ?demo=<夾具> 指定案子（預設 t43） -->
+<!doctype html><meta charset="utf-8"><body style="font:14px/1.6 system-ui;padding:24px">
+<pre id="o">跑起來了…</pre>
+<script type="module">
+import { Store } from "/src/store.ts";
+import { normalizeProject, chapterPlan } from "/src/model.ts";
+import { buildEditablePptx } from "/src/pptxNative.ts";
+const o = document.getElementById("o");
+const log = (s) => { o.textContent += "\n" + s; };
+const demo = new URLSearchParams(location.search).get("demo") || "t43";
+try {
+  const j = await (await fetch(`/demo/${demo}.json`)).json();
+  const store = new Store(normalizeProject(j));
+  const p = store.get();
+  const ids = new Set(chapterPlan(p).map((c) => c.id));
+  log(`案子：${p.meta.title}　aspect=${p.aspect}　章：${[...ids].join(",")}`);
+  const b64 = await buildEditablePptx(store, { ids, withTitles: true });
+  log(`組好了：${(b64.length / 1e6).toFixed(2)} MB base64`);
+  const r = await fetch(`http://localhost:5198/save?name=${demo}`, { method: "POST", body: b64 });
+  log("回收：" + (await r.text()));
+  document.title = "DONE";
+} catch (e) { log("✗ " + (e?.stack || e)); document.title = "FAIL"; }
+</script></body>

@@ -1,10 +1,10 @@
 import type { Store } from "./store";
-import type { Project, RefItem, Chapter } from "./model";
-import { CHAPTERS } from "./model";
+
 import { renderStb } from "./stbView";
 import { renderRefPage } from "./refPageView";
 import { renderGantt } from "./ganttView";
 import { renderCallSheet } from "./callSheetView";
+import { renderStaff } from "./staffView";
 import { renderRundown } from "./rundownView";
 import { projectLogo } from "./logoAsset";
 import { t, chapterTitle } from "./i18n";
@@ -14,24 +14,9 @@ import { t, chapterTitle } from "./i18n";
 
 export interface ChapterPages { id: string; en: string; zh: string; pages: HTMLElement[]; }
 
-// 參考項目「有內容」的定義：全空的佔位框（按了＋新增但沒填）不算——
-// 不然點過一下新增，簡報就多出一頁空章（Armin 實測回報）
-export function refItemHasContent(it: RefItem): boolean {
-  return !!(it.imageRef || it.title.trim() || it.note.trim() || it.videoFile || it.videoUrl || it.cutRefs?.length);
-}
-
-// 章節出場名單（簡報/匯出共用）：沒內容的章自動跳過；
-// hiddenChapters＝「這次不給客戶看」的手動隱藏（編輯器不受影響）。
-// includeHidden 給簡報「章節」勾選清單用（要能把藏起來的勾回來）。
-export function chapterPlan(p: Project, includeHidden = false): Chapter[] {
-  const hidden = new Set(p.hiddenChapters ?? []);
-  return CHAPTERS.filter((ch) => ch.id !== "agenda").filter((ch) => {
-    if (!includeHidden && hidden.has(ch.id)) return false;
-    if (ch.kind === "storyboard") return p.cuts.length > 0;
-    if (ch.kind === "schedule") return p.milestones.length > 0 || p.days.length > 0;
-    return (p.refPages[ch.id] || []).some(refItemHasContent);
-  });
-}
+// refItemHasContent／chapterPlan 已搬到 model.ts（純邏輯、不碰 DOM，才驗得到「舊案零影響」這條鐵則）
+import { refItemHasContent, chapterPlan } from "./model";
+export { refItemHasContent, chapterPlan };
 
 // 收集出場章節的頁面
 export function collectChapters(store: Store): ChapterPages[] {
@@ -60,6 +45,8 @@ export function collectChapters(store: Store): ChapterPages[] {
         if (!p.cuts.some((c) => c.filmId === f.id)) continue;
         pages.push(...collect(() => renderStb(store, temp, -1, new Set(), f.id)));
       }
+    } else if (ch.kind === "staff") {
+      pages = collect(() => renderStaff(store, temp));
     } else if (ch.kind === "schedule") {
       pages = collect(() => renderGantt(store, temp));
       for (const day of p.days) {

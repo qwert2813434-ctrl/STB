@@ -1,6 +1,7 @@
 // iPad 取名對話框：iOS 沒有「存檔對話框」（Mac 靠它輸入案名建資料夾），
 // 「案名＝資料夾名」的規則不變，改由 App 內輸入框完成。
 import { t } from "./i18n";
+import { ASPECTS, type Aspect } from "./model";
 export function askName(title: string, def: string): Promise<string | null> {
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
@@ -36,49 +37,40 @@ export function askName(title: string, def: string): Promise<string | null> {
   });
 }
 
-// 新建案分鏡比例：橫式 16:9（預設）／直式 9:16。整片一次定案，之後全章跟著走。
+// 新建案分鏡比例。選項全部從 model.ts 的 ASPECTS 表長出來——
+// 加一個比例＝只改那張表，這裡不用動（2026-08-30 加 4:3 時把三份硬寫的複本收掉）。
 // 回傳 null＝取消整個新建流程（與 askName 一致）。
-export function askAspect(): Promise<"16:9" | "9:16" | "3:2" | "21:9" | null> {
+export function askAspect(): Promise<Aspect | null> {
   return new Promise((resolve) => {
     const overlay = document.createElement("div");
     overlay.className = "nd-overlay";
+    // 縮圖框：長邊固定 60px，短邊按 ar 算——不再為每個比例寫一條 CSS class
+    const choices = (Object.entries(ASPECTS) as [Aspect, (typeof ASPECTS)[Aspect]][])
+      .map(([key, spec]) => {
+        const w = spec.ar >= 1 ? 60 : Math.round(60 * spec.ar);
+        const h = spec.ar >= 1 ? Math.round(60 / spec.ar) : 60;
+        return `<button class="asp-choice" data-asp="${key}">
+            <span class="asp-frame" style="--aw:${w}px;--ah:${h}px"></span>
+            <span class="asp-label">${esc(t(spec.label))}</span>
+            <span class="asp-hint">${esc(t(spec.hint))}</span>
+          </button>`;
+      }).join("");
     overlay.innerHTML = `
       <div class="nd-panel">
         <div class="nd-title">${t("分鏡比例")}</div>
         <div class="nd-sub">${t("整片的分鏡格方向，之後所有分鏡都照這個比例。")}</div>
-        <div class="asp-choices">
-          <button class="asp-choice" data-asp="16:9">
-            <span class="asp-frame land"></span>
-            <span class="asp-label">${t("橫式 16:9")}</span>
-            <span class="asp-hint">${t("一般影片・簡報")}</span>
-          </button>
-          <button class="asp-choice" data-asp="3:2">
-            <span class="asp-frame land32"></span>
-            <span class="asp-label">${t("全幅 3:2")}</span>
-            <span class="asp-hint">${t("平面・相機原生")}</span>
-          </button>
-          <button class="asp-choice" data-asp="21:9">
-            <span class="asp-frame land219"></span>
-            <span class="asp-label">${t("寬銀幕 21:9")}</span>
-            <span class="asp-hint">${t("電影感・Scope")}</span>
-          </button>
-          <button class="asp-choice" data-asp="9:16">
-            <span class="asp-frame port"></span>
-            <span class="asp-label">${t("直式 9:16")}</span>
-            <span class="asp-hint">${t("Reels・限動・直式廣告")}</span>
-          </button>
-        </div>
+        <div class="asp-choices">${choices}</div>
         <div class="nd-actions">
           <button class="nd-cancel">${t("取消")}</button>
         </div>
       </div>`;
     document.body.appendChild(overlay);
-    const done = (v: "16:9" | "9:16" | "3:2" | "21:9" | null) => { overlay.remove(); document.removeEventListener("keydown", onKey, true); resolve(v); };
+    const done = (v: Aspect | null) => { overlay.remove(); document.removeEventListener("keydown", onKey, true); resolve(v); };
     overlay.addEventListener("click", (e) => {
-      const t = e.target as HTMLElement;
-      const choice = t.closest("[data-asp]") as HTMLElement | null;
-      if (choice) { done(choice.dataset.asp as "16:9" | "9:16" | "3:2" | "21:9"); return; }
-      if (t.closest(".nd-cancel") || t === overlay) done(null);
+      const el = e.target as HTMLElement;
+      const choice = el.closest("[data-asp]") as HTMLElement | null;
+      if (choice) { done(choice.dataset.asp as Aspect); return; }
+      if (el.closest(".nd-cancel") || el === overlay) done(null);
     });
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done(null); }

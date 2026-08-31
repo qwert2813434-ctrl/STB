@@ -15,7 +15,7 @@ export function sampleProjectJa(): Project {
     contacts: [
       { role: "プロデューサー", name: "サンプルP", phone: "090-0000-0000" },
       { role: "制作担当", name: "サンプルPM", phone: "090-0000-0000" },
-      { role: "ディレクター", name: "高偉鳴", phone: "090-0000-0000" },
+      { role: "ディレクター", name: "サンプルD", phone: "090-0000-0000" },
     ],
     cuts: [
       { id: "c1", groupId: "g1", shot: "W", sec: 3, desc: "木漏れ日、葉のあいだの光", vo: "水は、自然から。", sup: "サンプルスーパー A", imageRef: null, prompt: "", props: "", note: "" },

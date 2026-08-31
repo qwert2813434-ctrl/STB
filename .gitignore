@@ -5,3 +5,5 @@ src-tauri/target
 src-tauri/gen/schemas
 src-tauri/gen/apple/build
 src-tauri/gen/apple/DerivedData
+dev-tests/shot/
+public/demo/

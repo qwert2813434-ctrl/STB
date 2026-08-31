@@ -41,7 +41,7 @@ export function sampleProject(): Project {
     contacts: [
       { role: "製片", name: "示意製片", phone: "0900-000-000" },
       { role: "監製", name: "示意監製", phone: "0900-000-000" },
-      { role: "導演", name: "高偉鳴", phone: "0900-000-000" },
+      { role: "導演", name: "示意導演", phone: "0900-000-000" },
     ],
     cuts: [
       { id: "c1", groupId: "g1", shot: "W", desc: "陽光在樹葉之間的縫隙", vo: "水，來自自然。", sup: "示範疊印字卡 A", imageRef: null, prompt: "", props: "", note: "" },

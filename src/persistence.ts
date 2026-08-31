@@ -216,6 +216,15 @@ export async function chooseFolderAndSaveAs(contents: string, suggestedName: str
   return path;
 }
 
+/** 存一份純文字檔（credits.json 等）。沿用 save_file，內容先轉 base64。 */
+export async function saveTextAs(text: string, suggestedName: string): Promise<boolean> {
+  const path = await save({ defaultPath: suggestedName, title: t("匯出") });
+  if (!path) return false;
+  const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(text)));
+  await invoke("save_file", { path, b64 });
+  return true;
+}
+
 // 把單張圖另存成檔案：imageRef 是 data URL，拆出 base64 交給 Rust save_file。
 // 分鏡格／參考頁（場景・演員・服裝・道具…）／停車照共用這一顆。
 // 桌面限定（行動版沒有存檔對話框，走系統分享，見進度文件待辦）。

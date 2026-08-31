@@ -1,0 +1,22 @@
+<!-- 新案比例選擇器的版面檢查（不進 build：放 dev-tests，靠 vite 開發伺服器直接開）
+     npx vite --port 5199 → http://localhost:5199/dev-tests/aspect-dialog.html?lang=en
+     只複製 nameDialog.ts 的 markup 規則來驗 CSS；選項本身讀真的 ASPECTS 表。 -->
+<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="/src/style.css">
+<body style="margin:0"><div id="r"></div>
+<script type="module">
+import { ASPECTS } from "/src/model.ts";
+const L={"橫式 16:9":"Landscape 16:9","一般影片・簡報":"Standard video · decks",
+"四三 4:3":"Classic 4:3","紀錄片・資料帶・社群好裁":"Docs · archive · social-safe",
+"全幅 3:2":"Full-frame 3:2","平面・相機原生":"Stills · native camera",
+"寬銀幕 21:9":"Widescreen 21:9","電影感・Scope":"Cinematic · scope",
+"直式 9:16":"Portrait 9:16","Reels・限動・直式廣告":"Reels · Stories · vertical ads"};
+const q=new URLSearchParams(location.search).get("lang");
+const t=s=>q==="en"?(L[s]||s):s;
+const ch=Object.entries(ASPECTS).map(([k,s])=>{
+ const w=s.ar>=1?60:Math.round(60*s.ar), h=s.ar>=1?Math.round(60/s.ar):60;
+ return `<button class="asp-choice" data-asp="${k}"><span class="asp-frame" style="--aw:${w}px;--ah:${h}px"></span>
+ <span class="asp-label">${t(s.label)}</span><span class="asp-hint">${t(s.hint)}</span></button>`;}).join("");
+r.innerHTML=`<div class="nd-overlay"><div class="nd-panel"><div class="nd-title">分鏡比例</div>
+<div class="nd-sub">整片的分鏡格方向，之後所有分鏡都照這個比例。</div>
+<div class="asp-choices">${ch}</div><div class="nd-actions"><button class="nd-cancel">取消</button></div></div></div>`;
+</script></body>

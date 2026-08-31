@@ -8,6 +8,7 @@ import { isTauri, currentDir } from "./persistence";
 import { projectLogo, rasterLogo } from "./logoAsset";
 import { invoke } from "@tauri-apps/api/core";
 import { t, tf, locale, chapterTitle } from "./i18n";
+import { canonRole, roleRank, roleAlt } from "./creditRoles";
 
 // 可編輯 PPTX：不是把頁面截成圖，而是照 App 版面邏輯用「原生物件」重排——
 // 文字＝真文字框（客戶可改人名/時間/地點/腳本字）、圖片＝獨立圖片物件（可換）、
@@ -18,6 +19,7 @@ import { t, tf, locale, chapterTitle } from "./i18n";
 type Slide = ReturnType<PptxGenJS["addSlide"]>;
 
 const W = 10, H = 5.625;      // 16:9 吋
+const TEXT_MIN = 0.86;        // 分鏡格裡留給 desc／VO／SUPER 的最小高度（吋）
 const MX = 0.45;              // 左右邊界
 const TOP = 0.72;             // 內容起點（頁首小標下方）
 const INK = "2b2a27", INK2 = "55534e", MUTED = "8f8d87", LINE = "e3e1d9";
@@ -54,6 +56,8 @@ export async function buildEditablePptx(store: Store, opts: PptxOptions): Promis
     opts.onProgress?.(tf("組裝 PPTX…{label}", { label: ct.sub || ct.cap }));
     if (ch.kind === "storyboard") {
       stbSlides(pptx, p, ct.cap, ct.sub, store.portraitDense, store.showShot, store.showSec);
+    } else if (ch.kind === "staff") {
+      staffSlide(pptx, p, ct.cap, ct.sub);
     } else if (ch.kind === "schedule") {
       ganttSlide(pptx, p, ct.cap, ct.sub);
       for (let d = 0; d < p.days.length; d++) {
@@ -328,9 +332,14 @@ function stbSlides(pptx: PptxGenJS, p: Project, en: string, zh: string, dense = 
       sl.addText(tf("CUT {label}", { label: n.label }), { x, y, w: cw, h: 0.19, fontFace: "Courier New", fontSize: 8.5, bold: true, color: INK2, margin: 0, valign: "top" });
       const meta2 = cutMeta(cut, showShot, showSec);
       if (meta2) sl.addText(meta2, { x, y, w: cw, h: 0.19, fontFace: FONT, fontSize: 7, color: MUTED, margin: 0, valign: "top", align: "right" });
-      const ih = cw / aspectSpec(p.aspect).ar;
-      if (cut.imageRef) sl.addImage({ data: cut.imageRef, x, y: y + 0.21, w: cw, h: ih });
-      else sl.addShape("rect", { x, y: y + 0.21, w: cw, h: ih, fill: { color: "f4f3ee" }, line: { color: LINE, width: 0.75 } });
+      // 高的畫幅（4:3／3:2）：圖若照滿版寬算高會把 desc 擠出格外——PPTX 文字框不裁切，
+      // 會直接壓到下一排的 CUT 標籤。改成先保住文字預算，圖不夠放就縮窄置中。
+      // TEXT_MIN 取 16:9 原本就有的空間 ⇒ 16:9 與 21:9 的輸出一個位元組都不變。
+      const ar = aspectSpec(p.aspect).ar;
+      const ih = Math.min(cw / ar, rh - 0.21 - 0.06 - TEXT_MIN);
+      const iw = ih * ar, ix = x + (cw - iw) / 2;
+      if (cut.imageRef) sl.addImage({ data: cut.imageRef, x: ix, y: y + 0.21, w: iw, h: ih });
+      else sl.addShape("rect", { x: ix, y: y + 0.21, w: iw, h: ih, fill: { color: "f4f3ee" }, line: { color: LINE, width: 0.75 } });
       let cy = y + 0.21 + ih + 0.04;
       const bottom = y + rh - 0.06; // 本格底線，不越界壓到下一排
       if (cut.desc) {
@@ -391,6 +400,30 @@ function ganttSlide(pptx: PptxGenJS, p: Project, en: string, zh: string) {
 }
 
 // ---- 通告單（每拍攝日一頁）----
+
+// 工作人員名單：中文職務＋英譯小字＋姓名（＋IG）。不放電話——那是現場資訊。
+// 兩欄式，人多就往右欄排；超過 24 人就不再塞（deck 上一頁塞爆比漏掉更糟）。
+function staffSlide(pptx: PptxGenJS, p: Project, en: string, zh: string) {
+  const sl = pptx.addSlide();
+  header(sl, en, zh);
+  const rows = p.contacts
+    .filter((c) => c.name.trim())
+    .map((c) => ({ ...c, canon: canonRole(c.role) }))
+    .sort((a, b) => roleRank(a.role) - roleRank(b.role))
+    .slice(0, 24);
+  const half = Math.ceil(rows.length / 2);
+  const colW = (W - MX * 2 - 0.5) / 2;
+  rows.forEach((c, i) => {
+    const col = i < half ? 0 : 1;
+    const y = 1.05 + (i - col * half) * 0.42;
+    const x = MX + col * (colW + 0.5);
+    sl.addText(c.canon || c.role, { x, y, w: colW * 0.34, h: 0.3, fontFace: FONT, fontSize: 11, bold: true, color: INK });
+    sl.addText(roleAlt(c.canon, locale()), { x, y: y + 0.19, w: colW * 0.34, h: 0.22, fontFace: FONT, fontSize: 7.5, color: MUTED });
+    sl.addText(c.name + (c.ig ? "　@" + c.ig : ""), {
+      x: x + colW * 0.36, y, w: colW * 0.64, h: 0.32, fontFace: FONT, fontSize: 12, color: INK2,
+    });
+  });
+}
 
 function callSheetSlide(pptx: PptxGenJS, p: Project, day: ShootDay, dayIdx: number, en: string) {
   const sl = pptx.addSlide();

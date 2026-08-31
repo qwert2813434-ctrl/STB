@@ -530,8 +530,22 @@ export class Store {
   }
 
   // ---- 聯絡人（通告單右欄） ----
-  addContact() {
-    this.commit((p) => { p.contacts.push({ role: "", name: "", phone: "" }); });
+  /** onCall=false＝只進 STAFF 名單、不上通告單（從 STAFF 章新增的人都是這種）。 */
+  addContact(role = "", onCall = true) {
+    this.commit((p) => { p.contacts.push({ role, name: "", phone: "", ...(onCall ? {} : { onCall: false }) }); });
+  }
+
+  /** 切換「上不上通告單」。人不會被刪掉，只是不出現在通告單上。 */
+  setContactOnCall(index: number, on: boolean) {
+    this.commit((p) => {
+      const c = p.contacts[index]; if (!c) return;
+      if (on) delete c.onCall; else c.onCall = false;
+    });
+  }
+
+  /** 工作人員名單要不要進簡報／匯出（STAFF 章）。 */
+  setStaffInDeck(on: boolean) {
+    this.commit((p) => { if (on) p.staffInDeck = true; else delete p.staffInDeck; });
   }
 
   deleteContact(index: number) {
@@ -540,11 +554,13 @@ export class Store {
     });
   }
 
-  editContact(index: number, field: "role" | "name" | "phone", value: string) {
+  editContact(index: number, field: "role" | "name" | "phone" | "ig", value: string) {
     const c = this.project.contacts[index];
-    if (!c || c[field] === value) return;
+    // ig 一律去掉開頭的 @ 與空白（credits.json 規格：帳號不含 @）
+    const v = field === "ig" ? value.trim().replace(/^@+/, "") : value;
+    if (!c || c[field] === v) return;
     this.snapshot();
-    c[field] = value;
+    if (field === "ig" && !v) delete c.ig; else c[field] = v;
     this.touched();
   }
 
