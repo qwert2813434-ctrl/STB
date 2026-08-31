@@ -47,11 +47,14 @@ export function renderStaff(store: Store, root: HTMLElement) {
     // 🔴 收斂結果要用「介面語言」寫：canon 本身是繁中，英日介面直接印它會變中文亂入
     //    （2026-09-01 產英文商店截圖時看到 "Cinematographer → 攝影師"）。
     const canonLabel = canon ? (locale() === "zh" ? canon : roleAlt(canon, locale())) : "";
+    // 副行＝另一個語系的寫法。英文介面打英文職務時它會跟本行一字不差
+    //（Director／Director），重複一次沒有訊息量——一樣就不印。
+    const alt = roleAlt(canon, locale());
     const hint = canonLabel && canonLabel !== c.role ? `<span class="staff-canon">→ ${esc(canonLabel)}</span>` : "";
     html += `<div class="staff-row">
       <span class="staff-rolecell">
         <span class="staff-role cut-edit" contenteditable draggable="false" data-st="${i}" data-stf="role" data-ph="${t("職位")}">${esc(c.role)}</span>
-        <span class="staff-en">${esc(roleAlt(canon, locale()))}${hint}</span>
+        <span class="staff-en">${esc(alt === c.role ? "" : alt)}${hint}</span>
       </span>
       <span class="staff-name cut-edit" contenteditable draggable="false" data-st="${i}" data-stf="name" data-ph="${t("姓名")}">${esc(c.name)}</span>
       <span class="staff-ig cut-edit" contenteditable draggable="false" data-st="${i}" data-stf="ig" data-ph="${t("IG 帳號")}">${esc(c.ig ?? "")}</span>
