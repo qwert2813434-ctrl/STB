@@ -89,7 +89,7 @@ OLD=$(ls release/STB_*_aarch64.dmg 2>/dev/null | grep -v "$(basename "$FROZEN")"
 [ -n "$OLD" ] && { echo "▸ 舊版 DMG 還留在 repo（要瘦身就 git rm，歷史仍保得住）："; echo "$OLD" | sed 's/^/    /'; }
 
 echo "✅ v${VER} 全綠，已產出 ${DMG}（SHA $(shasum -a 256 "$DMG" | cut -c1-8)…）"
-echo "剩下手動四件："
+echo "剩下手動五件："
 echo "  1. git add -A && git commit && git push（pre-push hook 會再驗一次）"
 echo "  2. releaseNotes.ts 的 APP_VERSION 是否＝${VER}"
 echo "  3. 工具間 stb-latest.json：url 已自動改好，但 version 與 notesI18n 三語要你自己寫，"
@@ -97,3 +97,7 @@ echo "     然後在「37 - 工具間/上線/」git push 才會生效（沒推�
 echo "  4. ditto 蓋 /Applications/STB.app —— 🔴 從 DMG 裡挖，不要拿 bundle/macos/STB.app"
 echo "     hdiutil attach -nobrowse -readonly ${DMG} -mountpoint /tmp/m && ditto /tmp/m/STB.app /Applications/STB.app && hdiutil detach /tmp/m"
 echo "     （build 產物沒簽沒公證，直接蓋上去 spctl 會說「code has no resources」；2026-09-01 實踩）"
+echo "  5. 官網更新卡：20 - 網站製作/STB官網/{zh-Hant,en}/index.html 的「更新與預告」欄補一張"
+echo "     v${VER} 卡（短標題＋2-3 條短句，文案自己寫；版號與下載連結會自己跟 feed 不用改），"
+echo "     然後 git push —— 🔴 這條 2026-09-04 才補進清單：官網卡片曾經停在 1.7.1 三週沒人發現，"
+echo "     就是因為這步驟從來不在清單上。日報已加落差偵測當保險，但那是事後抓不是代替你寫"
